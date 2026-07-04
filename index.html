@@ -43,10 +43,10 @@
       <div class="brand-lockup compact"><div class="brand-mark small" aria-hidden="true"><span></span><span></span><span></span></div><strong>Vault<span>Pilot</span></strong></div>
       <nav class="top-nav" aria-label="Main navigation">
         <button class="nav-button active" data-view="overview" type="button"><span>⌂</span>Home</button>
-        <button class="nav-button" data-view="transactions" type="button"><span>≡</span>Ledger</button>
+        <button class="nav-button" data-view="transactions" type="button"><span>≡</span>Transactions</button>
         <button class="nav-button" data-view="import" type="button"><span>⇣</span>Import</button>
         <button class="nav-button" data-view="accounts" type="button"><span>💳</span>Accounts</button>
-        <button class="nav-button" data-view="rules" type="button"><span>🏷</span>Rules</button>
+        <button class="nav-button" data-view="rules" type="button"><span aria-hidden="true">&#9889;</span>Rules</button>
         <button class="nav-button" data-view="settings" type="button"><span>⚙</span>Settings</button>
       </nav>
       <div class="header-actions">
@@ -72,7 +72,7 @@
           </article>
 
           <aside id="review-panel" class="money-actions review-panel surface-card" hidden>
-            <div class="panel-heading review-heading"><div><p class="eyebrow">REVIEW LEDGER</p><h3 id="review-count">0 to review</h3></div><button class="link-button" data-go-view="transactions" type="button">Open ledger</button></div>
+            <div class="panel-heading review-heading"><div><p class="eyebrow">REVIEW QUEUE</p><h3 id="review-count">0 to review</h3></div><button class="link-button" data-go-view="transactions" type="button">Open transactions</button></div>
             <div id="review-list" class="mini-list review-mini-list"></div>
           </aside>
         </div>
@@ -116,7 +116,7 @@
             <button class="primary-button" data-open-modal="transaction" type="button">Add transaction</button>
           </aside>
           <article class="surface-card table-card">
-            <div class="panel-heading"><div><p class="eyebrow">LEDGER</p><h3>Transactions</h3></div><span id="tx-count" class="metric-tag">0 entries</span></div>
+            <div class="panel-heading"><div><p class="eyebrow">TRANSACTIONS</p><h3>Transactions</h3></div><span id="tx-count" class="metric-tag">0 entries</span></div>
             <div class="table-scroll"><table><thead><tr><th>Date</th><th>Description</th><th>Account</th><th>Category</th><th>Amount</th><th>Note</th><th></th></tr></thead><tbody id="transactions-body"></tbody></table></div>
           </article>
         </div>
@@ -176,8 +176,16 @@
               <label class="field"><span>Primary currency</span><input id="setting-currency" list="currency-options" maxlength="3" placeholder="EUR" autocomplete="off"></label>
               <label class="field"><span>Appearance</span><select id="setting-theme"><option value="dark">Dark mode</option><option value="light">Light mode</option></select></label>
               <label class="field"><span>Motion</span><select id="setting-motion"><option value="on">Animations on</option><option value="off">Animations off</option></select></label>
-              <label class="field"><span>Portfolio comparison</span><select id="setting-compare-mode"><option value="rolling">Since last days</option><option value="date">Since fixed date</option></select></label>
-              <div class="form-grid two"><label class="field"><span>Days back</span><input id="setting-compare-days" type="number" min="1" max="3650" value="30"></label><label class="field"><span>Fixed date</span><input id="setting-compare-date" type="date"></label></div>
+              <div class="field compare-control">
+                <span>Portfolio comparison</span>
+                <input id="setting-compare-mode" type="hidden" value="rolling">
+                <div class="segmented-control" role="group" aria-label="Portfolio comparison mode">
+                  <button class="segment-button active" data-compare-mode="rolling" type="button" aria-pressed="true">Days back</button>
+                  <button class="segment-button" data-compare-mode="date" type="button" aria-pressed="false">Fixed date</button>
+                </div>
+              </div>
+              <label id="compare-days-field" class="field compare-field"><span>Days back</span><input id="setting-compare-days" type="number" min="1" max="3650" value="30"></label>
+              <label id="compare-date-field" class="field compare-field" hidden><span>Fixed date</span><input id="setting-compare-date" type="date"></label>
               <label class="field"><span>Default market provider</span><select id="setting-market-provider"><option value="twelvedata">Twelve Data</option><option value="stooq">Stooq CSV fallback</option><option value="manual">Manual prices only</option></select></label>
               <label class="field"><span>Twelve Data API key (stored only in this browser)</span><input id="setting-market-key" type="password" placeholder="Optional API key"></label>
               <label class="field"><span>Price and FX refresh interval</span><select id="setting-quote-interval"><option value="60">Every hour</option><option value="360">Every 6 hours</option><option value="720">Every 12 hours</option><option value="1440">Every 24 hours</option></select></label>
@@ -194,8 +202,8 @@
             <div class="settings-row"><div><strong>Session</strong><small>Sign out of this browser.</small></div><button id="sign-out-button" class="ghost-button compact" type="button">Sign out</button></div>
             <div class="form-stack import-json-box">
               <label class="field"><span>Import mode</span><select id="import-json-mode"><option value="merge">Merge into current data</option><option value="replace">Replace current data</option></select></label>
-              <label class="file-drop compact-drop"><input id="import-json-file" type="file" accept=".json,application/json"><strong>Choose JSON backup</strong><small>Use exports created by VaultPilot.</small></label>
-              <button id="import-json-button" class="danger-button" type="button" disabled>Import JSON</button>
+              <input id="import-json-file" class="hidden-file-input" type="file" accept=".json,application/json">
+              <button id="import-json-button" class="danger-button" type="button">Import JSON</button>
               <p id="import-json-message" class="form-message"></p>
             </div>
           </article>
@@ -205,7 +213,7 @@
 
     <nav class="mobile-nav" aria-label="Mobile navigation">
       <button class="active" data-view="overview" type="button"><span>⌂</span><small>Home</small></button>
-      <button data-view="transactions" type="button"><span>≡</span><small>Ledger</small></button>
+      <button data-view="transactions" type="button"><span>≡</span><small>Txns</small></button>
       <button data-view="import" type="button"><span>⇣</span><small>Import</small></button>
       <button data-view="accounts" type="button"><span>💳</span><small>Accounts</small></button>
       <button data-view="settings" type="button"><span>⚙</span><small>More</small></button>

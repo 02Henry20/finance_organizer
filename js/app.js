@@ -52,7 +52,7 @@ import { drawAccountBars, drawDonut, drawIncomeExpense, drawNetSeries } from "./
 
 const VIEW_LABELS = {
   overview: ["COMMAND CENTER", "Overview"],
-  transactions: ["LEDGER", "Transactions"],
+  transactions: ["TRANSACTIONS", "Transactions"],
   import: ["BANK DATA", "Import"],
   accounts: ["ACCOUNTS", "Accounts"],
   assets: ["PORTFOLIO", "Assets"],
@@ -513,6 +513,7 @@ function renderRules() {
 function renderSettings() {
   const form = $("#settings-form");
   if (settingsDirty || (form && form.contains(document.activeElement))) return;
+  const compareMode = state.settings.portfolioComparisonMode || "rolling";
   $("#setting-currency").value = selectedCurrency();
   $("#setting-theme").value = state.settings.theme || "dark";
   $("#setting-motion").value = state.settings.motion || "on";
@@ -520,9 +521,41 @@ function renderSettings() {
   $("#setting-market-key").value = getLocalMarketApiKey();
   $("#setting-hide-transfers").value = String(state.settings.hideInternalTransfersInSpending !== false);
   $("#setting-quote-interval").value = String(state.settings.quoteRefreshIntervalMinutes ?? 720);
-  $("#setting-compare-mode").value = state.settings.portfolioComparisonMode || "rolling";
+  setCompareMode(compareMode);
   $("#setting-compare-days").value = Number(state.settings.portfolioComparisonDays || 30);
   $("#setting-compare-date").value = state.settings.portfolioComparisonDate || "";
+}
+
+function setCompareMode(mode) {
+  const nextMode = mode === "date" ? "date" : "rolling";
+  const modeInput = $("#setting-compare-mode");
+  const daysField = $("#compare-days-field");
+  const dateField = $("#compare-date-field");
+  const daysInput = $("#setting-compare-days");
+  const dateInput = $("#setting-compare-date");
+  const isDateMode = nextMode === "date";
+
+  if (modeInput) modeInput.value = nextMode;
+  $$("[data-compare-mode]").forEach(button => {
+    const active = button.dataset.compareMode === nextMode;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+  if (daysField) daysField.hidden = isDateMode;
+  if (dateField) dateField.hidden = !isDateMode;
+  if (daysInput) {
+    daysInput.disabled = isDateMode;
+    daysInput.required = !isDateMode;
+  }
+  if (dateInput) {
+    dateInput.disabled = !isDateMode;
+    dateInput.required = isDateMode;
+  }
+}
+
+function markSettingsDirty() {
+  settingsDirty = true;
+  setMessage($("#settings-message"), "");
 }
 
 function requestRender() {
@@ -790,6 +823,36 @@ function readJsonFile(file) {
   });
 }
 
+async function importJsonBackupFile(file) {
+  if (!file) return;
+  const button = $("#import-json-button");
+  const fileInput = $("#import-json-file");
+  const replace = $("#import-json-mode").value === "replace";
+  if (replace && !confirm("Replace all current VaultPilot data with this JSON backup?")) {
+    if (fileInput) fileInput.value = "";
+    return;
+  }
+  if (replace && !confirm("Final confirmation: this deletes current accounts, rules, transactions and holdings before importing.")) {
+    if (fileInput) fileInput.value = "";
+    return;
+  }
+
+  if (button) button.disabled = true;
+  try {
+    setMessage($("#import-json-message"), "Importing JSON backup...");
+    const backup = await readJsonFile(file);
+    const counts = await importStateBackup(backup, { replace });
+    setMessage($("#import-json-message"), `Imported ${counts.accounts || 0} accounts, ${counts.transactions || 0} transactions, ${counts.assets || 0} holdings, ${counts.categories || 0} categories and ${counts.rules || 0} rules.`);
+    toast("JSON import complete", replace ? "Current data was replaced." : "Backup was merged into current data.");
+    if (fileInput) fileInput.value = "";
+  } catch (error) {
+    setMessage($("#import-json-message"), error.message, true);
+    toast("JSON import failed", error.message, "error");
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
 function wireEvents() {
   elements.authForm.addEventListener("submit", async event => {
     event.preventDefault();
@@ -835,8 +898,16 @@ function wireEvents() {
   $$(`[data-view]`).forEach(button => button.addEventListener("click", () => navigateTo(button.dataset.view)));
   $$(`[data-go-view]`).forEach(button => button.addEventListener("click", () => navigateTo(button.dataset.goView)));
   $("#hidden-accounts-jump")?.addEventListener("click", () => $("#hidden-accounts-section")?.scrollIntoView({ behavior: "smooth", block: "start" }));
-  $("#settings-form")?.addEventListener("input", () => { settingsDirty = true; });
-  $("#settings-form")?.addEventListener("change", () => { settingsDirty = true; });
+  $("#settings-form")?.addEventListener("pointerdown", event => {
+    if (event.target.closest("input,select,textarea,button")) markSettingsDirty();
+  }, { passive: true });
+  $("#settings-form")?.addEventListener("focusin", markSettingsDirty);
+  $("#settings-form")?.addEventListener("input", markSettingsDirty);
+  $("#settings-form")?.addEventListener("change", markSettingsDirty);
+  $$("[data-compare-mode]").forEach(button => button.addEventListener("click", () => {
+    markSettingsDirty();
+    setCompareMode(button.dataset.compareMode);
+  }));
   $$(`[data-open-modal]`).forEach(button => button.addEventListener("click", () => {
     const type = button.dataset.openModal;
     if (type === "transaction") openTransactionModal();
@@ -852,28 +923,14 @@ function wireEvents() {
   $("#export-button")?.addEventListener("click", exportTransactionsCsv);
   $("#export-json-button")?.addEventListener("click", () => exportBackupJson().catch(error => toast("JSON export failed", error.message, "error")));
   $("#import-json-file")?.addEventListener("change", event => {
-    const file = event.target.files?.[0];
-    $("#import-json-button").disabled = !file;
-    setMessage($("#import-json-message"), file ? `${file.name} selected.` : "");
+    importJsonBackupFile(event.target.files?.[0]);
   });
-  $("#import-json-button")?.addEventListener("click", async () => {
-    const file = $("#import-json-file").files?.[0];
-    if (!file) return;
-    const replace = $("#import-json-mode").value === "replace";
-    if (replace && !confirm("Replace all current VaultPilot data with this JSON backup?")) return;
-    if (replace && !confirm("Final confirmation: this deletes current accounts, rules, transactions and holdings before importing.")) return;
-    try {
-      setMessage($("#import-json-message"), "Importing JSON backup…");
-      const backup = await readJsonFile(file);
-      const counts = await importStateBackup(backup, { replace });
-      setMessage($("#import-json-message"), `Imported ${counts.accounts || 0} accounts, ${counts.transactions || 0} transactions, ${counts.assets || 0} holdings, ${counts.categories || 0} categories and ${counts.rules || 0} rules.`);
-      toast("JSON import complete", replace ? "Current data was replaced." : "Backup was merged into current data.");
-      $("#import-json-file").value = "";
-      $("#import-json-button").disabled = true;
-    } catch (error) {
-      setMessage($("#import-json-message"), error.message, true);
-      toast("JSON import failed", error.message, "error");
-    }
+  $("#import-json-button")?.addEventListener("click", () => {
+    const fileInput = $("#import-json-file");
+    if (!fileInput) return;
+    setMessage($("#import-json-message"), "");
+    fileInput.value = "";
+    fileInput.click();
   });
 
   $("#transaction-form").addEventListener("submit", async event => {
@@ -959,7 +1016,7 @@ function wireEvents() {
     if (!second) return;
     try {
       await deleteAccount(id, { hideOnly: false });
-      toast("Account deleted", "Transactions remain in the ledger but the account record is removed.");
+      toast("Account deleted", "Transactions remain available, but the account record is removed.");
       closeModal();
     } catch (error) {
       toast("Delete failed", error.message, "error");
@@ -1042,15 +1099,16 @@ function wireEvents() {
     try {
       const primaryCurrency = normalizedCurrencyFrom("#setting-currency", "EUR");
       setLocalMarketApiKey($("#setting-market-key").value.trim());
+      const comparisonMode = $("#setting-compare-mode").value || "rolling";
       await saveSettings({
         primaryCurrency,
         theme: $("#setting-theme").value,
         motion: $("#setting-motion").value,
         marketProvider: $("#setting-market-provider").value,
         quoteRefreshIntervalMinutes: Number($("#setting-quote-interval").value || 720),
-        portfolioComparisonMode: $("#setting-compare-mode").value || "rolling",
-        portfolioComparisonDays: Number($("#setting-compare-days").value || 30),
-        portfolioComparisonDate: $("#setting-compare-date").value || "",
+        portfolioComparisonMode: comparisonMode,
+        portfolioComparisonDays: comparisonMode === "rolling" ? Number($("#setting-compare-days").value || 30) : Number(state.settings.portfolioComparisonDays || 30),
+        portfolioComparisonDate: comparisonMode === "date" ? $("#setting-compare-date").value || "" : "",
         hideInternalTransfersInSpending: $("#setting-hide-transfers").value === "true"
       });
       settingsDirty = false;

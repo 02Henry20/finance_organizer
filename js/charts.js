@@ -206,10 +206,12 @@ export function drawAccountBars(canvas, rows, currency = "EUR") {
   setEmpty(canvas, !data.length);
   if (!data.length) return;
   const { ctx, width, height, colors: c } = prepare(canvas);
-  const area = { left: 118, right: width - 24, top: 22, bottom: height - 20 };
+  const labelSpace = Math.min(118, Math.max(86, width * 0.24));
+  const valueSpace = Math.min(104, Math.max(72, width * 0.18));
+  const area = { left: labelSpace, right: width - valueSpace, top: 18, bottom: height - 18 };
   const max = Math.max(...data.map(row => Math.abs(row.balance.converted)), 1);
   const zero = area.left + (area.right - area.left) * 0.28;
-  const barArea = area.right - zero;
+  const barArea = Math.max(36, area.right - zero);
   const rowH = (area.bottom - area.top) / data.length;
   ctx.font = "12px Inter, system-ui";
   data.forEach((row, i) => {
@@ -224,8 +226,10 @@ export function drawAccountBars(canvas, rows, currency = "EUR") {
     roundedRect(ctx, zero, y - 9, w, 18, 8);
     ctx.fill();
     ctx.fillStyle = c.fg;
-    ctx.textAlign = "left";
-    ctx.fillText(new Intl.NumberFormat(undefined, { style: "currency", currency, notation: "compact" }).format(value), zero + w + 9, y);
+    const valueLabel = new Intl.NumberFormat(undefined, { style: "currency", currency, notation: "compact" }).format(value);
+    const valueX = zero + w + 9;
+    ctx.textAlign = valueX > width - valueSpace + 18 ? "right" : "left";
+    ctx.fillText(valueLabel, ctx.textAlign === "right" ? width - 12 : valueX, y);
   });
   ctx.strokeStyle = c.grid;
   ctx.beginPath();
