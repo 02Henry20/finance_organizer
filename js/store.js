@@ -1,0 +1,385 @@
+import {
+  collection,
+  db,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  onSnapshot,
+  query,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+  writeBatch
+} from "./firebase.js";
+import {
+  DEFAULT_ACCOUNTS,
+  DEFAULT_CATEGORIES,
+  DEFAULT_RULES,
+  DEFAULT_SETTINGS,
+  sortByDateDesc,
+  uid
+} from "./finance.js";
+
+const APP_PATH = ["apps", "finance-organizer", "users"];
+const LOCAL_SETTINGS_KEY = "vaultpilot-local-settings-v1";
+
+export const state = {
+  user: null,
+  accounts: [],
+  categories: [],
+  rules: [],
+  transactions: [],
+  assets: [],
+  settings: { ...DEFAULT_SETTINGS },
+  sync: { status: "idle", detail: "Not signed in", pending: false, lastChangeAt: null }
+};
+
+const listeners = new Set();
+let unsubscribers = [];
+let hasSeeded = false;
+
+export function subscribe(listener) {
+  listeners.add(listener);
+  listener(state);
+  return () => listeners.delete(listener);
+}
+
+function notify() {
+  for (const listener of listeners) listener(state);
+}
+
+function setSync(status, detail, pending = false) {
+  state.sync = { status, detail, pending, lastChangeAt: new Date().toISOString() };
+  notify();
+}
+
+function userCollection(name) {
+  if (!state.user?.uid) throw new Error("No signed-in user.");
+  return collection(db, ...APP_PATH, state.user.uid, name);
+}
+
+function userDoc(collectionName, id) {
+  if (!state.user?.uid) throw new Error("No signed-in user.");
+  return doc(db, ...APP_PATH, state.user.uid, collectionName, id);
+}
+
+function normalizeDoc(snapshot) {
+  const data = snapshot.data() || {};
+  return { id: snapshot.id, ...data, pending: snapshot.metadata?.hasPendingWrites || false };
+}
+
+function normalizeArray(name, docs) {
+  const items = docs.map(normalizeDoc);
+  if (name === "transactions") return sortByDateDesc(items);
+  if (name === "accounts") return items.sort((a, b) => Number(a.sort || 0) - Number(b.sort || 0) || String(a.name).localeCompare(String(b.name)));
+  if (name === "categories") return items.sort((a, b) => String(a.group).localeCompare(String(b.group)) || String(a.name).localeCompare(String(b.name)));
+  if (name === "rules") return items.sort((a, b) => Number(b.priority || 0) - Number(a.priority || 0));
+  if (name === "assets") return items.sort((a, b) => String(a.name || a.symbol).localeCompare(String(b.name || b.symbol)));
+  return items;
+}
+
+function readLocalSettings() {
+  try {
+    return JSON.parse(localStorage.getItem(LOCAL_SETTINGS_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function writeLocalSettings(patch) {
+  try {
+    const current = readLocalSettings();
+    localStorage.setItem(LOCAL_SETTINGS_KEY, JSON.stringify({ ...current, ...patch }));
+  } catch {
+    // Non-critical. API keys are optional and deliberately local only.
+  }
+}
+
+export function getLocalMarketApiKey() {
+  return readLocalSettings().marketApiKeyLocalOnly || "";
+}
+
+export function setLocalMarketApiKey(apiKey) {
+  writeLocalSettings({ marketApiKeyLocalOnly: apiKey || "" });
+  state.settings.marketApiKeyLocalOnly = apiKey || "";
+  notify();
+}
+
+function mergeSettings(cloud = {}) {
+  return {
+    ...DEFAULT_SETTINGS,
+    ...cloud,
+    fxRates: { ...DEFAULT_SETTINGS.fxRates, ...(cloud.fxRates || {}) },
+    marketApiKeyLocalOnly: getLocalMarketApiKey()
+  };
+}
+
+async function ensureDefaults() {
+  if (!state.user?.uid || hasSeeded) return;
+  hasSeeded = true;
+  const marker = userDoc("meta", "seed");
+  const markerSnap = await getDoc(marker);
+  if (markerSnap.exists()) return;
+
+  const batch = writeBatch(db);
+  DEFAULT_ACCOUNTS.forEach((account, index) => {
+    batch.set(userDoc("accounts", account.id), {
+      ...account,
+      sort: index,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+  });
+  DEFAULT_CATEGORIES.forEach(category => {
+    batch.set(userDoc("categories", category.id), {
+      ...category,
+      isDefault: true,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+  });
+  DEFAULT_RULES.forEach(rule => {
+    batch.set(userDoc("rules", rule.id), {
+      ...rule,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+  });
+  batch.set(userDoc("settings", "preferences"), {
+    ...DEFAULT_SETTINGS,
+    marketApiKeyLocalOnly: "",
+    seededAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  });
+  batch.set(marker, { version: 1, createdAt: serverTimestamp() });
+  await batch.commit();
+}
+
+export async function connectUser(user) {
+  disconnectUser();
+  state.user = user;
+  state.accounts = [];
+  state.categories = [];
+  state.rules = [];
+  state.transactions = [];
+  state.assets = [];
+  state.settings = { ...DEFAULT_SETTINGS, marketApiKeyLocalOnly: getLocalMarketApiKey() };
+  hasSeeded = false;
+  setSync("loading", "Preparing your workspace");
+
+  await ensureDefaults();
+  const attachCollection = (name, setter) => {
+    const unsubscribe = onSnapshot(query(userCollection(name)), snapshot => {
+      setter(normalizeArray(name, snapshot.docs));
+      state.sync.pending = snapshot.metadata.hasPendingWrites;
+      state.sync.status = snapshot.metadata.fromCache ? "offline" : "synced";
+      state.sync.detail = snapshot.metadata.fromCache ? "Using cached data" : "Synced with Firebase";
+      notify();
+    }, error => {
+      setSync("error", error.message || "Firebase listener failed");
+    });
+    unsubscribers.push(unsubscribe);
+  };
+
+  attachCollection("accounts", value => { state.accounts = value.length ? value : [...DEFAULT_ACCOUNTS]; });
+  attachCollection("categories", value => { state.categories = value.length ? value : [...DEFAULT_CATEGORIES]; });
+  attachCollection("rules", value => { state.rules = value.length ? value : [...DEFAULT_RULES]; });
+  attachCollection("transactions", value => { state.transactions = value; });
+  attachCollection("assets", value => { state.assets = value; });
+
+  const settingsUnsub = onSnapshot(userDoc("settings", "preferences"), snapshot => {
+    state.settings = mergeSettings(snapshot.exists() ? snapshot.data() : {});
+    notify();
+  }, error => setSync("error", error.message || "Settings listener failed"));
+  unsubscribers.push(settingsUnsub);
+}
+
+export function disconnectUser() {
+  unsubscribers.forEach(unsubscribe => unsubscribe());
+  unsubscribers = [];
+  hasSeeded = false;
+  state.user = null;
+  state.accounts = [];
+  state.categories = [];
+  state.rules = [];
+  state.transactions = [];
+  state.assets = [];
+  state.settings = { ...DEFAULT_SETTINGS, marketApiKeyLocalOnly: getLocalMarketApiKey() };
+  state.sync = { status: "idle", detail: "Not signed in", pending: false, lastChangeAt: null };
+  notify();
+}
+
+async function saveDoc(collectionName, id, data) {
+  const now = Date.now();
+  await setDoc(userDoc(collectionName, id), {
+    ...data,
+    clientUpdatedAtMs: now,
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+}
+
+export async function saveAccount(input) {
+  const id = input.id || uid();
+  await saveDoc("accounts", id, {
+    id,
+    name: input.name?.trim() || "Unnamed account",
+    institution: input.institution?.trim() || "Manual",
+    type: input.type || "checking",
+    currency: (input.currency || state.settings.primaryCurrency || "EUR").toUpperCase(),
+    openingBalance: Number(input.openingBalance || 0),
+    hidden: Boolean(input.hidden),
+    sort: Number(input.sort || Date.now())
+  });
+  return id;
+}
+
+export async function deleteAccount(id, { hideOnly = true } = {}) {
+  if (hideOnly) return updateDoc(userDoc("accounts", id), { hidden: true, updatedAt: serverTimestamp() });
+  await deleteDoc(userDoc("accounts", id));
+}
+
+export async function saveCategory(input) {
+  const id = input.id || `cat_${uid().slice(0, 8)}`;
+  await saveDoc("categories", id, {
+    id,
+    name: input.name?.trim() || "New category",
+    group: input.group?.trim() || "Custom",
+    type: input.type || "expense",
+    icon: input.icon || "•",
+    isDefault: Boolean(input.isDefault)
+  });
+  return id;
+}
+
+export async function saveRule(input) {
+  const id = input.id || `rule_${uid().slice(0, 8)}`;
+  const keywords = Array.isArray(input.keywords)
+    ? input.keywords.map(String).map(s => s.trim()).filter(Boolean)
+    : String(input.keywords || "").split(",").map(s => s.trim()).filter(Boolean);
+  await saveDoc("rules", id, {
+    id,
+    label: input.label?.trim() || keywords.join(" + ") || "New rule",
+    categoryId: input.categoryId || "misc",
+    keywords,
+    requireAll: Boolean(input.requireAll),
+    priority: Number(input.priority || 50)
+  });
+  return id;
+}
+
+export async function deleteRule(id) {
+  await deleteDoc(userDoc("rules", id));
+}
+
+export async function saveTransaction(input) {
+  const id = input.id || uid();
+  await saveDoc("transactions", id, {
+    id,
+    accountId: input.accountId,
+    date: input.date,
+    amount: Number(input.amount || 0),
+    currency: (input.currency || state.settings.primaryCurrency || "EUR").toUpperCase(),
+    description: input.description?.trim() || "Manual entry",
+    counterparty: input.counterparty?.trim() || "",
+    categoryId: input.categoryId || "misc",
+    note: input.note?.trim() || "",
+    source: input.source || "manual",
+    externalId: input.externalId || "",
+    importBatchId: input.importBatchId || "",
+    review: Boolean(input.review),
+    confidence: Number(input.confidence ?? 1),
+    reason: input.reason || "",
+    candidates: input.candidates || [],
+    rawText: input.rawText || "",
+    raw: input.raw || null,
+    createdAtMs: input.createdAtMs || Date.now()
+  });
+  return id;
+}
+
+export async function saveTransactionsBatch(transactions) {
+  if (!transactions.length) return { imported: 0 };
+  let imported = 0;
+  for (let index = 0; index < transactions.length; index += 400) {
+    const batch = writeBatch(db);
+    for (const tx of transactions.slice(index, index + 400)) {
+      const id = tx.id || uid();
+      imported += 1;
+      batch.set(userDoc("transactions", id), {
+        ...tx,
+        id,
+        amount: Number(tx.amount || 0),
+        currency: (tx.currency || state.settings.primaryCurrency || "EUR").toUpperCase(),
+        clientUpdatedAtMs: Date.now(),
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+    }
+    await batch.commit();
+  }
+  return { imported };
+}
+
+export async function deleteTransaction(id) {
+  await deleteDoc(userDoc("transactions", id));
+}
+
+export async function saveAsset(input) {
+  const id = input.id || uid();
+  await saveDoc("assets", id, {
+    id,
+    symbol: String(input.symbol || "").trim().toUpperCase(),
+    name: input.name?.trim() || String(input.symbol || "Asset").toUpperCase(),
+    type: input.type || "stock",
+    quantity: Number(input.quantity || 0),
+    currency: (input.currency || state.settings.primaryCurrency || "EUR").toUpperCase(),
+    costBasis: Number(input.costBasis || 0),
+    manualPrice: Number(input.manualPrice || 0),
+    provider: input.provider || state.settings.marketProvider || "manual",
+    accountId: input.accountId || "",
+    hidden: Boolean(input.hidden),
+    lastPrice: input.lastPrice == null ? null : Number(input.lastPrice),
+    lastPriceAt: input.lastPriceAt || "",
+    lastChangePercent: input.lastChangePercent == null ? null : Number(input.lastChangePercent)
+  });
+  return id;
+}
+
+export async function deleteAsset(id) {
+  await deleteDoc(userDoc("assets", id));
+}
+
+export async function updateAssetQuote(id, quote) {
+  await saveDoc("assets", id, {
+    lastPrice: Number(quote.price),
+    lastPriceAt: quote.time || new Date().toISOString(),
+    lastChangePercent: Number.isFinite(Number(quote.changePercent)) ? Number(quote.changePercent) : null,
+    currency: quote.currency || state.assets.find(asset => asset.id === id)?.currency || state.settings.primaryCurrency,
+    provider: quote.provider || state.assets.find(asset => asset.id === id)?.provider || state.settings.marketProvider
+  });
+}
+
+export async function saveSettings(patch) {
+  const cloudPatch = { ...patch };
+  delete cloudPatch.marketApiKeyLocalOnly;
+  if (patch.marketApiKeyLocalOnly != null) setLocalMarketApiKey(patch.marketApiKeyLocalOnly);
+  await saveDoc("settings", "preferences", {
+    ...state.settings,
+    ...cloudPatch,
+    marketApiKeyLocalOnly: ""
+  });
+}
+
+export async function exportState() {
+  return {
+    format: "vaultpilot-export-v1",
+    exportedAt: new Date().toISOString(),
+    user: state.user ? { uid: state.user.uid, email: state.user.email || "" } : null,
+    settings: { ...state.settings, marketApiKeyLocalOnly: "" },
+    accounts: state.accounts,
+    categories: state.categories,
+    rules: state.rules,
+    transactions: state.transactions,
+    assets: state.assets
+  };
+}

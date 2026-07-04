@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#07121f">
+  <meta name="description" content="VaultPilot is a private finance organizer for accounts, bank exports, categories, assets and analytics.">
+  <title>VaultPilot</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icons/icon-192.png">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="ambient ambient-a"></div>
+  <div class="ambient ambient-b"></div>
+
+  <main id="auth-shell" class="auth-shell">
+    <section class="auth-copy">
+      <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+      <p class="eyebrow">PRIVATE FINANCE ORGANIZER</p>
+      <h1>Vault<span>Pilot</span></h1>
+      <p class="lead">A banking-style dashboard for accounts, bank exports, categories, assets, debts and portfolio-level insights.</p>
+      <div class="auth-feature-grid">
+        <article><strong>Bank imports</strong><span>CSV/TSV mapping, duplicate detection and rule-based categorization.</span></article>
+        <article><strong>Assets + debts</strong><span>Track liquidity, brokers, manual holdings and liabilities together.</span></article>
+        <article><strong>Review queue</strong><span>Ambiguous transactions are kept as Misc until you decide.</span></article>
+      </div>
+    </section>
+
+    <section class="auth-card glass-card">
+      <div id="boot-status" class="status-pill"><span></span><strong>Loading Firebase…</strong></div>
+      <h2>Access your vault</h2>
+      <p class="muted">Sign in or create an email/password account. Data is stored under your Firebase user ID.</p>
+      <form id="auth-form" class="form-stack">
+        <label class="field"><span>Email</span><input id="auth-email" type="email" autocomplete="email" placeholder="you@example.com" required></label>
+        <label class="field"><span>Password</span><input id="auth-password" type="password" autocomplete="current-password" minlength="6" placeholder="At least 6 characters" required></label>
+        <div class="button-row">
+          <button id="sign-in-button" class="primary-button" type="submit">Sign in</button>
+          <button id="create-account-button" class="secondary-button" type="button">Create</button>
+        </div>
+        <button id="reset-password-button" class="link-button" type="button">Send password reset email</button>
+        <p id="auth-message" class="form-message" aria-live="polite"></p>
+      </form>
+    </section>
+  </main>
+
+  <div id="app-shell" class="app-shell" hidden>
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-mark small" aria-hidden="true"><span></span><span></span><span></span></div>
+        <div><strong>Vault<span>Pilot</span></strong><small>Finance organizer</small></div>
+      </div>
+      <nav class="nav" aria-label="Main navigation">
+        <button class="nav-button active" data-view="overview" type="button"><span>⌂</span>Overview</button>
+        <button class="nav-button" data-view="transactions" type="button"><span>≡</span>Transactions</button>
+        <button class="nav-button" data-view="import" type="button"><span>⇣</span>Import</button>
+        <button class="nav-button" data-view="accounts" type="button"><span>◫</span>Accounts</button>
+        <button class="nav-button" data-view="assets" type="button"><span>◆</span>Assets</button>
+        <button class="nav-button" data-view="rules" type="button"><span>⚙</span>Rules</button>
+        <button class="nav-button" data-view="settings" type="button"><span>◌</span>Settings</button>
+      </nav>
+      <div class="sidebar-footer">
+        <div id="sync-pill" class="sync-pill"><span class="sync-dot"></span><div><strong>Connecting</strong><small>Checking cache</small></div></div>
+        <button id="sign-out-button" class="ghost-button full" type="button">Sign out</button>
+      </div>
+    </aside>
+
+    <div class="workspace">
+      <header class="topbar">
+        <div><p id="view-kicker" class="eyebrow">COMMAND CENTER</p><h2 id="view-title">Overview</h2></div>
+        <div class="topbar-actions">
+          <button class="ghost-button compact" id="export-button" type="button">Export CSV</button>
+          <button class="primary-button compact" data-open-modal="transaction" type="button">＋ Entry</button>
+          <span id="user-chip" class="user-chip"></span>
+        </div>
+      </header>
+
+      <main class="content">
+        <section class="view active" data-view-section="overview">
+          <div class="hero-grid">
+            <article class="hero-card glass-card">
+              <div class="metric-label"><span>Net worth</span><span id="overview-date" class="metric-tag">Today</span></div>
+              <strong id="net-worth-value" class="hero-value">—</strong>
+              <small id="net-worth-note">Liquidity + assets + receivables - debts</small>
+            </article>
+            <article class="metric-card glass-card"><span>Liquidity</span><strong id="liquidity-value">—</strong><small>Visible bank/cash accounts</small></article>
+            <article class="metric-card glass-card"><span>Assets</span><strong id="asset-value">—</strong><small>Stocks, ETFs, bonds, manual holdings</small></article>
+            <article class="metric-card danger glass-card"><span>Debt</span><strong id="debt-value">—</strong><small>Liabilities shown as positive debt</small></article>
+          </div>
+
+          <div class="dashboard-grid">
+            <article class="chart-card glass-card">
+              <div class="panel-heading"><div><p class="eyebrow">CASHFLOW</p><h3>Income vs spending</h3></div><span id="current-month-pill" class="metric-tag">Current month</span></div>
+              <div class="chart-wrap"><canvas id="income-expense-chart"></canvas><div class="chart-empty" data-empty-for="income-expense-chart">Import or add transactions to see cashflow.</div></div>
+            </article>
+            <article class="chart-card glass-card">
+              <div class="panel-heading"><div><p class="eyebrow">NET FLOW</p><h3>Monthly balance</h3></div></div>
+              <div class="chart-wrap"><canvas id="net-series-chart"></canvas><div class="chart-empty" data-empty-for="net-series-chart">No monthly cashflow yet.</div></div>
+            </article>
+            <article class="chart-card glass-card">
+              <div class="panel-heading"><div><p class="eyebrow">SPENDING</p><h3>Category split</h3></div></div>
+              <div class="chart-wrap"><canvas id="category-donut-chart"></canvas><div class="chart-empty" data-empty-for="category-donut-chart">No expenses this month.</div></div>
+            </article>
+            <article class="chart-card glass-card">
+              <div class="panel-heading"><div><p class="eyebrow">ACCOUNTS</p><h3>Balances</h3></div></div>
+              <div class="chart-wrap"><canvas id="account-bars-chart"></canvas><div class="chart-empty" data-empty-for="account-bars-chart">Add an account first.</div></div>
+            </article>
+          </div>
+
+          <div class="overview-bottom-grid">
+            <article class="glass-card list-card">
+              <div class="panel-heading"><div><p class="eyebrow">THIS MONTH</p><h3>Quick totals</h3></div></div>
+              <div class="stat-list">
+                <div><span>Income</span><strong id="month-income">—</strong></div>
+                <div><span>Spending</span><strong id="month-expense">—</strong></div>
+                <div><span>Net cashflow</span><strong id="month-net">—</strong></div>
+                <div><span>Review queue</span><strong id="review-count">0</strong></div>
+              </div>
+            </article>
+            <article class="glass-card list-card">
+              <div class="panel-heading"><div><p class="eyebrow">TODO</p><h3>Needs category decision</h3></div><button class="link-button" data-go-view="transactions" type="button">Open all</button></div>
+              <div id="review-list" class="mini-list"></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="view" data-view-section="transactions">
+          <div class="tool-row glass-card">
+            <label class="field inline"><span>Search</span><input id="tx-search" type="search" placeholder="description, note, counterparty"></label>
+            <label class="field inline"><span>Account</span><select id="tx-account-filter"></select></label>
+            <label class="field inline"><span>Category</span><select id="tx-category-filter"></select></label>
+            <label class="field inline"><span>Status</span><select id="tx-review-filter"><option value="all">All</option><option value="review">Needs review</option><option value="clean">Clean</option></select></label>
+            <button class="primary-button compact" data-open-modal="transaction" type="button">Add transaction</button>
+          </div>
+          <article class="glass-card table-card">
+            <div class="panel-heading"><div><p class="eyebrow">LEDGER</p><h3>Transactions</h3></div><span id="tx-count" class="metric-tag">0 entries</span></div>
+            <div class="table-scroll"><table><thead><tr><th>Date</th><th>Description</th><th>Account</th><th>Category</th><th>Amount</th><th>Note</th><th></th></tr></thead><tbody id="transactions-body"></tbody></table></div>
+          </article>
+        </section>
+
+        <section class="view" data-view-section="import">
+          <div class="import-grid">
+            <article class="glass-card import-card">
+              <div class="panel-heading"><div><p class="eyebrow">BANK EXPORTS</p><h3>Import CSV / TSV</h3></div></div>
+              <p class="muted">Upload a bank export, choose the target account, check column mapping, then import. Ambiguous keyword matches become TODO items and stay in Misc until you decide.</p>
+              <div class="form-stack">
+                <label class="field"><span>Target account</span><select id="import-account"></select></label>
+                <label class="file-drop"><input id="import-file" type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values"><strong>Drop or choose a bank export</strong><small>CSV, semicolon CSV, tab-separated and common German/English headers</small></label>
+              </div>
+              <div id="import-summary" class="import-summary" hidden></div>
+            </article>
+            <article class="glass-card import-card">
+              <div class="panel-heading"><div><p class="eyebrow">MAPPING</p><h3>Columns</h3></div></div>
+              <div id="mapping-grid" class="mapping-grid"></div>
+              <div class="button-row"><button id="build-preview-button" class="secondary-button" type="button" disabled>Build preview</button><button id="commit-import-button" class="primary-button" type="button" disabled>Import accepted rows</button></div>
+              <p id="import-message" class="form-message"></p>
+            </article>
+          </div>
+          <article class="glass-card table-card">
+            <div class="panel-heading"><div><p class="eyebrow">PREVIEW</p><h3>Parsed rows</h3></div><span id="preview-count" class="metric-tag">No file</span></div>
+            <div class="table-scroll"><table><thead><tr><th>Date</th><th>Description</th><th>Amount</th><th>Category</th><th>Status</th></tr></thead><tbody id="import-preview-body"></tbody></table></div>
+          </article>
+        </section>
+
+        <section class="view" data-view-section="accounts">
+          <div class="section-actions"><button class="primary-button compact" data-open-modal="account" type="button">Add account</button></div>
+          <div id="accounts-grid" class="cards-grid"></div>
+        </section>
+
+        <section class="view" data-view-section="assets">
+          <div class="section-actions"><button class="secondary-button compact" id="refresh-quotes-button" type="button">Refresh prices</button><button class="primary-button compact" data-open-modal="asset" type="button">Add asset</button></div>
+          <div id="assets-grid" class="cards-grid"></div>
+        </section>
+
+        <section class="view" data-view-section="rules">
+          <div class="rules-layout">
+            <article class="glass-card table-card">
+              <div class="panel-heading"><div><p class="eyebrow">CATEGORIES</p><h3>Available categories</h3></div><button class="primary-button compact" data-open-modal="category" type="button">Add</button></div>
+              <div id="categories-list" class="settings-list"></div>
+            </article>
+            <article class="glass-card table-card">
+              <div class="panel-heading"><div><p class="eyebrow">AUTO CATEGORIZATION</p><h3>Keyword rules</h3></div><button class="primary-button compact" data-open-modal="rule" type="button">Add rule</button></div>
+              <div id="rules-list" class="settings-list"></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="view" data-view-section="settings">
+          <div class="settings-layout">
+            <article class="glass-card settings-card">
+              <div class="panel-heading"><div><p class="eyebrow">APP SETTINGS</p><h3>Preferences</h3></div></div>
+              <form id="settings-form" class="form-stack">
+                <label class="field"><span>Primary currency</span><input id="setting-currency" maxlength="3" placeholder="EUR"></label>
+                <label class="field"><span>Appearance</span><select id="setting-theme"><option value="dark">Dark banking mode</option><option value="light">Light mode</option></select></label>
+                <label class="field"><span>Motion</span><select id="setting-motion"><option value="on">Animations on</option><option value="off">Animations off</option></select></label>
+                <label class="field"><span>Default market provider</span><select id="setting-market-provider"><option value="twelvedata">Twelve Data</option><option value="stooq">Stooq CSV fallback</option><option value="manual">Manual prices only</option></select></label>
+                <label class="field"><span>Twelve Data API key (stored only in this browser)</span><input id="setting-market-key" type="password" placeholder="Optional API key"></label>
+                <label class="field"><span>Hide internal transfers from spending</span><select id="setting-hide-transfers"><option value="true">Yes</option><option value="false">No</option></select></label>
+                <button class="primary-button" type="submit">Save settings</button>
+                <p id="settings-message" class="form-message"></p>
+              </form>
+            </article>
+            <article class="glass-card settings-card">
+              <div class="panel-heading"><div><p class="eyebrow">FIREBASE</p><h3>Security rules</h3></div></div>
+              <p class="muted">Use the included <code>firestore.rules</code> file. The app stores data at <code>apps/finance-organizer/users/&lt;uid&gt;</code>.</p>
+              <pre class="rules-preview">match /apps/finance-organizer/users/{userId}/{document=**} {
+  allow read, write: if request.auth != null && request.auth.uid == userId;
+}</pre>
+            </article>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <nav class="mobile-nav" aria-label="Mobile navigation">
+      <button class="active" data-view="overview" type="button"><span>⌂</span><small>Home</small></button>
+      <button data-view="transactions" type="button"><span>≡</span><small>Ledger</small></button>
+      <button data-view="import" type="button"><span>⇣</span><small>Import</small></button>
+      <button data-view="assets" type="button"><span>◆</span><small>Assets</small></button>
+      <button data-view="settings" type="button"><span>◌</span><small>More</small></button>
+    </nav>
+  </div>
+
+  <div id="modal-backdrop" class="modal-backdrop" hidden>
+    <section class="modal-card glass-card" data-modal="transaction" hidden>
+      <div class="modal-heading"><h3 id="transaction-modal-title">Transaction</h3><button class="icon-button" data-close-modal type="button">×</button></div>
+      <form id="transaction-form" class="form-stack">
+        <input id="transaction-id" type="hidden">
+        <label class="field"><span>Account</span><select id="transaction-account" required></select></label>
+        <div class="form-grid two"><label class="field"><span>Date</span><input id="transaction-date" type="date" required></label><label class="field"><span>Amount</span><input id="transaction-amount" type="number" step="0.01" required placeholder="-24.90"></label></div>
+        <div class="form-grid two"><label class="field"><span>Currency</span><input id="transaction-currency" maxlength="3" placeholder="EUR"></label><label class="field"><span>Category</span><select id="transaction-category"></select></label></div>
+        <label class="field"><span>Counterparty</span><input id="transaction-counterparty" placeholder="Payee or payer"></label>
+        <label class="field"><span>Description</span><input id="transaction-description" placeholder="Transfer text"></label>
+        <label class="field"><span>Note</span><textarea id="transaction-note" rows="3" placeholder="Optional note"></textarea></label>
+        <label class="check-row"><input id="transaction-review" type="checkbox"> Mark as needs review</label>
+        <div class="button-row"><button class="primary-button" type="submit">Save transaction</button><button id="delete-transaction-button" class="danger-button" type="button" hidden>Delete</button></div>
+      </form>
+    </section>
+
+    <section class="modal-card glass-card" data-modal="account" hidden>
+      <div class="modal-heading"><h3>Account</h3><button class="icon-button" data-close-modal type="button">×</button></div>
+      <form id="account-form" class="form-stack">
+        <input id="account-id" type="hidden">
+        <label class="field"><span>Name</span><input id="account-name" required placeholder="Sparkasse Giro"></label>
+        <div class="form-grid two"><label class="field"><span>Institution</span><input id="account-institution" placeholder="Bank name"></label><label class="field"><span>Type</span><select id="account-type"></select></label></div>
+        <div class="form-grid two"><label class="field"><span>Currency</span><input id="account-currency" maxlength="3" placeholder="EUR"></label><label class="field"><span>Opening balance</span><input id="account-opening" type="number" step="0.01" value="0"></label></div>
+        <label class="check-row"><input id="account-hidden" type="checkbox"> Hide from overview</label>
+        <div class="button-row"><button class="primary-button" type="submit">Save account</button><button id="delete-account-button" class="danger-button" type="button" hidden>Hide account</button></div>
+      </form>
+    </section>
+
+    <section class="modal-card glass-card" data-modal="asset" hidden>
+      <div class="modal-heading"><h3>Asset</h3><button class="icon-button" data-close-modal type="button">×</button></div>
+      <form id="asset-form" class="form-stack">
+        <input id="asset-id" type="hidden">
+        <div class="form-grid two"><label class="field"><span>Symbol</span><input id="asset-symbol" placeholder="AAPL or AAPL.US"></label><label class="field"><span>Name</span><input id="asset-name" placeholder="Apple"></label></div>
+        <div class="form-grid two"><label class="field"><span>Type</span><select id="asset-type"><option value="stock">Stock</option><option value="etf">ETF</option><option value="bond">Bond</option><option value="crypto">Crypto</option><option value="fund">Fund</option><option value="manual">Manual asset</option></select></label><label class="field"><span>Provider</span><select id="asset-provider"><option value="twelvedata">Twelve Data</option><option value="stooq">Stooq</option><option value="manual">Manual</option></select></label></div>
+        <div class="form-grid three"><label class="field"><span>Quantity</span><input id="asset-quantity" type="number" step="0.000001" value="1"></label><label class="field"><span>Currency</span><input id="asset-currency" maxlength="3" placeholder="EUR"></label><label class="field"><span>Manual price</span><input id="asset-manual-price" type="number" step="0.0001" value="0"></label></div>
+        <label class="field"><span>Cost basis total</span><input id="asset-cost-basis" type="number" step="0.01" value="0"></label>
+        <label class="check-row"><input id="asset-hidden" type="checkbox"> Hide asset</label>
+        <div class="button-row"><button class="primary-button" type="submit">Save asset</button><button id="delete-asset-button" class="danger-button" type="button" hidden>Delete</button></div>
+      </form>
+    </section>
+
+    <section class="modal-card glass-card" data-modal="category" hidden>
+      <div class="modal-heading"><h3>Category</h3><button class="icon-button" data-close-modal type="button">×</button></div>
+      <form id="category-form" class="form-stack">
+        <input id="category-id" type="hidden">
+        <label class="field"><span>Name</span><input id="category-name" required></label>
+        <div class="form-grid three"><label class="field"><span>Group</span><input id="category-group" placeholder="Lifestyle"></label><label class="field"><span>Icon</span><input id="category-icon" maxlength="2" placeholder="•"></label><label class="field"><span>Type</span><select id="category-type"><option value="expense">Expense</option><option value="income">Income</option><option value="transfer">Transfer</option><option value="neutral">Neutral</option></select></label></div>
+        <button class="primary-button" type="submit">Save category</button>
+      </form>
+    </section>
+
+    <section class="modal-card glass-card" data-modal="rule" hidden>
+      <div class="modal-heading"><h3>Keyword rule</h3><button class="icon-button" data-close-modal type="button">×</button></div>
+      <form id="rule-form" class="form-stack">
+        <input id="rule-id" type="hidden">
+        <label class="field"><span>Label</span><input id="rule-label" placeholder="Groceries at REWE"></label>
+        <label class="field"><span>Category</span><select id="rule-category"></select></label>
+        <label class="field"><span>Keywords / phrases</span><input id="rule-keywords" placeholder="rewe, edeka, grocery"></label>
+        <div class="form-grid two"><label class="field"><span>Priority</span><input id="rule-priority" type="number" min="1" max="200" value="50"></label><label class="field"><span>Match mode</span><select id="rule-require-all"><option value="false">Any keyword</option><option value="true">All keywords together</option></select></label></div>
+        <div class="button-row"><button class="primary-button" type="submit">Save rule</button><button id="delete-rule-button" class="danger-button" type="button" hidden>Delete</button></div>
+      </form>
+    </section>
+  </div>
+
+  <div id="toast-container" class="toast-container"></div>
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
