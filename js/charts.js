@@ -170,7 +170,7 @@ export function drawDonut(canvas, rows, currency = "EUR") {
     ctx.arc(cx, cy, radius, angle, angle + slice);
     ctx.arc(cx, cy, radius * 0.62, angle + slice, angle, true);
     ctx.closePath();
-    ctx.fillStyle = palette[i % palette.length];
+    ctx.fillStyle = row.color || palette[i % palette.length];
     ctx.fill();
     angle += slice;
   });
@@ -188,7 +188,7 @@ export function drawDonut(canvas, rows, currency = "EUR") {
   let legendY = Math.max(24, cy - data.length * 13);
   ctx.font = "12px Inter, system-ui";
   data.forEach((row, i) => {
-    ctx.fillStyle = palette[i % palette.length];
+    ctx.fillStyle = row.color || palette[i % palette.length];
     roundedRect(ctx, legendX, legendY - 8, 10, 10, 3);
     ctx.fill();
     ctx.fillStyle = c.fg;

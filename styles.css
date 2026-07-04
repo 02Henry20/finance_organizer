@@ -240,3 +240,41 @@ td { font-size: .9rem; }
   .modal-card { width:100%; max-height: 94vh; border-radius: 28px 28px 0 0; border-bottom:0; padding:20px 18px calc(22px + env(safe-area-inset-bottom)); }
   .header-actions .ghost-button { min-height: 38px; padding: 8px 12px; }
 }
+
+/* Refinements requested after layout update */
+.home-layout.no-review { grid-template-columns: 1fr; }
+.review-panel { align-content: start; }
+.review-heading { margin-bottom: 10px; }
+.review-mini-list { max-height: 310px; }
+.toolbar-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.hidden-accounts-section { margin-top: 28px; border-radius: var(--radius-xl); padding: 24px; }
+.hidden-grid { margin-top: 10px; }
+.cards-grid { gap: 24px; }
+.accounts-grid, #accounts-grid { row-gap: 26px; }
+.chart-wrap.short { min-height: 150px; max-height: 178px; }
+.category-pill.colored { border-color: color-mix(in srgb, var(--cat-color) 48%, var(--line)); background: color-mix(in srgb, var(--cat-color) 14%, var(--surface-2)); color: var(--muted-strong); }
+.category-pill.colored::before { content: ""; width: 8px; height: 8px; border-radius: 999px; background: var(--cat-color); box-shadow: 0 0 0 3px color-mix(in srgb, var(--cat-color) 18%, transparent); }
+.category-color-dot { display: inline-block; width: 10px; height: 10px; margin-right: 8px; border-radius: 999px; background: var(--cat-color); box-shadow: 0 0 0 3px color-mix(in srgb, var(--cat-color) 18%, transparent); vertical-align: middle; }
+.rules-layout .panel-heading { margin-bottom: 24px; }
+.rules-layout .settings-list { gap: 16px; }
+.rule-group { gap: 13px; padding: 16px; }
+.rule-group-heading { padding: 8px 6px 12px; border-bottom: 1px solid var(--line); }
+.category-row, .rule-row { padding: 16px; }
+.data-card { padding: 26px; }
+.data-card .panel-heading { margin-bottom: 24px; }
+.data-card .settings-row { padding: 18px; margin-bottom: 14px; gap: 22px; }
+.data-card .settings-row strong { margin-bottom: 5px; }
+.import-json-box { margin-top: 20px; gap: 16px; }
+.sync-pill small:empty { display: none; }
+
+@media (max-width: 920px) {
+  .app-header { display: flex; justify-content: space-between; gap: 12px; }
+  .header-actions { margin-left: auto; }
+  .header-actions .sync-pill { display: inline-flex; padding: 8px 10px; }
+  .header-actions .sync-pill small { display: none !important; }
+  .header-actions .sync-pill strong { font-size: .72rem; }
+  .user-chip { display:none; }
+  .chart-wrap.short { min-height: 220px; max-height: none; }
+  .cards-grid { gap: 20px; }
+  .hidden-accounts-section { margin-top: 22px; padding: 18px; border-radius: 24px; }
+}

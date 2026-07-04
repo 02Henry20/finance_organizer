@@ -32,7 +32,10 @@ import {
 } from "./store.js";
 import {
   ACCOUNT_TYPES,
+  CATEGORY_COLORS,
+  DEFAULT_CATEGORY_COLOR,
   TODAY,
+  VALID_CURRENCIES,
   buildCategorySpend,
   calculateMonthlySnapshot,
   calculatePortfolio,
@@ -83,6 +86,7 @@ let activeParsedFile = null;
 let activePreview = null;
 let renderTimer = null;
 let quoteRefreshTimer = null;
+let settingsDirty = false;
 
 function firebaseErrorMessage(error) {
   const messages = {
@@ -161,14 +165,18 @@ function syncStatus() {
   const status = state.sync.status || "loading";
   pill.className = `sync-pill ${status}`.trim();
   const label = status === "synced"
-    ? "Ready"
+    ? "Synced"
     : status === "offline"
-      ? "Offline cache"
+      ? "Offline"
       : status === "error"
         ? "Sync issue"
         : "Syncing";
   pill.querySelector("strong").textContent = label;
-  pill.querySelector("small").textContent = state.sync.detail || "Checking data";
+  const sub = pill.querySelector("small");
+  if (sub) {
+    sub.textContent = status === "synced" ? "" : (state.sync.detail || "");
+    sub.hidden = status === "synced" || !sub.textContent;
+  }
 }
 
 function navigateTo(view) {
@@ -210,6 +218,33 @@ function categoryMap() {
 
 function accountMap() {
   return new Map(state.accounts.map(account => [account.id, account]));
+}
+
+function safeColor(value, fallback = DEFAULT_CATEGORY_COLOR) {
+  const raw = String(value || "").trim();
+  return /^#[0-9a-f]{6}$/i.test(raw) ? raw : fallback;
+}
+
+function categoryPill(cat, { review = false } = {}) {
+  const color = safeColor(cat?.color);
+  return `<span class="category-pill colored ${review ? "review-pill" : ""}" style="--cat-color:${color}">${escapeHtml(cat?.icon || "?")} ${escapeHtml(cat?.name || "Misc")}</span>`;
+}
+
+function colorOptions(selected = DEFAULT_CATEGORY_COLOR) {
+  const labels = ["Emerald", "Blue", "Violet", "Amber", "Red", "Cyan", "Pink", "Lime", "Orange", "Teal", "Indigo", "Purple", "Gold", "Green", "Slate", "Sky"];
+  const current = safeColor(selected);
+  return CATEGORY_COLORS.map((color, index) => `<option value="${color}" ${color.toUpperCase() === current.toUpperCase() ? "selected" : ""}>${labels[index] || "Color"} · ${color}</option>`).join("");
+}
+
+function isValidCurrency(code) {
+  return VALID_CURRENCIES.includes(String(code || "").trim().toUpperCase());
+}
+
+function normalizedCurrencyFrom(selector, fallback = selectedCurrency()) {
+  const code = $(selector).value.trim().toUpperCase();
+  if (!code) return fallback;
+  if (!isValidCurrency(code)) throw new Error(`${code} is not in the supported currency list.`);
+  return code;
 }
 
 function visibleAccounts() {
@@ -271,7 +306,8 @@ function renderOverview() {
   const compareText = comparisonLabel(compareDate);
   const monthly = calculateMonthlySnapshot(state);
   const categorySpend = buildCategorySpend(state.transactions, state.categories, state.settings, monthly.currentMonth);
-  const review = state.transactions.filter(tx => tx.review).slice(0, 8);
+  const reviewRows = state.transactions.filter(tx => tx.review);
+  const review = reviewRows.slice(0, 8);
   $("#overview-date").textContent = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date());
   $("#net-worth-value").textContent = formatCurrency(portfolio.netWorth, currency);
   $("#liquidity-value").textContent = formatCurrency(portfolio.liquidity, currency);
@@ -288,12 +324,14 @@ function renderOverview() {
   $("#month-net").textContent = formatCurrency(monthly.current.net, currency);
   $("#month-net").className = monthly.current.net >= 0 ? "amount-pos" : "amount-neg";
   $("#current-month-pill").textContent = monthly.currentMonth;
-  $("#review-count").textContent = `${state.transactions.filter(tx => tx.review).length} to review`;
+  const reviewPanel = $("#review-panel");
+  const reviewCount = $("#review-count");
   const reviewList = $("#review-list");
-  reviewList.replaceChildren();
-  if (!review.length) {
-    reviewList.innerHTML = `<div class="mini-item"><div><strong>No ambiguous imports</strong><small>Everything currently has a category decision.</small></div></div>`;
-  } else {
+  if (reviewPanel) reviewPanel.hidden = reviewRows.length === 0;
+  document.querySelector(".home-layout")?.classList.toggle("no-review", reviewRows.length === 0);
+  if (reviewCount) reviewCount.textContent = `${reviewRows.length} to review`;
+  if (reviewList) {
+    reviewList.replaceChildren();
     for (const tx of review) {
       const item = document.createElement("button");
       item.className = "mini-item link-button";
@@ -352,7 +390,7 @@ function renderTransactions() {
       <td>${escapeHtml(tx.date)}</td>
       <td><strong>${escapeHtml(tx.description)}</strong><br><small class="muted">${escapeHtml(tx.counterparty || tx.reason || "")}</small></td>
       <td>${escapeHtml(account?.name || tx.accountId || "—")}</td>
-      <td><span class="category-pill ${tx.review ? "review-pill" : ""}">${escapeHtml(cat?.icon || "?")} ${escapeHtml(cat?.name || "Misc")}</span></td>
+      <td>${categoryPill(cat, { review: tx.review })}</td>
       <td class="${Number(tx.amount) >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(tx.amount, tx.currency || selectedCurrency())}</td>
       <td>${escapeHtml(tx.note || "")}</td>
       <td class="action-cell"><button class="ghost-button compact" type="button" data-edit-tx="${escapeHtml(tx.id)}">Edit</button></td>`;
@@ -369,9 +407,18 @@ function renderAccounts() {
   const currency = selectedCurrency();
   container.replaceChildren();
   const accounts = visibleAccounts();
+  const hiddenAccounts = state.accounts.filter(account => account.hidden);
+  const hiddenSection = $("#hidden-accounts-section");
+  const hiddenGrid = $("#hidden-accounts-grid");
+  const hiddenJump = $("#hidden-accounts-jump");
+  if (hiddenJump) {
+    hiddenJump.hidden = hiddenAccounts.length === 0;
+    hiddenJump.textContent = `Hidden accounts (${hiddenAccounts.length})`;
+  }
+  if (hiddenSection) hiddenSection.hidden = hiddenAccounts.length === 0;
+  if (hiddenGrid) hiddenGrid.replaceChildren();
   if (!accounts.length) {
-    container.innerHTML = `<article class="surface-card item-card empty-card"><h3>No accounts yet</h3><p class="muted">Add a checking, cash, broker or debt account.</p></article>`;
-    return;
+    container.innerHTML = `<article class="surface-card item-card empty-card"><h3>No visible accounts</h3><p class="muted">Add an account or restore one from Hidden accounts below.</p></article>`;
   }
   for (const account of accounts) {
     const row = rows.find(item => item.id === account.id) || { ...account, balance: { raw: Number(account.openingBalance || 0), converted: Number(account.openingBalance || 0) } };
@@ -407,9 +454,18 @@ function renderAccounts() {
       </div>`;
     container.append(card);
   }
+  if (hiddenGrid) {
+    for (const account of hiddenAccounts) {
+      const card = document.createElement("article");
+      card.className = "surface-card item-card account-card hidden-account-card";
+      card.innerHTML = `<div class="item-card-header"><div><h3>${escapeHtml(account.name)}</h3><small>${escapeHtml(account.institution || "Manual")} · ${escapeHtml(account.type)} · ${escapeHtml(account.currency)}</small></div><span class="category-pill">Hidden</span></div><small>${escapeHtml(maskIban(account.iban || account.accountNumber))}</small><div class="item-card-actions"><button class="ghost-button compact" data-edit-account="${escapeHtml(account.id)}" type="button">Edit / restore</button></div>`;
+      hiddenGrid.append(card);
+    }
+  }
   container.querySelectorAll("[data-edit-account]").forEach(btn => btn.addEventListener("click", () => openAccountModal(btn.dataset.editAccount)));
   container.querySelectorAll("[data-add-asset-for]").forEach(btn => btn.addEventListener("click", () => openAssetModal("", btn.dataset.addAssetFor)));
   container.querySelectorAll("[data-edit-asset]").forEach(btn => btn.addEventListener("click", () => openAssetModal(btn.dataset.editAsset)));
+  hiddenGrid?.querySelectorAll("[data-edit-account]").forEach(btn => btn.addEventListener("click", () => openAccountModal(btn.dataset.editAccount)));
 }
 
 function renderAssets() {
@@ -427,7 +483,7 @@ function renderRules() {
     const related = state.rules.filter(rule => rule.categoryId === cat.id);
     const row = document.createElement("div");
     row.className = "settings-row category-row";
-    row.innerHTML = `<div><strong>${escapeHtml(cat.icon || "•")} ${escapeHtml(cat.name)}</strong><small>${escapeHtml(cat.group)} · ${escapeHtml(cat.type)} · ${related.length} keyword rules</small></div><button class="ghost-button compact" data-edit-category="${escapeHtml(cat.id)}" type="button">Edit</button>`;
+    row.innerHTML = `<div><strong><span class="category-color-dot" style="--cat-color:${safeColor(cat.color)}"></span>${escapeHtml(cat.icon || "•")} ${escapeHtml(cat.name)}</strong><small>${escapeHtml(cat.group)} · ${escapeHtml(cat.type)} · ${related.length} keyword rules</small></div><button class="ghost-button compact" data-edit-category="${escapeHtml(cat.id)}" type="button">Edit</button>`;
     categoriesList.append(row);
   }
 
@@ -441,7 +497,7 @@ function renderRules() {
   for (const group of [...grouped.values()].sort((a, b) => String(a.cat?.group || "").localeCompare(String(b.cat?.group || "")) || String(a.cat?.name || "").localeCompare(String(b.cat?.name || "")))) {
     const wrapper = document.createElement("section");
     wrapper.className = "rule-group";
-    wrapper.innerHTML = `<div class="rule-group-heading"><strong>${escapeHtml(group.cat?.icon || "?")} ${escapeHtml(group.cat?.name || "Misc")}</strong><small>${escapeHtml(group.cat?.group || "Misc")}</small></div>`;
+    wrapper.innerHTML = `<div class="rule-group-heading"><strong><span class="category-color-dot" style="--cat-color:${safeColor(group.cat?.color)}"></span>${escapeHtml(group.cat?.icon || "?")} ${escapeHtml(group.cat?.name || "Misc")}</strong><small>${escapeHtml(group.cat?.group || "Misc")}</small></div>`;
     for (const rule of group.rules.sort((a, b) => Number(b.priority || 0) - Number(a.priority || 0))) {
       const row = document.createElement("div");
       row.className = "settings-row rule-row";
@@ -455,6 +511,8 @@ function renderRules() {
 }
 
 function renderSettings() {
+  const form = $("#settings-form");
+  if (settingsDirty || (form && form.contains(document.activeElement))) return;
   $("#setting-currency").value = selectedCurrency();
   $("#setting-theme").value = state.settings.theme || "dark";
   $("#setting-motion").value = state.settings.motion || "on";
@@ -465,10 +523,6 @@ function renderSettings() {
   $("#setting-compare-mode").value = state.settings.portfolioComparisonMode || "rolling";
   $("#setting-compare-days").value = Number(state.settings.portfolioComparisonDays || 30);
   $("#setting-compare-date").value = state.settings.portfolioComparisonDate || "";
-  const fxStatus = $("#fx-status");
-  if (fxStatus) {
-    fxStatus.textContent = `${state.settings.fxSource || "static fallback"} · ${state.settings.fxLastUpdatedAt ? formatDateTime(state.settings.fxLastUpdatedAt) : "not refreshed yet"}`;
-  }
 }
 
 function requestRender() {
@@ -560,6 +614,8 @@ function openCategoryModal(id = "") {
   $("#category-group").value = cat?.group || "Custom";
   $("#category-icon").value = cat?.icon || "•";
   $("#category-type").value = cat?.type || "expense";
+  $("#category-color").innerHTML = colorOptions(cat?.color || DEFAULT_CATEGORY_COLOR);
+  $("#category-color").value = safeColor(cat?.color);
   openModal("category");
 }
 
@@ -624,18 +680,24 @@ async function maybeRefreshQuotes() {
   await refreshAllAssets({ silent: true });
 }
 
+async function runScheduledRefresh() {
+  await maybeRefreshFxRates();
+  await maybeRefreshQuotes();
+}
+
 function setupAutoRefreshTimers() {
   if (quoteRefreshTimer) clearInterval(quoteRefreshTimer);
   const intervalMinutes = Number(state.settings.quoteRefreshIntervalMinutes ?? 720);
   if (!Number.isFinite(intervalMinutes) || intervalMinutes <= 0) return;
-  quoteRefreshTimer = setInterval(() => maybeRefreshQuotes().catch(error => console.warn("Auto quote refresh skipped", error)), Math.max(15, intervalMinutes) * 60 * 1000);
+  quoteRefreshTimer = setInterval(() => runScheduledRefresh().catch(error => console.warn("Scheduled refresh skipped", error)), Math.max(15, intervalMinutes) * 60 * 1000);
 }
-
 
 async function maybeRefreshFxRates() {
   if (!navigator.onLine || state.settings.autoRefreshFx === "off") return;
+  const intervalMinutes = Number(state.settings.quoteRefreshIntervalMinutes ?? 720);
+  const maxAgeMs = Math.max(15, intervalMinutes) * 60 * 1000;
   const last = state.settings.fxLastUpdatedAt ? new Date(state.settings.fxLastUpdatedAt).getTime() : 0;
-  const stale = !last || Date.now() - last > 12 * 60 * 60 * 1000;
+  const stale = !last || Date.now() - last > maxAgeMs;
   if (!stale) return;
   try {
     await refreshFxRates({ silent: true });
@@ -688,7 +750,7 @@ function renderImportPreview() {
   for (const tx of activePreview.transactions.slice(0, 100)) {
     const cat = cats.get(tx.categoryId) || cats.get("misc");
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${escapeHtml(tx.date)}</td><td><strong>${escapeHtml(tx.description)}</strong><br><small class="muted">${escapeHtml(tx.reason || "")}</small></td><td class="${tx.amount >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(tx.amount, tx.currency)}</td><td><span class="category-pill ${tx.review ? "review-pill" : ""}">${escapeHtml(cat?.icon || "?")} ${escapeHtml(cat?.name || "Misc")}</span></td><td>${tx.review ? "Needs review" : "Ready"}</td>`;
+    tr.innerHTML = `<td>${escapeHtml(tx.date)}</td><td><strong>${escapeHtml(tx.description)}</strong><br><small class="muted">${escapeHtml(tx.reason || "")}</small></td><td class="${tx.amount >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(tx.amount, tx.currency)}</td><td>${categoryPill(cat, { review: tx.review })}</td><td>${tx.review ? "Needs review" : "Prepared"}</td>`;
     tbody.append(tr);
   }
 }
@@ -769,9 +831,12 @@ function wireEvents() {
     });
   }
 
-  elements.signOut.addEventListener("click", () => signOut(auth));
+  elements.signOut?.addEventListener("click", () => signOut(auth));
   $$(`[data-view]`).forEach(button => button.addEventListener("click", () => navigateTo(button.dataset.view)));
   $$(`[data-go-view]`).forEach(button => button.addEventListener("click", () => navigateTo(button.dataset.goView)));
+  $("#hidden-accounts-jump")?.addEventListener("click", () => $("#hidden-accounts-section")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  $("#settings-form")?.addEventListener("input", () => { settingsDirty = true; });
+  $("#settings-form")?.addEventListener("change", () => { settingsDirty = true; });
   $$(`[data-open-modal]`).forEach(button => button.addEventListener("click", () => {
     const type = button.dataset.openModal;
     if (type === "transaction") openTransactionModal();
@@ -810,44 +875,41 @@ function wireEvents() {
       toast("JSON import failed", error.message, "error");
     }
   });
-  $("#refresh-fx-button")?.addEventListener("click", async () => {
-    try {
-      const result = await refreshFxRates();
-      toast("Exchange rates updated", `${result.source} · ${formatDateTime(result.time)}`);
-    } catch (error) {
-      toast("Exchange-rate update failed", error.message, "error");
-    }
-  });
 
   $("#transaction-form").addEventListener("submit", async event => {
     event.preventDefault();
     const form = event.currentTarget;
-    const input = {
-      id: $("#transaction-id").value || undefined,
-      accountId: $("#transaction-account").value,
-      date: $("#transaction-date").value,
-      amount: parseMoney($("#transaction-amount").value),
-      currency: $("#transaction-currency").value.toUpperCase() || selectedCurrency(),
-      categoryId: $("#transaction-category").value,
-      counterparty: $("#transaction-counterparty").value,
-      description: $("#transaction-description").value,
-      note: $("#transaction-note").value,
-      review: $("#transaction-review").checked,
-      source: $("#transaction-id").value ? "manual-edit" : "manual"
-    };
-    if (!input.accountId || !input.date || input.amount == null) return toast("Invalid transaction", "Account, date and amount are required.", "error");
-    if (!input.categoryId || input.categoryId === "auto") {
-      const cat = categorizeTransaction(input, state.rules, state.categories, state.accounts);
-      Object.assign(input, cat);
-    }
     setBusy(form, true);
     try {
+      const input = {
+        id: $("#transaction-id").value || undefined,
+        accountId: $("#transaction-account").value,
+        date: $("#transaction-date").value,
+        amount: parseMoney($("#transaction-amount").value),
+        currency: normalizedCurrencyFrom("#transaction-currency"),
+        categoryId: $("#transaction-category").value,
+        counterparty: $("#transaction-counterparty").value,
+        description: $("#transaction-description").value,
+        note: $("#transaction-note").value,
+        review: $("#transaction-review").checked,
+        source: $("#transaction-id").value ? "manual-edit" : "manual"
+      };
+      if (!input.accountId || !input.date || input.amount == null) {
+        toast("Invalid transaction", "Account, date and amount are required.", "error");
+        return;
+      }
+      if (!input.categoryId || input.categoryId === "auto") {
+        const cat = categorizeTransaction(input, state.rules, state.categories, state.accounts);
+        Object.assign(input, cat);
+      }
       await saveTransaction(input);
       toast("Transaction saved");
       closeModal();
     } catch (error) {
       toast("Save failed", error.message, "error");
-    } finally { setBusy(form, false); }
+    } finally {
+      setBusy(form, false);
+    }
   });
 
   $("#delete-transaction-button").addEventListener("click", async () => {
@@ -868,7 +930,7 @@ function wireEvents() {
         name: $("#account-name").value,
         institution: $("#account-institution").value,
         type: $("#account-type").value,
-        currency: $("#account-currency").value.toUpperCase() || selectedCurrency(),
+        currency: normalizedCurrencyFrom("#account-currency"),
         openingBalance: parseMoney($("#account-opening").value) || 0,
         iban: $("#account-iban").value,
         accountNumber: $("#account-number").value,
@@ -917,7 +979,7 @@ function wireEvents() {
         type: $("#asset-type").value,
         provider: $("#asset-provider").value,
         quantity: parseMoney($("#asset-quantity").value) || 0,
-        currency: $("#asset-currency").value.toUpperCase() || selectedCurrency(),
+        currency: normalizedCurrencyFrom("#asset-currency"),
         manualPrice: parseMoney($("#asset-manual-price").value) || 0,
         costBasis: parseMoney($("#asset-cost-basis").value) || 0,
         hidden: $("#asset-hidden").checked
@@ -946,7 +1008,8 @@ function wireEvents() {
       name: $("#category-name").value,
       group: $("#category-group").value,
       icon: $("#category-icon").value,
-      type: $("#category-type").value
+      type: $("#category-type").value,
+      color: $("#category-color").value
     });
     toast("Category saved");
     closeModal();
@@ -977,9 +1040,10 @@ function wireEvents() {
   $("#settings-form").addEventListener("submit", async event => {
     event.preventDefault();
     try {
+      const primaryCurrency = normalizedCurrencyFrom("#setting-currency", "EUR");
       setLocalMarketApiKey($("#setting-market-key").value.trim());
       await saveSettings({
-        primaryCurrency: $("#setting-currency").value.toUpperCase() || "EUR",
+        primaryCurrency,
         theme: $("#setting-theme").value,
         motion: $("#setting-motion").value,
         marketProvider: $("#setting-market-provider").value,
@@ -989,10 +1053,11 @@ function wireEvents() {
         portfolioComparisonDate: $("#setting-compare-date").value || "",
         hideInternalTransfersInSpending: $("#setting-hide-transfers").value === "true"
       });
+      settingsDirty = false;
       setMessage($("#settings-message"), "Settings saved.");
       toast("Settings saved");
       setupAutoRefreshTimers();
-      maybeRefreshQuotes().catch(error => console.warn("Quote refresh skipped", error));
+      runScheduledRefresh().catch(error => console.warn("Scheduled refresh skipped", error));
     } catch (error) {
       setMessage($("#settings-message"), error.message, true);
     }

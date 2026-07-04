@@ -1,6 +1,10 @@
 export const APP_NAME = "VaultPilot";
 export const TODAY = () => new Date().toISOString().slice(0, 10);
 
+export const VALID_CURRENCIES = Object.freeze(["EUR", "USD", "GBP", "CHF", "JPY", "KRW", "CNY", "CAD", "AUD", "NZD", "SEK", "NOK", "DKK", "PLN", "CZK", "HUF", "SGD", "HKD", "INR", "VND", "THB", "MXN", "BRL", "ZAR"]);
+export const CATEGORY_COLORS = Object.freeze(["#19C37D", "#3B82F6", "#8B5CF6", "#F59E0B", "#EF4444", "#06B6D4", "#EC4899", "#84CC16", "#F97316", "#14B8A6", "#6366F1", "#A855F7", "#EAB308", "#22C55E", "#64748B", "#0EA5E9"]);
+export const DEFAULT_CATEGORY_COLOR = "#3B82F6";
+
 export const DEFAULT_SETTINGS = Object.freeze({
   primaryCurrency: "EUR",
   theme: "dark",
@@ -38,36 +42,36 @@ export const ACCOUNT_TYPES = [
 ];
 
 export const DEFAULT_CATEGORIES = Object.freeze([
-  { id: "income_salary", name: "Salary", group: "Income", type: "income", icon: "↗" },
-  { id: "income_freelance", name: "Freelance / side income", group: "Income", type: "income", icon: "+" },
-  { id: "income_dividend", name: "Dividends & interest", group: "Income", type: "income", icon: "◒" },
-  { id: "income_other", name: "Other income", group: "Income", type: "income", icon: "+" },
-  { id: "refund", name: "Refund / reimbursement", group: "Income", type: "income", icon: "↩" },
-  { id: "transfer", name: "Internal transfer", group: "Neutral", type: "transfer", icon: "⇄" },
-  { id: "investment", name: "Investment / broker", group: "Neutral", type: "transfer", icon: "◆" },
-  { id: "debt_bafog", name: "BAföG / debt", group: "Neutral", type: "transfer", icon: "◌" },
-  { id: "rent", name: "Rent", group: "Housing", type: "expense", icon: "⌂" },
-  { id: "utilities", name: "Utilities & phone", group: "Housing", type: "expense", icon: "⌁" },
-  { id: "insurance", name: "Insurance", group: "Housing", type: "expense", icon: "▣" },
-  { id: "groceries", name: "Groceries", group: "Living", type: "expense", icon: "◍" },
-  { id: "restaurants", name: "Restaurants & coffee", group: "Living", type: "expense", icon: "☕" },
-  { id: "cash", name: "Cash withdrawal", group: "Living", type: "expense", icon: "▣" },
-  { id: "transport", name: "Transport & fuel", group: "Mobility", type: "expense", icon: "→" },
-  { id: "public_transport", name: "Public transport", group: "Mobility", type: "expense", icon: "▱" },
-  { id: "travel", name: "Travel", group: "Mobility", type: "expense", icon: "✈" },
-  { id: "shopping", name: "Shopping / online", group: "Lifestyle", type: "expense", icon: "◧" },
-  { id: "clothing", name: "Clothing", group: "Lifestyle", type: "expense", icon: "◨" },
-  { id: "electronics", name: "Electronics & tools", group: "Lifestyle", type: "expense", icon: "⌘" },
-  { id: "subscriptions", name: "Subscriptions", group: "Lifestyle", type: "expense", icon: "◎" },
-  { id: "health", name: "Health", group: "Lifestyle", type: "expense", icon: "✚" },
-  { id: "education", name: "Education", group: "Lifestyle", type: "expense", icon: "▱" },
-  { id: "sport", name: "Sport", group: "Lifestyle", type: "expense", icon: "△" },
-  { id: "entertainment", name: "Entertainment", group: "Lifestyle", type: "expense", icon: "☆" },
-  { id: "taxes", name: "Taxes & fees", group: "Admin", type: "expense", icon: "%" },
-  { id: "bank_fees", name: "Bank fees", group: "Admin", type: "expense", icon: "∙" },
-  { id: "gifts_family", name: "Gifts & family", group: "Personal", type: "expense", icon: "♡" },
-  { id: "donations", name: "Donations", group: "Personal", type: "expense", icon: "♧" },
-  { id: "misc", name: "Misc / not applicable", group: "Misc", type: "neutral", icon: "?" }
+  { id: "income_salary", name: "Salary", group: "Income", type: "income", icon: "↗", color: "#19C37D" },
+  { id: "income_freelance", name: "Freelance / side income", group: "Income", type: "income", icon: "+", color: "#22C55E" },
+  { id: "income_dividend", name: "Dividends & interest", group: "Income", type: "income", icon: "◒", color: "#14B8A6" },
+  { id: "income_other", name: "Other income", group: "Income", type: "income", icon: "+", color: "#84CC16" },
+  { id: "refund", name: "Refund / reimbursement", group: "Income", type: "income", icon: "↩", color: "#06B6D4" },
+  { id: "transfer", name: "Internal transfer", group: "Neutral", type: "transfer", icon: "⇄", color: "#64748B" },
+  { id: "investment", name: "Investment / broker", group: "Neutral", type: "transfer", icon: "◆", color: "#8B5CF6" },
+  { id: "debt_bafog", name: "BAföG / debt", group: "Neutral", type: "transfer", icon: "◌", color: "#F59E0B" },
+  { id: "rent", name: "Rent", group: "Housing", type: "expense", icon: "⌂", color: "#3B82F6" },
+  { id: "utilities", name: "Utilities & phone", group: "Housing", type: "expense", icon: "⌁", color: "#0EA5E9" },
+  { id: "insurance", name: "Insurance", group: "Housing", type: "expense", icon: "▣", color: "#6366F1" },
+  { id: "groceries", name: "Groceries", group: "Living", type: "expense", icon: "◍", color: "#19C37D" },
+  { id: "restaurants", name: "Restaurants & coffee", group: "Living", type: "expense", icon: "☕", color: "#F97316" },
+  { id: "cash", name: "Cash withdrawal", group: "Living", type: "expense", icon: "▣", color: "#EAB308" },
+  { id: "transport", name: "Transport & fuel", group: "Mobility", type: "expense", icon: "→", color: "#06B6D4" },
+  { id: "public_transport", name: "Public transport", group: "Mobility", type: "expense", icon: "▱", color: "#14B8A6" },
+  { id: "travel", name: "Travel", group: "Mobility", type: "expense", icon: "✈", color: "#8B5CF6" },
+  { id: "shopping", name: "Shopping / online", group: "Lifestyle", type: "expense", icon: "◧", color: "#EC4899" },
+  { id: "clothing", name: "Clothing", group: "Lifestyle", type: "expense", icon: "◨", color: "#A855F7" },
+  { id: "electronics", name: "Electronics & tools", group: "Lifestyle", type: "expense", icon: "⌘", color: "#6366F1" },
+  { id: "subscriptions", name: "Subscriptions", group: "Lifestyle", type: "expense", icon: "◎", color: "#F59E0B" },
+  { id: "health", name: "Health", group: "Lifestyle", type: "expense", icon: "✚", color: "#EF4444" },
+  { id: "education", name: "Education", group: "Lifestyle", type: "expense", icon: "▱", color: "#3B82F6" },
+  { id: "sport", name: "Sport", group: "Lifestyle", type: "expense", icon: "△", color: "#84CC16" },
+  { id: "entertainment", name: "Entertainment", group: "Lifestyle", type: "expense", icon: "☆", color: "#EC4899" },
+  { id: "taxes", name: "Taxes & fees", group: "Admin", type: "expense", icon: "%", color: "#EF4444" },
+  { id: "bank_fees", name: "Bank fees", group: "Admin", type: "expense", icon: "∙", color: "#64748B" },
+  { id: "gifts_family", name: "Gifts & family", group: "Personal", type: "expense", icon: "♡", color: "#F97316" },
+  { id: "donations", name: "Donations", group: "Personal", type: "expense", icon: "♧", color: "#22C55E" },
+  { id: "misc", name: "Misc / not applicable", group: "Misc", type: "neutral", icon: "?", color: "#64748B" }
 ]);
 
 export const DEFAULT_RULES = Object.freeze([
@@ -101,10 +105,10 @@ export const DEFAULT_RULES = Object.freeze([
 ]);
 
 export const DEFAULT_ACCOUNTS = Object.freeze([
-  { id: "cash_wallet", name: "Cash wallet", institution: "Manual", type: "cash", currency: "EUR", openingBalance: 0, hidden: false, iban: "", accountNumber: "", bic: "", transferAliases: ["cash wallet", "bar" ] },
-  { id: "bank_main", name: "Main checking", institution: "Bank", type: "checking", currency: "EUR", openingBalance: 0, hidden: false, iban: "", accountNumber: "", bic: "", transferAliases: ["main checking", "girokonto", "own account" ] },
-  { id: "broker_main", name: "Broker", institution: "Broker", type: "broker", currency: "EUR", openingBalance: 0, hidden: false, iban: "", accountNumber: "", bic: "", transferAliases: ["broker", "trade republic", "depot", "securities account" ] },
-  { id: "bafog_debt", name: "BAföG debt", institution: "Manual", type: "debt", currency: "EUR", openingBalance: 0, hidden: false, iban: "", accountNumber: "", bic: "", transferAliases: ["bafög", "bafoeg", "bva" ] }
+  { id: "cash_wallet", name: "Cash wallet", institution: "Manual", type: "cash", currency: "EUR", openingBalance: 0, hidden: false, iban: "", accountNumber: "", bic: "", transferAliases: ["cash wallet", "bar" ], color: "#3B82F6" },
+  { id: "bank_main", name: "Main checking", institution: "Bank", type: "checking", currency: "EUR", openingBalance: 0, hidden: false, iban: "", accountNumber: "", bic: "", transferAliases: ["main checking", "girokonto", "own account" ], color: "#3B82F6" },
+  { id: "broker_main", name: "Broker", institution: "Broker", type: "broker", currency: "EUR", openingBalance: 0, hidden: false, iban: "", accountNumber: "", bic: "", transferAliases: ["broker", "trade republic", "depot", "securities account" ], color: "#3B82F6" },
+  { id: "bafog_debt", name: "BAföG debt", institution: "Manual", type: "debt", currency: "EUR", openingBalance: 0, hidden: false, iban: "", accountNumber: "", bic: "", transferAliases: ["bafög", "bafoeg", "bva" ], color: "#3B82F6" }
 ]);
 
 export function uid() {
@@ -351,7 +355,7 @@ export function buildCategorySpend(transactions, categories, settings, period = 
     if (cat?.type === "transfer" && settings.hideInternalTransfersInSpending) continue;
     const value = Math.abs(Math.min(0, convertCurrency(tx.amount, tx.currency, settings)));
     if (value <= 0) continue;
-    const prev = totals.get(cat.id) || { categoryId: cat.id, name: cat.name, group: cat.group, value: 0 };
+    const prev = totals.get(cat.id) || { categoryId: cat.id, name: cat.name, group: cat.group, color: cat.color || DEFAULT_CATEGORY_COLOR, value: 0 };
     prev.value += value;
     totals.set(cat.id, prev);
   }

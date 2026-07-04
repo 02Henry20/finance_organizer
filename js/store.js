@@ -73,7 +73,7 @@ function updateSyncFromSnapshot(name, snapshot) {
     state.sync.detail = "Saving local changes";
   } else {
     state.sync.status = "synced";
-    state.sync.detail = fromCache ? "Ready · local cache active" : "Synced with Firebase";
+    state.sync.detail = "";
   }
   state.sync.lastChangeAt = new Date().toISOString();
   notify();
@@ -296,6 +296,7 @@ export async function saveCategory(input) {
     group: input.group?.trim() || "Custom",
     type: input.type || "expense",
     icon: input.icon || "•",
+    color: /^#[0-9a-f]{6}$/i.test(String(input.color || "")) ? String(input.color).toUpperCase() : "#3B82F6",
     isDefault: Boolean(input.isDefault)
   });
   return id;

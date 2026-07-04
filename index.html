@@ -46,13 +46,13 @@
         <button class="nav-button" data-view="transactions" type="button"><span>≡</span>Ledger</button>
         <button class="nav-button" data-view="import" type="button"><span>⇣</span>Import</button>
         <button class="nav-button" data-view="accounts" type="button"><span>💳</span>Accounts</button>
-        <button class="nav-button" data-view="rules" type="button"><span>⎇</span>Rules</button>
+        <button class="nav-button" data-view="rules" type="button"><span>🏷</span>Rules</button>
         <button class="nav-button" data-view="settings" type="button"><span>⚙</span>Settings</button>
       </nav>
       <div class="header-actions">
         <div id="sync-pill" class="sync-pill"><span class="sync-dot"></span><div><strong>Syncing</strong><small>Checking cache</small></div></div>
         <span id="user-chip" class="user-chip"></span>
-        <button id="sign-out-button" class="ghost-button compact" type="button">Sign out</button>
+        
       </div>
     </header>
 
@@ -71,11 +71,9 @@
             </div>
           </article>
 
-          <aside class="money-actions surface-card">
-            <p class="eyebrow">ACTIONS</p>
-            <button class="action-tile" data-go-view="transactions" type="button"><span>≡</span><div><strong>Review ledger</strong><small id="review-count">0</small></div></button>
-            <button class="action-tile" data-go-view="accounts" type="button"><span>💳</span><div><strong>Accounts & holdings</strong><small>Cash, brokers, debt</small></div></button>
-            <button class="action-tile" data-go-view="rules" type="button"><span>⎇</span><div><strong>Rules</strong><small>Categories and keywords</small></div></button>
+          <aside id="review-panel" class="money-actions review-panel surface-card" hidden>
+            <div class="panel-heading review-heading"><div><p class="eyebrow">REVIEW LEDGER</p><h3 id="review-count">0 to review</h3></div><button class="link-button" data-go-view="transactions" type="button">Open ledger</button></div>
+            <div id="review-list" class="mini-list review-mini-list"></div>
           </aside>
         </div>
 
@@ -104,10 +102,6 @@
             <div class="panel-heading"><div><p class="eyebrow">SPENDING</p><h3>Category split</h3></div></div>
             <div class="chart-wrap"><canvas id="category-donut-chart"></canvas><div class="chart-empty" data-empty-for="category-donut-chart">No expenses this month.</div></div>
           </article>
-          <article class="surface-card list-card">
-            <div class="panel-heading"><div><p class="eyebrow">TODO</p><h3>Needs category decision</h3></div><button class="link-button" data-go-view="transactions" type="button">Open all</button></div>
-            <div id="review-list" class="mini-list"></div>
-          </article>
         </div>
       </section>
 
@@ -131,7 +125,7 @@
       <section class="view" data-view-section="import">
         <div class="import-layout">
           <article class="surface-card import-card main-import">
-            <div class="panel-heading"><div><p class="eyebrow">BANK EXPORTS</p><h3>Import CSV / TSV</h3></div></div>
+            <div class="panel-heading"><div><p class="eyebrow">BANK EXPORTS</p><h3>Import CSV / TSV</h3></div><button class="ghost-button compact" data-go-view="rules" type="button">Manage rules</button></div>
             <p class="muted">Upload a bank export, choose the target account, check column mapping, then import. Ambiguous rows go into the review queue.</p>
             <div class="form-stack">
               <label class="field"><span>Target account</span><select id="import-account"></select></label>
@@ -153,8 +147,12 @@
       </section>
 
       <section class="view" data-view-section="accounts">
-        <div class="page-toolbar surface-card"><div><p class="eyebrow">MONEY CONTAINERS</p><h3>Accounts & broker holdings</h3></div><button class="primary-button compact" data-open-modal="account" type="button">Add account</button></div>
+        <div class="page-toolbar surface-card"><div><p class="eyebrow">MONEY CONTAINERS</p><h3>Accounts & broker holdings</h3></div><div class="toolbar-actions"><button id="hidden-accounts-jump" class="ghost-button compact" type="button" hidden>Hidden accounts</button><button class="primary-button compact" data-open-modal="account" type="button">Add account</button></div></div>
         <div id="accounts-grid" class="cards-grid"></div>
+        <section id="hidden-accounts-section" class="hidden-accounts-section surface-card" hidden>
+          <div class="panel-heading"><div><p class="eyebrow">HIDDEN ACCOUNTS</p><h3>Archived accounts</h3></div></div>
+          <div id="hidden-accounts-grid" class="cards-grid hidden-grid"></div>
+        </section>
       </section>
 
       <section class="view" data-view-section="rules">
@@ -175,30 +173,25 @@
           <article class="surface-card settings-card">
             <div class="panel-heading"><div><p class="eyebrow">APP SETTINGS</p><h3>Preferences</h3></div></div>
             <form id="settings-form" class="form-stack">
-              <label class="field"><span>Primary currency</span><input id="setting-currency" maxlength="3" placeholder="EUR"></label>
+              <label class="field"><span>Primary currency</span><input id="setting-currency" list="currency-options" maxlength="3" placeholder="EUR" autocomplete="off"></label>
               <label class="field"><span>Appearance</span><select id="setting-theme"><option value="dark">Dark mode</option><option value="light">Light mode</option></select></label>
               <label class="field"><span>Motion</span><select id="setting-motion"><option value="on">Animations on</option><option value="off">Animations off</option></select></label>
               <label class="field"><span>Portfolio comparison</span><select id="setting-compare-mode"><option value="rolling">Since last days</option><option value="date">Since fixed date</option></select></label>
               <div class="form-grid two"><label class="field"><span>Days back</span><input id="setting-compare-days" type="number" min="1" max="3650" value="30"></label><label class="field"><span>Fixed date</span><input id="setting-compare-date" type="date"></label></div>
               <label class="field"><span>Default market provider</span><select id="setting-market-provider"><option value="twelvedata">Twelve Data</option><option value="stooq">Stooq CSV fallback</option><option value="manual">Manual prices only</option></select></label>
               <label class="field"><span>Twelve Data API key (stored only in this browser)</span><input id="setting-market-key" type="password" placeholder="Optional API key"></label>
-              <label class="field"><span>Holding price refresh interval</span><select id="setting-quote-interval"><option value="60">Every hour</option><option value="360">Every 6 hours</option><option value="720">Every 12 hours</option><option value="1440">Every 24 hours</option><option value="0">Never</option></select></label>
+              <label class="field"><span>Price and FX refresh interval</span><select id="setting-quote-interval"><option value="60">Every hour</option><option value="360">Every 6 hours</option><option value="720">Every 12 hours</option><option value="1440">Every 24 hours</option></select></label>
               <label class="field"><span>Hide internal transfers from spending</span><select id="setting-hide-transfers"><option value="true">Yes</option><option value="false">No</option></select></label>
               <button class="primary-button" type="submit">Save settings</button>
               <p id="settings-message" class="form-message"></p>
             </form>
           </article>
 
-          <article class="surface-card settings-card">
-            <div class="panel-heading"><div><p class="eyebrow">EXCHANGE RATES</p><h3>Currency conversion</h3></div></div>
-            <p class="muted">Rates refresh automatically and are cached in Firebase. Manual refresh is only for FX rates, not holding prices.</p>
-            <div class="settings-row"><div><strong>Rate source</strong><small id="fx-status">static fallback</small></div><button id="refresh-fx-button" class="secondary-button compact" type="button">Refresh FX</button></div>
-          </article>
-
           <article class="surface-card settings-card data-card">
             <div class="panel-heading"><div><p class="eyebrow">DATA</p><h3>Export / import</h3></div></div>
             <div class="settings-row"><div><strong>Transactions CSV</strong><small>Legacy export for spreadsheets.</small></div><button id="export-button" class="secondary-button compact" type="button">Export CSV</button></div>
             <div class="settings-row"><div><strong>Full JSON backup</strong><small>Accounts, transactions, categories, rules, settings and holdings.</small></div><button id="export-json-button" class="primary-button compact" type="button">Export JSON</button></div>
+            <div class="settings-row"><div><strong>Session</strong><small>Sign out of this browser.</small></div><button id="sign-out-button" class="ghost-button compact" type="button">Sign out</button></div>
             <div class="form-stack import-json-box">
               <label class="field"><span>Import mode</span><select id="import-json-mode"><option value="merge">Merge into current data</option><option value="replace">Replace current data</option></select></label>
               <label class="file-drop compact-drop"><input id="import-json-file" type="file" accept=".json,application/json"><strong>Choose JSON backup</strong><small>Use exports created by VaultPilot.</small></label>
@@ -219,6 +212,10 @@
     </nav>
   </div>
 
+  <datalist id="currency-options">
+    <option value="EUR"><option value="USD"><option value="GBP"><option value="CHF"><option value="JPY"><option value="KRW"><option value="CNY"><option value="CAD"><option value="AUD"><option value="NZD"><option value="SEK"><option value="NOK"><option value="DKK"><option value="PLN"><option value="CZK"><option value="HUF"><option value="SGD"><option value="HKD"><option value="INR"><option value="VND"><option value="THB"><option value="MXN"><option value="BRL"><option value="ZAR">
+  </datalist>
+
   <div id="modal-backdrop" class="modal-backdrop" hidden>
     <section class="modal-card surface-card" data-modal="transaction" hidden>
       <div class="modal-heading"><h3 id="transaction-modal-title">Transaction</h3><button class="icon-button" data-close-modal type="button">×</button></div>
@@ -226,7 +223,7 @@
         <input id="transaction-id" type="hidden">
         <label class="field"><span>Account</span><select id="transaction-account" required></select></label>
         <div class="form-grid two"><label class="field"><span>Date</span><input id="transaction-date" type="date" required></label><label class="field"><span>Amount</span><input id="transaction-amount" type="number" step="0.01" required placeholder="-24.90"></label></div>
-        <div class="form-grid two"><label class="field"><span>Currency</span><input id="transaction-currency" maxlength="3" placeholder="EUR"></label><label class="field"><span>Category</span><select id="transaction-category"></select></label></div>
+        <div class="form-grid two"><label class="field"><span>Currency</span><input id="transaction-currency" list="currency-options" maxlength="3" placeholder="EUR"></label><label class="field"><span>Category</span><select id="transaction-category"></select></label></div>
         <label class="field"><span>Counterparty</span><input id="transaction-counterparty" placeholder="Payee or payer"></label>
         <label class="field"><span>Description</span><input id="transaction-description" placeholder="Transfer text"></label>
         <label class="field"><span>Note</span><textarea id="transaction-note" rows="3" placeholder="Optional note"></textarea></label>
@@ -241,7 +238,7 @@
         <input id="account-id" type="hidden">
         <label class="field"><span>Name</span><input id="account-name" required placeholder="Sparkasse Giro"></label>
         <div class="form-grid two"><label class="field"><span>Institution</span><input id="account-institution" placeholder="Bank name"></label><label class="field"><span>Type</span><select id="account-type"></select></label></div>
-        <div class="form-grid two"><label class="field"><span>Currency</span><input id="account-currency" maxlength="3" placeholder="EUR"></label><label class="field"><span>Opening balance</span><input id="account-opening" type="number" step="0.01" value="0"></label></div>
+        <div class="form-grid two"><label class="field"><span>Currency</span><input id="account-currency" list="currency-options" maxlength="3" placeholder="EUR"></label><label class="field"><span>Opening balance</span><input id="account-opening" type="number" step="0.01" value="0"></label></div>
         <div class="form-grid two"><label class="field"><span>IBAN</span><input id="account-iban" placeholder="Optional IBAN"></label><label class="field"><span>Account / depot number</span><input id="account-number" placeholder="Optional identifier"></label></div>
         <div class="form-grid two"><label class="field"><span>BIC</span><input id="account-bic" placeholder="Optional BIC"></label><label class="field"><span>Transfer aliases</span><input id="account-aliases" placeholder="broker, depot, own account"></label></div>
         <label class="check-row"><input id="account-hidden" type="checkbox"> Hide from app</label>
@@ -256,7 +253,7 @@
         <label class="field"><span>Broker account</span><select id="asset-account"></select></label>
         <div class="form-grid two"><label class="field"><span>Symbol</span><input id="asset-symbol" placeholder="AAPL or AAPL.US"></label><label class="field"><span>Name</span><input id="asset-name" placeholder="Apple"></label></div>
         <div class="form-grid two"><label class="field"><span>Type</span><select id="asset-type"><option value="stock">Stock</option><option value="etf">ETF</option><option value="bond">Bond</option><option value="crypto">Crypto</option><option value="fund">Fund</option><option value="manual">Manual asset</option></select></label><label class="field"><span>Provider</span><select id="asset-provider"><option value="twelvedata">Twelve Data</option><option value="stooq">Stooq</option><option value="manual">Manual</option></select></label></div>
-        <div class="form-grid three"><label class="field"><span>Quantity</span><input id="asset-quantity" type="number" step="0.000001" value="1"></label><label class="field"><span>Currency</span><input id="asset-currency" maxlength="3" placeholder="EUR"></label><label class="field"><span>Manual price</span><input id="asset-manual-price" type="number" step="0.0001" value="0"></label></div>
+        <div class="form-grid three"><label class="field"><span>Quantity</span><input id="asset-quantity" type="number" step="0.000001" value="1"></label><label class="field"><span>Currency</span><input id="asset-currency" list="currency-options" maxlength="3" placeholder="EUR"></label><label class="field"><span>Manual price</span><input id="asset-manual-price" type="number" step="0.0001" value="0"></label></div>
         <label class="field"><span>Cost basis total</span><input id="asset-cost-basis" type="number" step="0.01" value="0"></label>
         <label class="check-row"><input id="asset-hidden" type="checkbox"> Hide holding</label>
         <div class="button-row"><button class="primary-button" type="submit">Save holding</button><button id="delete-asset-button" class="danger-button" type="button" hidden>Delete</button></div>
@@ -269,6 +266,7 @@
         <input id="category-id" type="hidden">
         <label class="field"><span>Name</span><input id="category-name" required></label>
         <div class="form-grid three"><label class="field"><span>Group</span><input id="category-group" placeholder="Lifestyle"></label><label class="field"><span>Icon</span><input id="category-icon" maxlength="2" placeholder="•"></label><label class="field"><span>Type</span><select id="category-type"><option value="expense">Expense</option><option value="income">Income</option><option value="transfer">Transfer</option><option value="neutral">Neutral</option></select></label></div>
+        <label class="field"><span>Color</span><select id="category-color"></select></label>
         <button class="primary-button" type="submit">Save category</button>
       </form>
     </section>
