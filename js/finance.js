@@ -75,33 +75,33 @@ export const DEFAULT_CATEGORIES = Object.freeze([
 ]);
 
 export const DEFAULT_RULES = Object.freeze([
-  { id: "r_salary", label: "Salary and payroll", categoryId: "income_salary", keywords: ["salary", "gehalt", "lohn", "payroll", "mercedes", "daimler", "bonus", "stipend", "stipendium"], requireAll: false, priority: 100 },
-  { id: "r_freelance", label: "Freelance income", categoryId: "income_freelance", keywords: ["honorar", "freelance", "invoice payment", "rechnung beglichen", "consulting"], requireAll: false, priority: 88 },
-  { id: "r_dividend", label: "Dividends and interest", categoryId: "income_dividend", keywords: ["dividend", "dividende", "ausschuttung", "ausschüttung", "zinsgutschrift", "interest", "coupon"], requireAll: false, priority: 90 },
-  { id: "r_refund", label: "Refunds", categoryId: "refund", keywords: ["refund", "erstattung", "rueckerstattung", "rückerstattung", "reimbursement", "gutschrift", "chargeback"], requireAll: false, priority: 82 },
-  { id: "r_rent", label: "Rent", categoryId: "rent", keywords: ["miete", "rent", "wohnung", "nebenkosten wohnung", "kaution", "münchen miete", "munich rent"], requireAll: false, priority: 92 },
-  { id: "r_utilities", label: "Utilities and phone", categoryId: "utilities", keywords: ["vodafone", "telekom", "o2", "telefon", "internet", "strom", "gas", "stadtwerke", "wasser", "heizung", "rundfunk", "gez", "ard zdf"], requireAll: false, priority: 86 },
-  { id: "r_insurance", label: "Insurance", categoryId: "insurance", keywords: ["versicherung", "insurance", "haftpflicht", "krankenversicherung", "tk", "aok", "barmer", "allianz", "huk", "arag"], requireAll: false, priority: 82 },
-  { id: "r_groceries", label: "Groceries", categoryId: "groceries", keywords: ["rewe", "edeka", "aldi", "lidl", "kaufland", "penny", "netto", "dm-drogerie", "rossmann", "supermarkt", "grocery", "biomarkt", "denns"], requireAll: false, priority: 86 },
-  { id: "r_restaurants", label: "Restaurants and coffee", categoryId: "restaurants", keywords: ["restaurant", "cafe", "coffee", "kaffee", "bäcker", "baecker", "bäckerei", "mcdonald", "burger", "subway", "lieferando", "wolt", "uber eats", "starbucks", "mensa"], requireAll: false, priority: 80 },
-  { id: "r_cash", label: "Cash withdrawals", categoryId: "cash", keywords: ["bargeld", "cash", "atm", "geldautomat", "withdrawal", "auszahlung"], requireAll: false, priority: 88 },
-  { id: "r_transport", label: "Fuel and rides", categoryId: "transport", keywords: ["tank", "aral", "shell", "esso", "avia", "fuel", "tanken", "uber", "bolt", "taxi", "parking", "parkhaus"], requireAll: false, priority: 78 },
-  { id: "r_public_transport", label: "Public transport", categoryId: "public_transport", keywords: ["db bahn", "deutsche bahn", "bahn", "mvg", "bvg", "rmv", "vvs", "trainline", "fahrkarte", "deutschlandticket", "semester ticket", "semesterticket"], requireAll: false, priority: 82 },
-  { id: "r_travel", label: "Travel", categoryId: "travel", keywords: ["airbnb", "booking.com", "ryanair", "lufthansa", "hotel", "hostel", "flight", "flug", "agoda", "skyscanner", "bahncard", "korea air", "trip.com"], requireAll: false, priority: 78 },
-  { id: "r_online", label: "Online shopping", categoryId: "shopping", keywords: ["amazon", "paypal", "ebay", "zalando", "ikea", "aliexpress", "online kauf", "online purchase", "etsy"], requireAll: false, priority: 66 },
-  { id: "r_clothing", label: "Clothing", categoryId: "clothing", keywords: ["uniqlo", "zara", "h&m", "hm.com", "zalando", "nike", "adidas", "clothing", "kleidung", "decathlon"], requireAll: false, priority: 76 },
-  { id: "r_electronics", label: "Electronics and tools", categoryId: "electronics", keywords: ["mediamarkt", "saturn", "notebooksbilliger", "alternate", "thomann", "apple", "google store", "microsoft", "hardware", "electronics"], requireAll: false, priority: 77 },
-  { id: "r_subscription", label: "Subscriptions", categoryId: "subscriptions", keywords: ["spotify", "netflix", "prime", "youtube premium", "adobe", "icloud", "google storage", "openai", "chatgpt", "github", "notion", "microsoft 365"], requireAll: false, priority: 78 },
-  { id: "r_health", label: "Health", categoryId: "health", keywords: ["apotheke", "pharmacy", "doctor", "arzt", "dentist", "zahnarzt", "medikament", "clinic", "klinik", "therapie"], requireAll: false, priority: 78 },
-  { id: "r_education", label: "Education", categoryId: "education", keywords: ["tum", "tuition", "semesterbeitrag", "uni", "university", "studentenwerk", "schulgeld", "coursera", "udemy", "book", "textbook"], requireAll: false, priority: 84 },
-  { id: "r_sport", label: "Sport", categoryId: "sport", keywords: ["fitness", "gym", "bouldern", "crossfit", "sport", "urban sports", "mcfit", "fitx", "wellpass", "protein"], requireAll: false, priority: 74 },
-  { id: "r_entertainment", label: "Entertainment", categoryId: "entertainment", keywords: ["kino", "cinema", "steam", "playstation", "nintendo", "concert", "konzert", "eventim", "museum", "theater"], requireAll: false, priority: 68 },
-  { id: "r_bafog", label: "BAföG", categoryId: "debt_bafog", keywords: ["bafög", "bafoeg", "bafog", "auslandsbafög", "bundesverwaltungsamt"], requireAll: false, priority: 92 },
-  { id: "r_invest", label: "Broker and investing", categoryId: "investment", keywords: ["trade republic", "smartbroker", "broker", "etf", "visualvest", "depot", "finanzen.net", "isin", "wertpapier", "sparplan", "buy order", "sell order"], requireAll: false, priority: 90 },
-  { id: "r_gifts", label: "Gifts and family", categoryId: "gifts_family", keywords: ["geschenk", "gift", "birthday", "bday", "mama", "papa", "family", "familie", "flowers", "blumen"], requireAll: false, priority: 58 },
-  { id: "r_donations", label: "Donations", categoryId: "donations", keywords: ["donation", "spende", "charity", "ngo", "unicef", "rotes kreuz", "red cross"], requireAll: false, priority: 72 },
-  { id: "r_taxes", label: "Taxes", categoryId: "taxes", keywords: ["steuer", "tax", "finanzamt", "taxfix", "elster", "solidaritätszuschlag"], requireAll: false, priority: 78 },
-  { id: "r_bank_fees", label: "Bank fees", categoryId: "bank_fees", keywords: ["kontoführung", "kontofuehrung", "account fee", "gebühr", "fee", "entgelt", "overdraft", "zinsbelastung", "foreign transaction"], requireAll: false, priority: 76 }
+  { id: "r_salary", label: "Salary and payroll", categoryId: "income_salary", keywords: ["salary", "gehalt", "lohn", "payroll", "mercedes", "daimler", "bonus", "stipend", "stipendium"] },
+  { id: "r_freelance", label: "Freelance income", categoryId: "income_freelance", keywords: ["honorar", "freelance", "invoice payment", "rechnung beglichen", "consulting"] },
+  { id: "r_dividend", label: "Dividends and interest", categoryId: "income_dividend", keywords: ["dividend", "dividende", "ausschuttung", "ausschüttung", "zinsgutschrift", "interest", "coupon"] },
+  { id: "r_refund", label: "Refunds", categoryId: "refund", keywords: ["refund", "erstattung", "rueckerstattung", "rückerstattung", "reimbursement", "gutschrift", "chargeback"] },
+  { id: "r_rent", label: "Rent", categoryId: "rent", keywords: ["miete", "rent", "wohnung", "nebenkosten wohnung", "kaution", "münchen miete", "munich rent"] },
+  { id: "r_utilities", label: "Utilities and phone", categoryId: "utilities", keywords: ["vodafone", "telekom", "o2", "telefon", "internet", "strom", "gas", "stadtwerke", "wasser", "heizung", "rundfunk", "gez", "ard zdf"] },
+  { id: "r_insurance", label: "Insurance", categoryId: "insurance", keywords: ["versicherung", "insurance", "haftpflicht", "krankenversicherung", "tk", "aok", "barmer", "allianz", "huk", "arag"] },
+  { id: "r_groceries", label: "Groceries", categoryId: "groceries", keywords: ["rewe", "edeka", "aldi", "lidl", "kaufland", "penny", "netto", "dm-drogerie", "rossmann", "supermarkt", "grocery", "biomarkt", "denns"] },
+  { id: "r_restaurants", label: "Restaurants and coffee", categoryId: "restaurants", keywords: ["restaurant", "cafe", "coffee", "kaffee", "bäcker", "baecker", "bäckerei", "mcdonald", "burger", "subway", "lieferando", "wolt", "uber eats", "starbucks", "mensa"] },
+  { id: "r_cash", label: "Cash withdrawals", categoryId: "cash", keywords: ["bargeld", "cash", "atm", "geldautomat", "withdrawal", "auszahlung"] },
+  { id: "r_transport", label: "Fuel and rides", categoryId: "transport", keywords: ["tank", "aral", "shell", "esso", "avia", "fuel", "tanken", "uber", "bolt", "taxi", "parking", "parkhaus"] },
+  { id: "r_public_transport", label: "Public transport", categoryId: "public_transport", keywords: ["db bahn", "deutsche bahn", "bahn", "mvg", "bvg", "rmv", "vvs", "trainline", "fahrkarte", "deutschlandticket", "semester ticket", "semesterticket"] },
+  { id: "r_travel", label: "Travel", categoryId: "travel", keywords: ["airbnb", "booking.com", "ryanair", "lufthansa", "hotel", "hostel", "flight", "flug", "agoda", "skyscanner", "bahncard", "korea air", "trip.com"] },
+  { id: "r_online", label: "Online shopping", categoryId: "shopping", keywords: ["amazon", "paypal", "ebay", "zalando", "ikea", "aliexpress", "online kauf", "online purchase", "etsy"] },
+  { id: "r_clothing", label: "Clothing", categoryId: "clothing", keywords: ["uniqlo", "zara", "h&m", "hm.com", "zalando", "nike", "adidas", "clothing", "kleidung", "decathlon"] },
+  { id: "r_electronics", label: "Electronics and tools", categoryId: "electronics", keywords: ["mediamarkt", "saturn", "notebooksbilliger", "alternate", "thomann", "apple", "google store", "microsoft", "hardware", "electronics"] },
+  { id: "r_subscription", label: "Subscriptions", categoryId: "subscriptions", keywords: ["spotify", "netflix", "prime", "youtube premium", "adobe", "icloud", "google storage", "openai", "chatgpt", "github", "notion", "microsoft 365"] },
+  { id: "r_health", label: "Health", categoryId: "health", keywords: ["apotheke", "pharmacy", "doctor", "arzt", "dentist", "zahnarzt", "medikament", "clinic", "klinik", "therapie"] },
+  { id: "r_education", label: "Education", categoryId: "education", keywords: ["tum", "tuition", "semesterbeitrag", "uni", "university", "studentenwerk", "schulgeld", "coursera", "udemy", "book", "textbook"] },
+  { id: "r_sport", label: "Sport", categoryId: "sport", keywords: ["fitness", "gym", "bouldern", "crossfit", "sport", "urban sports", "mcfit", "fitx", "wellpass", "protein"] },
+  { id: "r_entertainment", label: "Entertainment", categoryId: "entertainment", keywords: ["kino", "cinema", "steam", "playstation", "nintendo", "concert", "konzert", "eventim", "museum", "theater"] },
+  { id: "r_bafog", label: "BAföG", categoryId: "debt_bafog", keywords: ["bafög", "bafoeg", "bafog", "auslandsbafög", "bundesverwaltungsamt"] },
+  { id: "r_invest", label: "Broker and investing", categoryId: "investment", keywords: ["trade republic", "smartbroker", "broker", "etf", "visualvest", "depot", "finanzen.net", "isin", "wertpapier", "sparplan", "buy order", "sell order"] },
+  { id: "r_gifts", label: "Gifts and family", categoryId: "gifts_family", keywords: ["geschenk", "gift", "birthday", "bday", "mama", "papa", "family", "familie", "flowers", "blumen"] },
+  { id: "r_donations", label: "Donations", categoryId: "donations", keywords: ["donation", "spende", "charity", "ngo", "unicef", "rotes kreuz", "red cross"] },
+  { id: "r_taxes", label: "Taxes", categoryId: "taxes", keywords: ["steuer", "tax", "finanzamt", "taxfix", "elster", "solidaritätszuschlag"] },
+  { id: "r_bank_fees", label: "Bank fees", categoryId: "bank_fees", keywords: ["kontoführung", "kontofuehrung", "account fee", "gebühr", "fee", "entgelt", "overdraft", "zinsbelastung", "foreign transaction"] }
 ]);
 
 export const DEFAULT_ACCOUNTS = Object.freeze([
@@ -256,20 +256,23 @@ export function sortByDateDesc(entries) {
 }
 
 export function categorizeTransaction(tx, rules = DEFAULT_RULES, categories = DEFAULT_CATEGORIES, accounts = []) {
-  const text = normalizeText([tx.description, tx.counterparty, tx.rawText, tx.note].filter(Boolean).join(" "));
+  const rawText = [tx.description, tx.counterparty, tx.rawText, tx.note].filter(Boolean).join(" ");
+  const normalizedText = normalizeText(rawText);
   const categoryMap = new Map(categories.map(cat => [cat.id, cat]));
   const detectedTransfer = detectInternalTransfer(tx, accounts);
   if (detectedTransfer) return detectedTransfer;
   const matches = [];
 
   for (const rule of rules) {
-    const keywords = (rule.keywords || []).map(normalizeText).filter(Boolean);
-    if (!keywords.length) continue;
+    const rawKeywords = (rule.keywords || []).map(value => String(value || "").trim()).filter(Boolean);
+    if (!rawKeywords.length) continue;
+    const caseSensitive = Boolean(rule.caseSensitive);
+    const text = caseSensitive ? rawText : normalizedText;
+    const keywords = caseSensitive ? rawKeywords : rawKeywords.map(normalizeText).filter(Boolean);
     const matched = keywords.filter(keyword => text.includes(keyword));
-    if (rule.requireAll && matched.length !== keywords.length) continue;
-    if (!rule.requireAll && !matched.length) continue;
+    if (!matched.length) continue;
     const exactPhraseBonus = matched.some(item => item.includes(" ")) ? 12 : 0;
-    const score = Number(rule.priority || 50) + matched.length * 13 + exactPhraseBonus;
+    const score = matched.length * 18 + exactPhraseBonus;
     matches.push({ rule, score, matched });
   }
 

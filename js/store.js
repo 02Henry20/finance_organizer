@@ -104,7 +104,7 @@ function normalizeArray(name, docs) {
   if (name === "transactions") return sortByDateDesc(items);
   if (name === "accounts") return items.sort((a, b) => Number(a.sort || 0) - Number(b.sort || 0) || String(a.name).localeCompare(String(b.name)));
   if (name === "categories") return items.sort((a, b) => String(a.group).localeCompare(String(b.group)) || String(a.name).localeCompare(String(b.name)));
-  if (name === "rules") return items.sort((a, b) => Number(b.priority || 0) - Number(a.priority || 0));
+  if (name === "rules") return items.sort((a, b) => String(a.categoryId || "").localeCompare(String(b.categoryId || "")) || String(a.label || "").localeCompare(String(b.label || "")));
   if (name === "assets") return items.sort((a, b) => String(a.name || a.symbol).localeCompare(String(b.name || b.symbol)));
   return items;
 }
@@ -312,8 +312,7 @@ export async function saveRule(input) {
     label: input.label?.trim() || keywords.join(" + ") || "New rule",
     categoryId: input.categoryId || "misc",
     keywords,
-    requireAll: Boolean(input.requireAll),
-    priority: Number(input.priority || 50)
+    caseSensitive: Boolean(input.caseSensitive)
   });
   return id;
 }
@@ -494,7 +493,12 @@ export async function importStateBackup(backup, { replace = false } = {}) {
   }
 
   const counts = {};
-  for (const name of collections) counts[name] = await writeCollectionDocs(name, backup[name] || []);
+  const rowsByCollection = Object.fromEntries(collections.map(name => [name, Array.isArray(backup[name]) ? [...backup[name]] : []]));
+  if (!rowsByCollection.categories.some(category => category.id === "misc")) {
+    const misc = DEFAULT_CATEGORIES.find(category => category.id === "misc");
+    if (misc) rowsByCollection.categories.push(misc);
+  }
+  for (const name of collections) counts[name] = await writeCollectionDocs(name, rowsByCollection[name]);
 
   if (backup.settings && typeof backup.settings === "object") {
     const settings = sanitizeForFirestore({ ...backup.settings, marketApiKeyLocalOnly: "" });

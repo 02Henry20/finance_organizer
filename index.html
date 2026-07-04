@@ -18,11 +18,6 @@
       <p class="eyebrow">PRIVATE FINANCE ORGANIZER</p>
       <h1>Money, holdings and rules in one calm dashboard.</h1>
       <p class="lead">A clean fintech-style workspace for bank imports, account balances, broker holdings, debt and review queues.</p>
-      <div class="auth-feature-grid">
-        <article><strong>Import</strong><span>CSV/TSV bank exports with mapping and duplicate checks.</span></article>
-        <article><strong>Organize</strong><span>Accounts, broker liquidity, holdings, categories and rules.</span></article>
-        <article><strong>Backup</strong><span>Full JSON export/import for all user data.</span></article>
-      </div>
     </section>
 
     <section class="auth-card surface-card">
@@ -62,12 +57,17 @@
       <section class="view active" data-view-section="overview">
         <div class="home-layout">
           <article class="balance-card surface-card">
-            <div class="metric-label"><span>Net worth</span><span id="overview-date" class="metric-tag">Today</span></div>
+            <div class="metric-label net-worth-heading"><span id="overview-date" class="metric-tag hero-date">Today</span><span>Net worth</span></div>
             <strong id="net-worth-value" class="hero-value">—</strong>
-            <div class="quick-actions">
-              <button class="pill-action" data-open-modal="transaction" type="button">＋ Transaction</button>
-              <button class="pill-action" data-go-view="import" type="button">⇣ Import</button>
-              <button class="pill-action" data-open-modal="account" type="button">＋ Account</button>
+            <div class="net-worth-meta">
+              <div>
+                <small>Change</small>
+                <strong id="net-worth-delta">—</strong>
+              </div>
+              <div>
+                <small id="net-worth-window">Selected window</small>
+                <span><b id="window-income">—</b> in · <b id="window-expense">—</b> out</span>
+              </div>
             </div>
           </article>
 
@@ -81,7 +81,6 @@
           <article class="metric-card surface-card"><span>Liquidity</span><strong id="liquidity-value">—</strong><small id="liquidity-delta">—</small></article>
           <article class="metric-card surface-card"><span>Assets</span><strong id="asset-value">—</strong><small id="asset-delta">—</small></article>
           <article class="metric-card surface-card danger"><span>Debt</span><strong id="debt-value">—</strong><small id="debt-delta">—</small></article>
-          <article class="metric-card surface-card"><span>This month</span><strong id="month-net">—</strong><small><span id="month-income">—</span> in · <span id="month-expense">—</span> out</small></article>
         </div>
 
         <section class="surface-card account-strip-card">
@@ -125,7 +124,7 @@
       <section class="view" data-view-section="import">
         <div class="import-layout">
           <article class="surface-card import-card main-import">
-            <div class="panel-heading"><div><p class="eyebrow">BANK EXPORTS</p><h3>Import CSV / TSV</h3></div><button class="ghost-button compact" data-go-view="rules" type="button">Manage rules</button></div>
+            <div class="panel-heading"><div><p class="eyebrow">BANK EXPORTS</p><h3>Import CSV / TSV</h3></div></div>
             <p class="muted">Upload a bank export, choose the target account, check column mapping, then import. Ambiguous rows go into the review queue.</p>
             <div class="form-stack">
               <label class="field"><span>Target account</span><select id="import-account"></select></label>
@@ -147,10 +146,9 @@
       </section>
 
       <section class="view" data-view-section="accounts">
-        <div class="page-toolbar surface-card"><div><p class="eyebrow">MONEY CONTAINERS</p><h3>Accounts & broker holdings</h3></div><div class="toolbar-actions"><button id="hidden-accounts-jump" class="ghost-button compact" type="button" hidden>Hidden accounts</button><button class="primary-button compact" data-open-modal="account" type="button">Add account</button></div></div>
+        <div class="page-toolbar surface-card"><div><p class="eyebrow">MONEY CONTAINERS</p><h3>Accounts & broker holdings</h3></div><div class="toolbar-actions"><button id="hidden-accounts-toggle" class="ghost-button compact" type="button" hidden aria-expanded="false">Show hidden accounts</button><button class="primary-button compact" data-open-modal="account" type="button">Add account</button></div></div>
         <div id="accounts-grid" class="cards-grid"></div>
-        <section id="hidden-accounts-section" class="hidden-accounts-section surface-card" hidden>
-          <div class="panel-heading"><div><p class="eyebrow">HIDDEN ACCOUNTS</p><h3>Archived accounts</h3></div></div>
+        <section id="hidden-accounts-section" class="hidden-accounts-section" hidden>
           <div id="hidden-accounts-grid" class="cards-grid hidden-grid"></div>
         </section>
       </section>
@@ -286,7 +284,7 @@
         <label class="field"><span>Label</span><input id="rule-label" placeholder="Groceries at REWE"></label>
         <label class="field"><span>Category</span><select id="rule-category"></select></label>
         <label class="field"><span>Keywords / phrases</span><input id="rule-keywords" placeholder="rewe, edeka, grocery"></label>
-        <div class="form-grid two"><label class="field"><span>Priority</span><input id="rule-priority" type="number" min="1" max="200" value="50"></label><label class="field"><span>Match mode</span><select id="rule-require-all"><option value="false">Any keyword</option><option value="true">All keywords together</option></select></label></div>
+        <label class="field"><span>Case sensitive</span><select id="rule-case-sensitive"><option value="false">No</option><option value="true">Yes</option></select></label>
         <div class="button-row"><button class="primary-button" type="submit">Save rule</button><button id="delete-rule-button" class="danger-button" type="button" hidden>Delete</button></div>
       </form>
     </section>

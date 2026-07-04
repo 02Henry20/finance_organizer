@@ -87,6 +87,7 @@ let activePreview = null;
 let renderTimer = null;
 let quoteRefreshTimer = null;
 let settingsDirty = false;
+let hiddenAccountsExpanded = false;
 
 function firebaseErrorMessage(error) {
   const messages = {
@@ -298,6 +299,22 @@ function deltaHtml(current, previous, { inverted = false, label = "" } = {}) {
   return `<span class="${cls}">${arrow} ${formatCurrency(Math.abs(delta), selectedCurrency())} · ${Math.abs(pct).toFixed(1)}%</span> ${escapeHtml(label)}`;
 }
 
+function comparisonWindowFlow(compareDate) {
+  const cats = categoryMap();
+  const today = TODAY();
+  return state.transactions.reduce((totals, tx) => {
+    const date = String(tx.date || "");
+    if (!date || date < compareDate || date > today) return totals;
+    const cat = cats.get(tx.categoryId) || cats.get("misc");
+    if (cat?.type === "transfer" && state.settings.hideInternalTransfersInSpending) return totals;
+    const amount = convertCurrency(Number(tx.amount || 0), tx.currency || selectedCurrency(), state.settings);
+    if (amount >= 0) totals.income += amount;
+    else totals.expense += Math.abs(amount);
+    totals.net += amount;
+    return totals;
+  }, { income: 0, expense: 0, net: 0 });
+}
+
 function renderOverview() {
   const currency = selectedCurrency();
   const portfolio = calculatePortfolio(state);
@@ -308,8 +325,19 @@ function renderOverview() {
   const categorySpend = buildCategorySpend(state.transactions, state.categories, state.settings, monthly.currentMonth);
   const reviewRows = state.transactions.filter(tx => tx.review);
   const review = reviewRows.slice(0, 8);
-  $("#overview-date").textContent = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date());
-  $("#net-worth-value").textContent = formatCurrency(portfolio.netWorth, currency);
+  const windowFlow = comparisonWindowFlow(compareDate);
+  const overviewDate = $("#overview-date");
+  const netWorthValue = $("#net-worth-value");
+  const netWorthDelta = $("#net-worth-delta");
+  const netWorthWindow = $("#net-worth-window");
+  const windowIncome = $("#window-income");
+  const windowExpense = $("#window-expense");
+  if (overviewDate) overviewDate.textContent = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date());
+  if (netWorthValue) netWorthValue.textContent = formatCurrency(portfolio.netWorth, currency);
+  if (netWorthDelta) netWorthDelta.innerHTML = deltaHtml(portfolio.netWorth, previousPortfolio.netWorth, { label: compareText });
+  if (netWorthWindow) netWorthWindow.textContent = `Cashflow ${compareText}`;
+  if (windowIncome) windowIncome.textContent = formatCurrency(windowFlow.income, currency);
+  if (windowExpense) windowExpense.textContent = formatCurrency(windowFlow.expense, currency);
   $("#liquidity-value").textContent = formatCurrency(portfolio.liquidity, currency);
   $("#asset-value").textContent = formatCurrency(portfolio.assetValue, currency);
   $("#debt-value").textContent = formatCurrency(portfolio.debt, currency);
@@ -319,11 +347,17 @@ function renderOverview() {
   if (liquidityDelta) liquidityDelta.innerHTML = deltaHtml(portfolio.liquidity, previousPortfolio.liquidity, { label: compareText });
   if (assetDelta) assetDelta.innerHTML = deltaHtml(portfolio.assetValue, previousPortfolio.assetValue, { label: compareText });
   if (debtDelta) debtDelta.innerHTML = deltaHtml(portfolio.debt, previousPortfolio.debt, { inverted: true, label: compareText });
-  $("#month-income").textContent = formatCurrency(monthly.current.income, currency);
-  $("#month-expense").textContent = formatCurrency(monthly.current.expense, currency);
-  $("#month-net").textContent = formatCurrency(monthly.current.net, currency);
-  $("#month-net").className = monthly.current.net >= 0 ? "amount-pos" : "amount-neg";
-  $("#current-month-pill").textContent = monthly.currentMonth;
+  const monthIncome = $("#month-income");
+  const monthExpense = $("#month-expense");
+  const monthNet = $("#month-net");
+  const currentMonthPill = $("#current-month-pill");
+  if (monthIncome) monthIncome.textContent = formatCurrency(monthly.current.income, currency);
+  if (monthExpense) monthExpense.textContent = formatCurrency(monthly.current.expense, currency);
+  if (monthNet) {
+    monthNet.textContent = formatCurrency(monthly.current.net, currency);
+    monthNet.className = monthly.current.net >= 0 ? "amount-pos" : "amount-neg";
+  }
+  if (currentMonthPill) currentMonthPill.textContent = monthly.currentMonth;
   const reviewPanel = $("#review-panel");
   const reviewCount = $("#review-count");
   const reviewList = $("#review-list");
@@ -410,15 +444,17 @@ function renderAccounts() {
   const hiddenAccounts = state.accounts.filter(account => account.hidden);
   const hiddenSection = $("#hidden-accounts-section");
   const hiddenGrid = $("#hidden-accounts-grid");
-  const hiddenJump = $("#hidden-accounts-jump");
-  if (hiddenJump) {
-    hiddenJump.hidden = hiddenAccounts.length === 0;
-    hiddenJump.textContent = `Hidden accounts (${hiddenAccounts.length})`;
+  const hiddenToggle = $("#hidden-accounts-toggle");
+  if (!hiddenAccounts.length) hiddenAccountsExpanded = false;
+  if (hiddenToggle) {
+    hiddenToggle.hidden = hiddenAccounts.length === 0;
+    hiddenToggle.textContent = hiddenAccountsExpanded ? `Hide hidden accounts (${hiddenAccounts.length})` : `Show hidden accounts (${hiddenAccounts.length})`;
+    hiddenToggle.setAttribute("aria-expanded", String(hiddenAccountsExpanded));
   }
-  if (hiddenSection) hiddenSection.hidden = hiddenAccounts.length === 0;
+  if (hiddenSection) hiddenSection.hidden = hiddenAccounts.length === 0 || !hiddenAccountsExpanded;
   if (hiddenGrid) hiddenGrid.replaceChildren();
   if (!accounts.length) {
-    container.innerHTML = `<article class="surface-card item-card empty-card"><h3>No visible accounts</h3><p class="muted">Add an account or restore one from Hidden accounts below.</p></article>`;
+    container.innerHTML = `<article class="surface-card item-card empty-card"><h3>No visible accounts</h3><p class="muted">Add an account or restore one from the hidden accounts toggle above.</p></article>`;
   }
   for (const account of accounts) {
     const row = rows.find(item => item.id === account.id) || { ...account, balance: { raw: Number(account.openingBalance || 0), converted: Number(account.openingBalance || 0) } };
@@ -498,10 +534,11 @@ function renderRules() {
     const wrapper = document.createElement("section");
     wrapper.className = "rule-group";
     wrapper.innerHTML = `<div class="rule-group-heading"><strong><span class="category-color-dot" style="--cat-color:${safeColor(group.cat?.color)}"></span>${escapeHtml(group.cat?.icon || "?")} ${escapeHtml(group.cat?.name || "Misc")}</strong><small>${escapeHtml(group.cat?.group || "Misc")}</small></div>`;
-    for (const rule of group.rules.sort((a, b) => Number(b.priority || 0) - Number(a.priority || 0))) {
+    for (const rule of group.rules.sort((a, b) => String(a.label || "").localeCompare(String(b.label || "")))) {
       const row = document.createElement("div");
       row.className = "settings-row rule-row";
-      row.innerHTML = `<div><strong>${escapeHtml(rule.label)}</strong><small>${rule.requireAll ? "all keywords" : "any keyword"}: ${(rule.keywords || []).map(escapeHtml).join(", ")} · priority ${Number(rule.priority || 0)}</small></div><button class="ghost-button compact" data-edit-rule="${escapeHtml(rule.id)}" type="button">Edit</button>`;
+      const sensitivity = rule.caseSensitive ? "case-sensitive" : "case-insensitive";
+      row.innerHTML = `<div><strong>${escapeHtml(rule.label)}</strong><small>${sensitivity}: ${(rule.keywords || []).map(escapeHtml).join(", ")}</small></div><button class="ghost-button compact" data-edit-rule="${escapeHtml(rule.id)}" type="button">Edit</button>`;
       wrapper.append(row);
     }
     rulesList.append(wrapper);
@@ -658,8 +695,7 @@ function openRuleModal(id = "") {
   $("#rule-label").value = rule?.label || "";
   $("#rule-category").value = rule?.categoryId || "misc";
   $("#rule-keywords").value = (rule?.keywords || []).join(", ");
-  $("#rule-priority").value = rule?.priority ?? 50;
-  $("#rule-require-all").value = String(Boolean(rule?.requireAll));
+  $("#rule-case-sensitive").value = String(Boolean(rule?.caseSensitive));
   $("#delete-rule-button").hidden = !rule;
   openModal("rule");
 }
@@ -897,7 +933,10 @@ function wireEvents() {
   elements.signOut?.addEventListener("click", () => signOut(auth));
   $$(`[data-view]`).forEach(button => button.addEventListener("click", () => navigateTo(button.dataset.view)));
   $$(`[data-go-view]`).forEach(button => button.addEventListener("click", () => navigateTo(button.dataset.goView)));
-  $("#hidden-accounts-jump")?.addEventListener("click", () => $("#hidden-accounts-section")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  $("#hidden-accounts-toggle")?.addEventListener("click", () => {
+    hiddenAccountsExpanded = !hiddenAccountsExpanded;
+    requestRender();
+  });
   $("#settings-form")?.addEventListener("pointerdown", event => {
     if (event.target.closest("input,select,textarea,button")) markSettingsDirty();
   }, { passive: true });
@@ -1079,8 +1118,7 @@ function wireEvents() {
       label: $("#rule-label").value,
       categoryId: $("#rule-category").value,
       keywords: $("#rule-keywords").value,
-      priority: $("#rule-priority").value,
-      requireAll: $("#rule-require-all").value === "true"
+      caseSensitive: $("#rule-case-sensitive").value === "true"
     });
     toast("Rule saved");
     closeModal();
