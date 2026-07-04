@@ -140,7 +140,7 @@ export function rowToTransaction(row, mapping, context) {
     importBatchId: context.importBatchId,
     createdAtMs: Date.now()
   };
-  const categorization = categorizeTransaction(base, context.rules, context.categories);
+  const categorization = categorizeTransaction(base, context.rules, context.categories, context.accounts || []);
   const id = transactionHash(base);
   return {
     ...base,

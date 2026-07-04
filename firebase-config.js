@@ -1,3 +1,4 @@
+// Firebase web app config. API keys for Firebase web apps are public identifiers; security comes from Auth + Firestore rules.
 export const firebaseConfig = {
   apiKey: "AIzaSyCJHwDxf-IZYu08gUkMk5HIns1jHKrLA3w",
   authDomain: "weight-track-app-e0e2c.firebaseapp.com",

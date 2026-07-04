@@ -8,7 +8,10 @@ export const DEFAULT_SETTINGS = Object.freeze({
   marketProvider: "twelvedata",
   marketApiKeyLocalOnly: "",
   autoRefreshQuotes: "on",
+  autoRefreshFx: "on",
   hideInternalTransfersInSpending: true,
+  fxLastUpdatedAt: "",
+  fxSource: "static fallback",
   fxRates: {
     EUR: 1,
     USD: 0.92,
@@ -32,53 +35,72 @@ export const ACCOUNT_TYPES = [
 
 export const DEFAULT_CATEGORIES = Object.freeze([
   { id: "income_salary", name: "Salary", group: "Income", type: "income", icon: "↗" },
+  { id: "income_freelance", name: "Freelance / side income", group: "Income", type: "income", icon: "+" },
+  { id: "income_dividend", name: "Dividends & interest", group: "Income", type: "income", icon: "◒" },
   { id: "income_other", name: "Other income", group: "Income", type: "income", icon: "+" },
-  { id: "refund", name: "Refund", group: "Income", type: "income", icon: "↩" },
+  { id: "refund", name: "Refund / reimbursement", group: "Income", type: "income", icon: "↩" },
   { id: "transfer", name: "Internal transfer", group: "Neutral", type: "transfer", icon: "⇄" },
   { id: "investment", name: "Investment / broker", group: "Neutral", type: "transfer", icon: "◆" },
   { id: "debt_bafog", name: "BAföG / debt", group: "Neutral", type: "transfer", icon: "◌" },
   { id: "rent", name: "Rent", group: "Housing", type: "expense", icon: "⌂" },
   { id: "utilities", name: "Utilities & phone", group: "Housing", type: "expense", icon: "⌁" },
+  { id: "insurance", name: "Insurance", group: "Housing", type: "expense", icon: "▣" },
   { id: "groceries", name: "Groceries", group: "Living", type: "expense", icon: "◍" },
   { id: "restaurants", name: "Restaurants & coffee", group: "Living", type: "expense", icon: "☕" },
   { id: "cash", name: "Cash withdrawal", group: "Living", type: "expense", icon: "▣" },
   { id: "transport", name: "Transport & fuel", group: "Mobility", type: "expense", icon: "→" },
+  { id: "public_transport", name: "Public transport", group: "Mobility", type: "expense", icon: "▱" },
   { id: "travel", name: "Travel", group: "Mobility", type: "expense", icon: "✈" },
   { id: "shopping", name: "Shopping / online", group: "Lifestyle", type: "expense", icon: "◧" },
+  { id: "clothing", name: "Clothing", group: "Lifestyle", type: "expense", icon: "◨" },
+  { id: "electronics", name: "Electronics & tools", group: "Lifestyle", type: "expense", icon: "⌘" },
   { id: "subscriptions", name: "Subscriptions", group: "Lifestyle", type: "expense", icon: "◎" },
   { id: "health", name: "Health", group: "Lifestyle", type: "expense", icon: "✚" },
   { id: "education", name: "Education", group: "Lifestyle", type: "expense", icon: "▱" },
   { id: "sport", name: "Sport", group: "Lifestyle", type: "expense", icon: "△" },
-  { id: "taxes", name: "Taxes & fees", group: "Admin", type: "expense", icon: "%" },
-  { id: "gifts_family", name: "Gifts & family", group: "Personal", type: "expense", icon: "♡" },
   { id: "entertainment", name: "Entertainment", group: "Lifestyle", type: "expense", icon: "☆" },
+  { id: "taxes", name: "Taxes & fees", group: "Admin", type: "expense", icon: "%" },
+  { id: "bank_fees", name: "Bank fees", group: "Admin", type: "expense", icon: "∙" },
+  { id: "gifts_family", name: "Gifts & family", group: "Personal", type: "expense", icon: "♡" },
+  { id: "donations", name: "Donations", group: "Personal", type: "expense", icon: "♧" },
   { id: "misc", name: "Misc / not applicable", group: "Misc", type: "neutral", icon: "?" }
 ]);
 
 export const DEFAULT_RULES = Object.freeze([
-  { id: "r_salary", label: "Salary words", categoryId: "income_salary", keywords: ["salary", "gehalt", "lohn", "payroll", "mercedes"], requireAll: false, priority: 95 },
-  { id: "r_rent", label: "Rent", categoryId: "rent", keywords: ["miete", "rent", "wohnung", "münchen miete", "munich rent"], requireAll: false, priority: 90 },
-  { id: "r_groceries", label: "Groceries", categoryId: "groceries", keywords: ["rewe", "edeka", "aldi", "lidl", "kaufland", "penny", "netto", "dm-drogerie", "supermarkt"], requireAll: false, priority: 84 },
-  { id: "r_restaurants", label: "Food outside", categoryId: "restaurants", keywords: ["restaurant", "cafe", "coffee", "bäcker", "baecker", "bäckerei", "mcdonald", "burger", "subway", "lieferando", "starbucks"], requireAll: false, priority: 78 },
-  { id: "r_transport", label: "Transport", categoryId: "transport", keywords: ["tank", "aral", "shell", "esso", "fuel", "db bahn", "deutsche bahn", "uber", "bolt", "mvg", "bvg", "fahrkarte", "tanken"], requireAll: false, priority: 76 },
-  { id: "r_travel", label: "Travel", categoryId: "travel", keywords: ["airbnb", "booking.com", "ryanair", "lufthansa", "hotel", "hostel", "flight", "flug", "trainline"], requireAll: false, priority: 76 },
-  { id: "r_online", label: "Online shopping", categoryId: "shopping", keywords: ["amazon", "paypal", "ebay", "zalando", "ikea", "thomann", "online kauf", "aliexpress"], requireAll: false, priority: 64 },
-  { id: "r_subscription", label: "Subscriptions", categoryId: "subscriptions", keywords: ["spotify", "netflix", "prime", "youtube premium", "adobe", "icloud", "google storage", "openai", "chatgpt"], requireAll: false, priority: 74 },
-  { id: "r_phone", label: "Phone & internet", categoryId: "utilities", keywords: ["vodafone", "telekom", "o2", "telefon", "internet", "strom", "gas", "rundfunk"], requireAll: false, priority: 82 },
-  { id: "r_education", label: "Education", categoryId: "education", keywords: ["tum", "tuition", "semesterbeitrag", "uni", "university", "studentenwerk", "schulgeld"], requireAll: false, priority: 82 },
-  { id: "r_cash", label: "Cash", categoryId: "cash", keywords: ["bargeld", "cash", "atm", "geldautomat", "withdrawal", "auszahlung"], requireAll: false, priority: 86 },
-  { id: "r_bafog", label: "BAföG", categoryId: "debt_bafog", keywords: ["bafög", "bafoeg", "bafog", "auslandsbafög"], requireAll: false, priority: 90 },
-  { id: "r_invest", label: "Broker / investing", categoryId: "investment", keywords: ["trade republic", "smartbroker", "broker", "etf", "visualvest", "depot", "finanzen.net", "isin"], requireAll: false, priority: 88 },
-  { id: "r_gifts", label: "Gifts/family", categoryId: "gifts_family", keywords: ["geschenk", "birthday", "bday", "mama", "papa", "family", "familie"], requireAll: false, priority: 52 },
-  { id: "r_fees", label: "Fees and taxes", categoryId: "taxes", keywords: ["steuer", "tax", "gebühr", "fee", "entgelt", "strafe", "zins"], requireAll: false, priority: 70 },
-  { id: "r_sport", label: "Sport", categoryId: "sport", keywords: ["fitness", "gym", "bouldern", "crossfit", "sport", "urban sports"], requireAll: false, priority: 70 }
+  { id: "r_salary", label: "Salary and payroll", categoryId: "income_salary", keywords: ["salary", "gehalt", "lohn", "payroll", "mercedes", "daimler", "bonus", "stipend", "stipendium"], requireAll: false, priority: 100 },
+  { id: "r_freelance", label: "Freelance income", categoryId: "income_freelance", keywords: ["honorar", "freelance", "invoice payment", "rechnung beglichen", "consulting"], requireAll: false, priority: 88 },
+  { id: "r_dividend", label: "Dividends and interest", categoryId: "income_dividend", keywords: ["dividend", "dividende", "ausschuttung", "ausschüttung", "zinsgutschrift", "interest", "coupon"], requireAll: false, priority: 90 },
+  { id: "r_refund", label: "Refunds", categoryId: "refund", keywords: ["refund", "erstattung", "rueckerstattung", "rückerstattung", "reimbursement", "gutschrift", "chargeback"], requireAll: false, priority: 82 },
+  { id: "r_rent", label: "Rent", categoryId: "rent", keywords: ["miete", "rent", "wohnung", "nebenkosten wohnung", "kaution", "münchen miete", "munich rent"], requireAll: false, priority: 92 },
+  { id: "r_utilities", label: "Utilities and phone", categoryId: "utilities", keywords: ["vodafone", "telekom", "o2", "telefon", "internet", "strom", "gas", "stadtwerke", "wasser", "heizung", "rundfunk", "gez", "ard zdf"], requireAll: false, priority: 86 },
+  { id: "r_insurance", label: "Insurance", categoryId: "insurance", keywords: ["versicherung", "insurance", "haftpflicht", "krankenversicherung", "tk", "aok", "barmer", "allianz", "huk", "arag"], requireAll: false, priority: 82 },
+  { id: "r_groceries", label: "Groceries", categoryId: "groceries", keywords: ["rewe", "edeka", "aldi", "lidl", "kaufland", "penny", "netto", "dm-drogerie", "rossmann", "supermarkt", "grocery", "biomarkt", "denns"], requireAll: false, priority: 86 },
+  { id: "r_restaurants", label: "Restaurants and coffee", categoryId: "restaurants", keywords: ["restaurant", "cafe", "coffee", "kaffee", "bäcker", "baecker", "bäckerei", "mcdonald", "burger", "subway", "lieferando", "wolt", "uber eats", "starbucks", "mensa"], requireAll: false, priority: 80 },
+  { id: "r_cash", label: "Cash withdrawals", categoryId: "cash", keywords: ["bargeld", "cash", "atm", "geldautomat", "withdrawal", "auszahlung"], requireAll: false, priority: 88 },
+  { id: "r_transport", label: "Fuel and rides", categoryId: "transport", keywords: ["tank", "aral", "shell", "esso", "avia", "fuel", "tanken", "uber", "bolt", "taxi", "parking", "parkhaus"], requireAll: false, priority: 78 },
+  { id: "r_public_transport", label: "Public transport", categoryId: "public_transport", keywords: ["db bahn", "deutsche bahn", "bahn", "mvg", "bvg", "rmv", "vvs", "trainline", "fahrkarte", "deutschlandticket", "semester ticket", "semesterticket"], requireAll: false, priority: 82 },
+  { id: "r_travel", label: "Travel", categoryId: "travel", keywords: ["airbnb", "booking.com", "ryanair", "lufthansa", "hotel", "hostel", "flight", "flug", "agoda", "skyscanner", "bahncard", "korea air", "trip.com"], requireAll: false, priority: 78 },
+  { id: "r_online", label: "Online shopping", categoryId: "shopping", keywords: ["amazon", "paypal", "ebay", "zalando", "ikea", "aliexpress", "online kauf", "online purchase", "etsy"], requireAll: false, priority: 66 },
+  { id: "r_clothing", label: "Clothing", categoryId: "clothing", keywords: ["uniqlo", "zara", "h&m", "hm.com", "zalando", "nike", "adidas", "clothing", "kleidung", "decathlon"], requireAll: false, priority: 76 },
+  { id: "r_electronics", label: "Electronics and tools", categoryId: "electronics", keywords: ["mediamarkt", "saturn", "notebooksbilliger", "alternate", "thomann", "apple", "google store", "microsoft", "hardware", "electronics"], requireAll: false, priority: 77 },
+  { id: "r_subscription", label: "Subscriptions", categoryId: "subscriptions", keywords: ["spotify", "netflix", "prime", "youtube premium", "adobe", "icloud", "google storage", "openai", "chatgpt", "github", "notion", "microsoft 365"], requireAll: false, priority: 78 },
+  { id: "r_health", label: "Health", categoryId: "health", keywords: ["apotheke", "pharmacy", "doctor", "arzt", "dentist", "zahnarzt", "medikament", "clinic", "klinik", "therapie"], requireAll: false, priority: 78 },
+  { id: "r_education", label: "Education", categoryId: "education", keywords: ["tum", "tuition", "semesterbeitrag", "uni", "university", "studentenwerk", "schulgeld", "coursera", "udemy", "book", "textbook"], requireAll: false, priority: 84 },
+  { id: "r_sport", label: "Sport", categoryId: "sport", keywords: ["fitness", "gym", "bouldern", "crossfit", "sport", "urban sports", "mcfit", "fitx", "wellpass", "protein"], requireAll: false, priority: 74 },
+  { id: "r_entertainment", label: "Entertainment", categoryId: "entertainment", keywords: ["kino", "cinema", "steam", "playstation", "nintendo", "concert", "konzert", "eventim", "museum", "theater"], requireAll: false, priority: 68 },
+  { id: "r_bafog", label: "BAföG", categoryId: "debt_bafog", keywords: ["bafög", "bafoeg", "bafog", "auslandsbafög", "bundesverwaltungsamt"], requireAll: false, priority: 92 },
+  { id: "r_invest", label: "Broker and investing", categoryId: "investment", keywords: ["trade republic", "smartbroker", "broker", "etf", "visualvest", "depot", "finanzen.net", "isin", "wertpapier", "sparplan", "buy order", "sell order"], requireAll: false, priority: 90 },
+  { id: "r_gifts", label: "Gifts and family", categoryId: "gifts_family", keywords: ["geschenk", "gift", "birthday", "bday", "mama", "papa", "family", "familie", "flowers", "blumen"], requireAll: false, priority: 58 },
+  { id: "r_donations", label: "Donations", categoryId: "donations", keywords: ["donation", "spende", "charity", "ngo", "unicef", "rotes kreuz", "red cross"], requireAll: false, priority: 72 },
+  { id: "r_taxes", label: "Taxes", categoryId: "taxes", keywords: ["steuer", "tax", "finanzamt", "taxfix", "elster", "solidaritätszuschlag"], requireAll: false, priority: 78 },
+  { id: "r_bank_fees", label: "Bank fees", categoryId: "bank_fees", keywords: ["kontoführung", "kontofuehrung", "account fee", "gebühr", "fee", "entgelt", "overdraft", "zinsbelastung", "foreign transaction"], requireAll: false, priority: 76 }
 ]);
 
 export const DEFAULT_ACCOUNTS = Object.freeze([
-  { id: "cash_wallet", name: "Cash wallet", institution: "Manual", type: "cash", currency: "EUR", openingBalance: 0, hidden: false },
-  { id: "bank_main", name: "Main checking", institution: "Bank", type: "checking", currency: "EUR", openingBalance: 0, hidden: false },
-  { id: "broker_main", name: "Broker", institution: "Broker", type: "broker", currency: "EUR", openingBalance: 0, hidden: false },
-  { id: "bafog_debt", name: "BAföG debt", institution: "Manual", type: "debt", currency: "EUR", openingBalance: 0, hidden: false }
+  { id: "cash_wallet", name: "Cash wallet", institution: "Manual", type: "cash", currency: "EUR", openingBalance: 0, hidden: false, iban: "", accountNumber: "", bic: "", transferAliases: ["cash wallet", "bar" ] },
+  { id: "bank_main", name: "Main checking", institution: "Bank", type: "checking", currency: "EUR", openingBalance: 0, hidden: false, iban: "", accountNumber: "", bic: "", transferAliases: ["main checking", "girokonto", "own account" ] },
+  { id: "broker_main", name: "Broker", institution: "Broker", type: "broker", currency: "EUR", openingBalance: 0, hidden: false, iban: "", accountNumber: "", bic: "", transferAliases: ["broker", "trade republic", "depot", "securities account" ] },
+  { id: "bafog_debt", name: "BAföG debt", institution: "Manual", type: "debt", currency: "EUR", openingBalance: 0, hidden: false, iban: "", accountNumber: "", bic: "", transferAliases: ["bafög", "bafoeg", "bva" ] }
 ]);
 
 export function uid() {
@@ -95,6 +117,45 @@ export function normalizeText(value) {
     .replace(/[^a-z0-9äöüÄÖÜ€$%+\-\.\s]/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+export function normalizeIdentifier(value) {
+  return String(value ?? "")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ß/g, "ss")
+    .replace(/[^a-z0-9]/g, "")
+    .trim();
+}
+
+export function accountIdentifiers(account) {
+  const aliases = Array.isArray(account.transferAliases)
+    ? account.transferAliases
+    : String(account.transferAliases || "").split(",");
+  return [account.iban, account.accountNumber, account.bic, account.name, account.institution, ...aliases]
+    .map(value => ({ raw: String(value || "").trim(), normalized: normalizeIdentifier(value) }))
+    .filter(item => item.normalized.length >= 5);
+}
+
+export function detectInternalTransfer(tx, accounts = []) {
+  const text = normalizeIdentifier([tx.description, tx.counterparty, tx.rawText, tx.note].filter(Boolean).join(" "));
+  if (!text || !accounts.length) return null;
+  const otherAccounts = accounts.filter(account => account.id !== tx.accountId && !account.hidden);
+  for (const account of otherAccounts) {
+    const match = accountIdentifiers(account).find(identifier => text.includes(identifier.normalized));
+    if (match) {
+      return {
+        categoryId: "transfer",
+        confidence: 0.92,
+        review: false,
+        reason: `Detected own account identifier '${match.raw}' for ${account.name}.`,
+        matchedAccountId: account.id,
+        candidates: [{ categoryId: "transfer", categoryName: "Internal transfer", score: 115, keywords: [match.raw] }]
+      };
+    }
+  }
+  return null;
 }
 
 export function parseMoney(value) {
@@ -186,9 +247,11 @@ export function sortByDateDesc(entries) {
   return [...entries].sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")) || String(b.createdAtMs || "").localeCompare(String(a.createdAtMs || "")));
 }
 
-export function categorizeTransaction(tx, rules = DEFAULT_RULES, categories = DEFAULT_CATEGORIES) {
+export function categorizeTransaction(tx, rules = DEFAULT_RULES, categories = DEFAULT_CATEGORIES, accounts = []) {
   const text = normalizeText([tx.description, tx.counterparty, tx.rawText, tx.note].filter(Boolean).join(" "));
   const categoryMap = new Map(categories.map(cat => [cat.id, cat]));
+  const detectedTransfer = detectInternalTransfer(tx, accounts);
+  if (detectedTransfer) return detectedTransfer;
   const matches = [];
 
   for (const rule of rules) {

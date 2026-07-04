@@ -67,3 +67,48 @@ export async function fetchQuote(asset, settings) {
   if (provider === "stooq") return fetchStooqQuote(asset);
   return fetchTwelveDataQuote(asset, settings.marketApiKeyLocalOnly || "");
 }
+
+
+export async function fetchLatestFxRates(currencies = []) {
+  const requested = [...new Set(["EUR", "USD", "GBP", "CHF", "JPY", "KRW", ...currencies].map(code => String(code || "").toUpperCase()).filter(Boolean))];
+  const symbols = requested.filter(code => code !== "EUR").join(",");
+  const endpoints = [
+    {
+      name: "Frankfurter",
+      url: `https://api.frankfurter.dev/v1/latest?base=EUR${symbols ? `&symbols=${encodeURIComponent(symbols)}` : ""}`,
+      parse: data => data.rates || {}
+    },
+    {
+      name: "Frankfurter legacy",
+      url: `https://api.frankfurter.app/latest?from=EUR${symbols ? `&to=${encodeURIComponent(symbols)}` : ""}`,
+      parse: data => data.rates || {}
+    },
+    {
+      name: "ExchangeRate-API open",
+      url: "https://open.er-api.com/v6/latest/EUR",
+      parse: data => data.rates || {}
+    }
+  ];
+
+  let lastError = null;
+  for (const endpoint of endpoints) {
+    try {
+      const response = await fetch(endpoint.url, { mode: "cors" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const apiRates = endpoint.parse(await response.json());
+      const rates = { EUR: 1 };
+      for (const code of requested) {
+        if (code === "EUR") continue;
+        const unitsPerEur = Number(apiRates[code]);
+        if (Number.isFinite(unitsPerEur) && unitsPerEur > 0) rates[code] = 1 / unitsPerEur;
+      }
+      if (Object.keys(rates).length > 1) {
+        return { rates, source: endpoint.name, time: new Date().toISOString() };
+      }
+      throw new Error("No usable rates returned.");
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw new Error(`Exchange-rate refresh failed: ${lastError?.message || "no provider returned rates"}`);
+}

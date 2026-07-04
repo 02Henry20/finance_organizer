@@ -12,6 +12,7 @@ import {
   updateDoc,
   writeBatch
 } from "./firebase.js";
+import { fetchLatestFxRates } from "./market.js";
 import {
   DEFAULT_ACCOUNTS,
   DEFAULT_CATEGORIES,
@@ -38,6 +39,7 @@ export const state = {
 const listeners = new Set();
 let unsubscribers = [];
 let hasSeeded = false;
+let snapshotsReady = new Set();
 
 export function subscribe(listener) {
   listeners.add(listener);
@@ -52,6 +54,37 @@ function notify() {
 function setSync(status, detail, pending = false) {
   state.sync = { status, detail, pending, lastChangeAt: new Date().toISOString() };
   notify();
+}
+
+function browserOnline() {
+  return typeof navigator === "undefined" ? true : navigator.onLine !== false;
+}
+
+function updateSyncFromSnapshot(name, snapshot) {
+  snapshotsReady.add(name);
+  const pending = snapshot.metadata?.hasPendingWrites || false;
+  const fromCache = snapshot.metadata?.fromCache || false;
+  state.sync.pending = pending;
+  if (!browserOnline()) {
+    state.sync.status = "offline";
+    state.sync.detail = "Offline cache";
+  } else if (pending) {
+    state.sync.status = "loading";
+    state.sync.detail = "Saving local changes";
+  } else if (fromCache && snapshotsReady.size < 6) {
+    state.sync.status = "loading";
+    state.sync.detail = "Loading cache; waiting for server";
+  } else {
+    state.sync.status = "synced";
+    state.sync.detail = fromCache ? "Online cache active" : "Synced with Firebase";
+  }
+  state.sync.lastChangeAt = new Date().toISOString();
+  notify();
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("online", () => setSync("loading", "Connection restored; syncing"));
+  window.addEventListener("offline", () => setSync("offline", "Offline cache"));
 }
 
 function userCollection(name) {
@@ -118,41 +151,55 @@ function mergeSettings(cloud = {}) {
 async function ensureDefaults() {
   if (!state.user?.uid || hasSeeded) return;
   hasSeeded = true;
-  const marker = userDoc("meta", "seed");
-  const markerSnap = await getDoc(marker);
-  if (markerSnap.exists()) return;
+
+  const [accountsSnap, categoriesSnap, rulesSnap, settingsSnap] = await Promise.all([
+    getDocs(query(userCollection("accounts"))),
+    getDocs(query(userCollection("categories"))),
+    getDocs(query(userCollection("rules"))),
+    getDoc(userDoc("settings", "preferences"))
+  ]);
+
+  const existingAccounts = new Set(accountsSnap.docs.map(item => item.id));
+  const existingCategories = new Set(categoriesSnap.docs.map(item => item.id));
+  const existingRules = new Set(rulesSnap.docs.map(item => item.id));
+  const currentSettings = settingsSnap.exists() ? settingsSnap.data() : {};
 
   const batch = writeBatch(db);
   DEFAULT_ACCOUNTS.forEach((account, index) => {
-    batch.set(userDoc("accounts", account.id), {
-      ...account,
-      sort: index,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    });
+    if (!existingAccounts.has(account.id)) {
+      batch.set(userDoc("accounts", account.id), {
+        ...account,
+        sort: index,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+    }
   });
   DEFAULT_CATEGORIES.forEach(category => {
-    batch.set(userDoc("categories", category.id), {
+    const payload = {
       ...category,
       isDefault: true,
-      createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
-    });
+    };
+    if (!existingCategories.has(category.id)) payload.createdAt = serverTimestamp();
+    batch.set(userDoc("categories", category.id), payload, { merge: true });
   });
   DEFAULT_RULES.forEach(rule => {
-    batch.set(userDoc("rules", rule.id), {
+    const payload = {
       ...rule,
-      createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
-    });
+    };
+    if (!existingRules.has(rule.id)) payload.createdAt = serverTimestamp();
+    batch.set(userDoc("rules", rule.id), payload, { merge: true });
   });
   batch.set(userDoc("settings", "preferences"), {
     ...DEFAULT_SETTINGS,
+    ...currentSettings,
+    fxRates: { ...DEFAULT_SETTINGS.fxRates, ...(currentSettings.fxRates || {}) },
     marketApiKeyLocalOnly: "",
-    seededAt: serverTimestamp(),
     updatedAt: serverTimestamp()
-  });
-  batch.set(marker, { version: 1, createdAt: serverTimestamp() });
+  }, { merge: true });
+  batch.set(userDoc("meta", "seed"), { version: 2, updatedAt: serverTimestamp(), createdAt: currentSettings.seededAt || serverTimestamp() }, { merge: true });
   await batch.commit();
 }
 
@@ -166,16 +213,14 @@ export async function connectUser(user) {
   state.assets = [];
   state.settings = { ...DEFAULT_SETTINGS, marketApiKeyLocalOnly: getLocalMarketApiKey() };
   hasSeeded = false;
+  snapshotsReady = new Set();
   setSync("loading", "Preparing your workspace");
 
   await ensureDefaults();
   const attachCollection = (name, setter) => {
-    const unsubscribe = onSnapshot(query(userCollection(name)), snapshot => {
+    const unsubscribe = onSnapshot(query(userCollection(name)), { includeMetadataChanges: true }, snapshot => {
       setter(normalizeArray(name, snapshot.docs));
-      state.sync.pending = snapshot.metadata.hasPendingWrites;
-      state.sync.status = snapshot.metadata.fromCache ? "offline" : "synced";
-      state.sync.detail = snapshot.metadata.fromCache ? "Using cached data" : "Synced with Firebase";
-      notify();
+      updateSyncFromSnapshot(name, snapshot);
     }, error => {
       setSync("error", error.message || "Firebase listener failed");
     });
@@ -188,9 +233,9 @@ export async function connectUser(user) {
   attachCollection("transactions", value => { state.transactions = value; });
   attachCollection("assets", value => { state.assets = value; });
 
-  const settingsUnsub = onSnapshot(userDoc("settings", "preferences"), snapshot => {
+  const settingsUnsub = onSnapshot(userDoc("settings", "preferences"), { includeMetadataChanges: true }, snapshot => {
     state.settings = mergeSettings(snapshot.exists() ? snapshot.data() : {});
-    notify();
+    updateSyncFromSnapshot("settings", snapshot);
   }, error => setSync("error", error.message || "Settings listener failed"));
   unsubscribers.push(settingsUnsub);
 }
@@ -199,6 +244,7 @@ export function disconnectUser() {
   unsubscribers.forEach(unsubscribe => unsubscribe());
   unsubscribers = [];
   hasSeeded = false;
+  snapshotsReady = new Set();
   state.user = null;
   state.accounts = [];
   state.categories = [];
@@ -229,6 +275,12 @@ export async function saveAccount(input) {
     currency: (input.currency || state.settings.primaryCurrency || "EUR").toUpperCase(),
     openingBalance: Number(input.openingBalance || 0),
     hidden: Boolean(input.hidden),
+    iban: String(input.iban || "").replace(/\s+/g, "").toUpperCase(),
+    accountNumber: String(input.accountNumber || "").trim(),
+    bic: String(input.bic || "").replace(/\s+/g, "").toUpperCase(),
+    transferAliases: Array.isArray(input.transferAliases)
+      ? input.transferAliases.map(String).map(item => item.trim()).filter(Boolean)
+      : String(input.transferAliases || "").split(",").map(item => item.trim()).filter(Boolean),
     sort: Number(input.sort || Date.now())
   });
   return id;
@@ -368,6 +420,21 @@ export async function saveSettings(patch) {
     ...cloudPatch,
     marketApiKeyLocalOnly: ""
   });
+}
+
+
+export async function refreshFxRates({ silent = false } = {}) {
+  const currencies = new Set([state.settings.primaryCurrency || "EUR"]);
+  state.accounts.forEach(account => currencies.add(account.currency || "EUR"));
+  state.assets.forEach(asset => currencies.add(asset.currency || "EUR"));
+  if (!silent) setSync("loading", "Refreshing exchange rates");
+  const result = await fetchLatestFxRates([...currencies]);
+  await saveSettings({
+    fxRates: { ...(state.settings.fxRates || {}), ...result.rates },
+    fxLastUpdatedAt: result.time,
+    fxSource: result.source
+  });
+  return result;
 }
 
 export async function exportState() {

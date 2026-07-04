@@ -23,6 +23,7 @@ import {
   saveSettings,
   saveTransaction,
   saveTransactionsBatch,
+  refreshFxRates,
   setLocalMarketApiKey,
   state,
   subscribe,
@@ -35,6 +36,7 @@ import {
   calculateMonthlySnapshot,
   calculatePortfolio,
   categorizeTransaction,
+  convertCurrency,
   formatCurrency,
   monthKey,
   parseMoney
@@ -87,7 +89,7 @@ function firebaseErrorMessage(error) {
     "auth/missing-password": "Enter your password.",
     "auth/weak-password": "Use a password with at least six characters.",
     "auth/network-request-failed": "No connection. Firebase sign-in needs internet unless your session is cached.",
-    "permission-denied": "Firebase denied access. Publish the included firestore.rules file."
+    "permission-denied": "Firebase denied access. Check that your Firestore rules allow this user path."
   };
   return messages[error?.code] || error?.message || "Something went wrong.";
 }
@@ -136,6 +138,7 @@ async function bootAuth() {
     try {
       await connectUser(user);
       navigateTo("overview");
+      setTimeout(() => maybeRefreshFxRates(), 1200);
     } catch (error) {
       toast("Firebase synchronization failed", firebaseErrorMessage(error), "error");
     }
@@ -149,8 +152,17 @@ function applyAppearance() {
 
 function syncStatus() {
   const pill = elements.syncPill;
-  pill.className = `sync-pill ${state.sync.status || ""}`.trim();
-  pill.querySelector("strong").textContent = state.sync.status === "synced" ? "Synced" : state.sync.status === "offline" ? "Offline cache" : state.sync.status === "error" ? "Sync error" : "Connecting";
+  if (!pill) return;
+  const status = state.sync.status || "loading";
+  pill.className = `sync-pill ${status}`.trim();
+  const label = status === "synced"
+    ? "Synced"
+    : status === "offline"
+      ? "Offline cache"
+      : status === "error"
+        ? "Sync issue"
+        : "Syncing";
+  pill.querySelector("strong").textContent = label;
   pill.querySelector("small").textContent = state.sync.detail || "Checking data";
 }
 
@@ -168,8 +180,11 @@ function categoryOptions(selected = "misc") {
   return state.categories.map(cat => `<option value="${escapeHtml(cat.id)}" ${cat.id === selected ? "selected" : ""}>${escapeHtml(cat.icon || "•")} ${escapeHtml(cat.name)}</option>`).join("");
 }
 
-function accountOptions(selected = "") {
-  return state.accounts.map(account => `<option value="${escapeHtml(account.id)}" ${account.id === selected ? "selected" : ""}>${escapeHtml(account.name)} · ${escapeHtml(account.currency || "EUR")}</option>`).join("");
+function accountOptions(selected = "", options = {}) {
+  const { includeHidden = false, brokerOnly = false } = options;
+  let accounts = state.accounts.filter(account => includeHidden || !account.hidden || account.id === selected);
+  if (brokerOnly) accounts = accounts.filter(account => ["broker", "asset"].includes(account.type) || account.id === selected);
+  return accounts.map(account => `<option value="${escapeHtml(account.id)}" ${account.id === selected ? "selected" : ""}>${escapeHtml(account.name)} · ${escapeHtml(account.currency || "EUR")}</option>`).join("");
 }
 
 function typeOptions(selected = "checking") {
@@ -190,6 +205,34 @@ function categoryMap() {
 
 function accountMap() {
   return new Map(state.accounts.map(account => [account.id, account]));
+}
+
+function visibleAccounts() {
+  return state.accounts.filter(account => !account.hidden);
+}
+
+function holdingsForAccount(accountId) {
+  const firstBroker = state.accounts.find(account => !account.hidden && account.type === "broker")?.id || "";
+  return state.assets.filter(asset => !asset.hidden && ((asset.accountId || firstBroker) === accountId));
+}
+
+function assetMarketValue(asset) {
+  const price = Number(asset.lastPrice ?? asset.manualPrice ?? 0);
+  return price * Number(asset.quantity || 0);
+}
+
+function formatDateTime(value) {
+  if (!value) return "never";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "never";
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
+
+function maskIban(value) {
+  const clean = String(value || "").replace(/\s+/g, "").toUpperCase();
+  if (!clean) return "No identifier";
+  if (clean.length <= 8) return clean;
+  return `${clean.slice(0, 4)} •••• ${clean.slice(-4)}`;
 }
 
 function renderOverview() {
@@ -237,13 +280,15 @@ function fillFilters() {
   const transactionCategory = $("#transaction-category");
   const accountType = $("#account-type");
   const ruleCategory = $("#rule-category");
+  const assetAccount = $("#asset-account");
   if (txAccountFilter) txAccountFilter.innerHTML = `<option value="all">All accounts</option>${accountOptions(txAccountFilter.value)}`;
   if (txCategoryFilter) txCategoryFilter.innerHTML = `<option value="all">All categories</option>${categoryOptions(txCategoryFilter.value)}`;
-  if (importAccount) importAccount.innerHTML = accountOptions(importAccount.value || state.accounts[0]?.id);
-  if (transactionAccount) transactionAccount.innerHTML = accountOptions(transactionAccount.value || state.accounts[0]?.id);
+  if (importAccount) importAccount.innerHTML = accountOptions(importAccount.value || visibleAccounts()[0]?.id);
+  if (transactionAccount) transactionAccount.innerHTML = accountOptions(transactionAccount.value || visibleAccounts()[0]?.id);
   if (transactionCategory) transactionCategory.innerHTML = categoryOptions(transactionCategory.value || "misc");
   if (accountType) accountType.innerHTML = typeOptions(accountType.value || "checking");
   if (ruleCategory) ruleCategory.innerHTML = categoryOptions(ruleCategory.value || "misc");
+  if (assetAccount) assetAccount.innerHTML = accountOptions(assetAccount.value || state.accounts.find(account => !account.hidden && account.type === "broker")?.id || visibleAccounts()[0]?.id, { brokerOnly: true });
 }
 
 function renderTransactions() {
@@ -281,75 +326,92 @@ function renderTransactions() {
 
 function renderAccounts() {
   const container = $("#accounts-grid");
+  if (!container) return;
   const portfolio = calculatePortfolio(state);
   const rows = portfolio.accountRows;
+  const currency = selectedCurrency();
   container.replaceChildren();
-  if (!state.accounts.length) {
-    container.innerHTML = `<article class="glass-card item-card"><h3>No accounts yet</h3><p class="muted">Add a checking, cash, broker or debt account.</p></article>`;
+  const accounts = visibleAccounts();
+  if (!accounts.length) {
+    container.innerHTML = `<article class="glass-card item-card empty-card"><h3>No accounts yet</h3><p class="muted">Add a checking, cash, broker or debt account.</p></article>`;
     return;
   }
-  for (const account of state.accounts) {
+  for (const account of accounts) {
     const row = rows.find(item => item.id === account.id) || { ...account, balance: { raw: Number(account.openingBalance || 0), converted: Number(account.openingBalance || 0) } };
+    const holdings = holdingsForAccount(account.id);
+    const holdingsValue = holdings.reduce((sum, asset) => sum + convertCurrency(assetMarketValue(asset), asset.currency || account.currency || currency, state.settings), 0);
+    const totalValue = row.balance.converted + holdingsValue;
+    const isBroker = ["broker", "asset"].includes(account.type);
     const card = document.createElement("article");
-    card.className = "glass-card item-card";
+    card.className = `glass-card item-card account-card ${isBroker ? "broker-card" : ""}`;
+    const holdingsHtml = holdings.length
+      ? `<div class="holding-list">${holdings.slice(0, 6).map(asset => {
+          const price = Number(asset.lastPrice ?? asset.manualPrice ?? 0);
+          const value = assetMarketValue(asset);
+          return `<button class="holding-row" type="button" data-edit-asset="${escapeHtml(asset.id)}"><span><strong>${escapeHtml(asset.symbol || asset.name)}</strong><small>${Number(asset.quantity || 0).toLocaleString()} × ${formatCurrency(price, asset.currency || account.currency || currency)}</small></span><b>${formatCurrency(value, asset.currency || account.currency || currency)}</b></button>`;
+        }).join("")}${holdings.length > 6 ? `<small class="muted">+${holdings.length - 6} more holdings</small>` : ""}</div>`
+      : `<div class="empty-holdings"><small>${isBroker ? "No holdings in this broker account yet." : "No linked holdings."}</small></div>`;
     card.innerHTML = `
-      <div class="item-card-header"><div><h3>${escapeHtml(account.name)}</h3><small>${escapeHtml(account.institution || "Manual")} · ${escapeHtml(account.type)} · ${escapeHtml(account.currency)}</small></div><span class="category-pill ${account.hidden ? "review-pill" : ""}">${account.hidden ? "Hidden" : "Visible"}</span></div>
-      <div class="item-card-value ${row.balance.converted >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(row.balance.raw, account.currency || selectedCurrency())}</div>
-      <small>Opening balance: ${formatCurrency(account.openingBalance || 0, account.currency || selectedCurrency())}</small>
-      <div class="item-card-actions"><button class="secondary-button compact" data-edit-account="${escapeHtml(account.id)}" type="button">Edit</button><button class="ghost-button compact" data-hide-account="${escapeHtml(account.id)}" type="button">Hide</button></div>`;
+      <div class="item-card-header">
+        <div>
+          <h3>${escapeHtml(account.name)}</h3>
+          <small>${escapeHtml(account.institution || "Manual")} · ${escapeHtml(account.type)} · ${escapeHtml(account.currency)}</small>
+        </div>
+        <span class="category-pill">${escapeHtml(maskIban(account.iban || account.accountNumber))}</span>
+      </div>
+      <div class="account-value-row">
+        <div><span>Cash balance</span><strong class="${row.balance.converted >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(row.balance.raw, account.currency || currency)}</strong></div>
+        ${isBroker ? `<div><span>Holdings</span><strong>${formatCurrency(holdingsValue, currency)}</strong></div><div><span>Total</span><strong>${formatCurrency(totalValue, currency)}</strong></div>` : ""}
+      </div>
+      ${isBroker ? holdingsHtml : ""}
+      <div class="item-card-actions">
+        ${isBroker ? `<button class="secondary-button compact" data-add-asset-for="${escapeHtml(account.id)}" type="button">Add holding</button>` : ""}
+        <button class="ghost-button compact" data-edit-account="${escapeHtml(account.id)}" type="button">Edit account</button>
+      </div>`;
     container.append(card);
   }
   container.querySelectorAll("[data-edit-account]").forEach(btn => btn.addEventListener("click", () => openAccountModal(btn.dataset.editAccount)));
-  container.querySelectorAll("[data-hide-account]").forEach(btn => btn.addEventListener("click", async () => {
-    await deleteAccount(btn.dataset.hideAccount, { hideOnly: true });
-    toast("Account hidden", "It stays in Firebase and can be restored by editing it.");
-  }));
+  container.querySelectorAll("[data-add-asset-for]").forEach(btn => btn.addEventListener("click", () => openAssetModal("", btn.dataset.addAssetFor)));
+  container.querySelectorAll("[data-edit-asset]").forEach(btn => btn.addEventListener("click", () => openAssetModal(btn.dataset.editAsset)));
 }
 
 function renderAssets() {
-  const container = $("#assets-grid");
-  const currency = selectedCurrency();
-  container.replaceChildren();
-  if (!state.assets.length) {
-    container.innerHTML = `<article class="glass-card item-card"><h3>No assets yet</h3><p class="muted">Add ETFs, stocks, bonds, crypto or manual holdings.</p></article>`;
-    return;
-  }
-  for (const asset of state.assets) {
-    const price = Number(asset.lastPrice ?? asset.manualPrice ?? 0);
-    const value = price * Number(asset.quantity || 0);
-    const pnl = Number.isFinite(Number(asset.costBasis)) ? value - Number(asset.costBasis || 0) : null;
-    const card = document.createElement("article");
-    card.className = "glass-card item-card";
-    card.innerHTML = `
-      <div class="item-card-header"><div><h3>${escapeHtml(asset.name || asset.symbol)}</h3><small>${escapeHtml(asset.symbol || "Manual")} · ${escapeHtml(asset.type)} · ${escapeHtml(asset.provider || "manual")}</small></div><span class="category-pill ${asset.hidden ? "review-pill" : ""}">${asset.hidden ? "Hidden" : escapeHtml(asset.currency || currency)}</span></div>
-      <div class="item-card-value">${formatCurrency(value, asset.currency || currency)}</div>
-      <small>${Number(asset.quantity || 0).toLocaleString()} × ${formatCurrency(price, asset.currency || currency)} · P/L ${pnl == null ? "—" : formatCurrency(pnl, asset.currency || currency)}</small>
-      <small>Last price: ${asset.lastPriceAt ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(asset.lastPriceAt)) : "manual/not refreshed"}</small>
-      <div class="item-card-actions"><button class="secondary-button compact" data-refresh-asset="${escapeHtml(asset.id)}" type="button">Refresh</button><button class="ghost-button compact" data-edit-asset="${escapeHtml(asset.id)}" type="button">Edit</button></div>`;
-    container.append(card);
-  }
-  container.querySelectorAll("[data-edit-asset]").forEach(btn => btn.addEventListener("click", () => openAssetModal(btn.dataset.editAsset)));
-  container.querySelectorAll("[data-refresh-asset]").forEach(btn => btn.addEventListener("click", () => refreshAsset(btn.dataset.refreshAsset)));
+  // Assets are now displayed inside broker/asset accounts.
 }
 
 function renderRules() {
   const categoriesList = $("#categories-list");
   const rulesList = $("#rules-list");
+  if (!categoriesList || !rulesList) return;
   const cats = categoryMap();
   categoriesList.replaceChildren();
   rulesList.replaceChildren();
   for (const cat of state.categories) {
+    const related = state.rules.filter(rule => rule.categoryId === cat.id);
     const row = document.createElement("div");
-    row.className = "settings-row";
-    row.innerHTML = `<div><strong>${escapeHtml(cat.icon || "•")} ${escapeHtml(cat.name)}</strong><small>${escapeHtml(cat.group)} · ${escapeHtml(cat.type)}</small></div><button class="ghost-button compact" data-edit-category="${escapeHtml(cat.id)}" type="button">Edit</button>`;
+    row.className = "settings-row category-row";
+    row.innerHTML = `<div><strong>${escapeHtml(cat.icon || "•")} ${escapeHtml(cat.name)}</strong><small>${escapeHtml(cat.group)} · ${escapeHtml(cat.type)} · ${related.length} keyword rules</small></div><button class="ghost-button compact" data-edit-category="${escapeHtml(cat.id)}" type="button">Edit</button>`;
     categoriesList.append(row);
   }
+
+  const grouped = new Map();
   for (const rule of state.rules) {
-    const cat = cats.get(rule.categoryId);
-    const row = document.createElement("div");
-    row.className = "settings-row";
-    row.innerHTML = `<div><strong>${escapeHtml(rule.label)}</strong><small>${escapeHtml(cat?.name || rule.categoryId)} · ${rule.requireAll ? "all" : "any"}: ${(rule.keywords || []).map(escapeHtml).join(", ")} · priority ${Number(rule.priority || 0)}</small></div><button class="ghost-button compact" data-edit-rule="${escapeHtml(rule.id)}" type="button">Edit</button>`;
-    rulesList.append(row);
+    const cat = cats.get(rule.categoryId) || cats.get("misc");
+    const key = cat?.id || "misc";
+    if (!grouped.has(key)) grouped.set(key, { cat, rules: [] });
+    grouped.get(key).rules.push(rule);
+  }
+  for (const group of [...grouped.values()].sort((a, b) => String(a.cat?.group || "").localeCompare(String(b.cat?.group || "")) || String(a.cat?.name || "").localeCompare(String(b.cat?.name || "")))) {
+    const wrapper = document.createElement("section");
+    wrapper.className = "rule-group";
+    wrapper.innerHTML = `<div class="rule-group-heading"><strong>${escapeHtml(group.cat?.icon || "?")} ${escapeHtml(group.cat?.name || "Misc")}</strong><small>${escapeHtml(group.cat?.group || "Misc")}</small></div>`;
+    for (const rule of group.rules.sort((a, b) => Number(b.priority || 0) - Number(a.priority || 0))) {
+      const row = document.createElement("div");
+      row.className = "settings-row rule-row";
+      row.innerHTML = `<div><strong>${escapeHtml(rule.label)}</strong><small>${rule.requireAll ? "all keywords" : "any keyword"}: ${(rule.keywords || []).map(escapeHtml).join(", ")} · priority ${Number(rule.priority || 0)}</small></div><button class="ghost-button compact" data-edit-rule="${escapeHtml(rule.id)}" type="button">Edit</button>`;
+      wrapper.append(row);
+    }
+    rulesList.append(wrapper);
   }
   categoriesList.querySelectorAll("[data-edit-category]").forEach(btn => btn.addEventListener("click", () => openCategoryModal(btn.dataset.editCategory)));
   rulesList.querySelectorAll("[data-edit-rule]").forEach(btn => btn.addEventListener("click", () => openRuleModal(btn.dataset.editRule)));
@@ -362,6 +424,10 @@ function renderSettings() {
   $("#setting-market-provider").value = state.settings.marketProvider || "twelvedata";
   $("#setting-market-key").value = getLocalMarketApiKey();
   $("#setting-hide-transfers").value = String(state.settings.hideInternalTransfersInSpending !== false);
+  const fxStatus = $("#fx-status");
+  if (fxStatus) {
+    fxStatus.textContent = `${state.settings.fxSource || "static fallback"} · ${state.settings.fxLastUpdatedAt ? formatDateTime(state.settings.fxLastUpdatedAt) : "not refreshed yet"}`;
+  }
 }
 
 function requestRender() {
@@ -419,14 +485,20 @@ function openAccountModal(id = "") {
   $("#account-type").value = account?.type || "checking";
   $("#account-currency").value = account?.currency || selectedCurrency();
   $("#account-opening").value = account?.openingBalance ?? 0;
+  $("#account-iban").value = account?.iban || "";
+  $("#account-number").value = account?.accountNumber || "";
+  $("#account-bic").value = account?.bic || "";
+  $("#account-aliases").value = Array.isArray(account?.transferAliases) ? account.transferAliases.join(", ") : account?.transferAliases || "";
   $("#account-hidden").checked = Boolean(account?.hidden);
   $("#delete-account-button").hidden = !account;
   openModal("account");
 }
 
-function openAssetModal(id = "") {
+function openAssetModal(id = "", accountId = "") {
   const asset = id ? state.assets.find(item => item.id === id) : null;
+  const defaultBroker = accountId || asset?.accountId || state.accounts.find(item => !item.hidden && item.type === "broker")?.id || visibleAccounts()[0]?.id || "";
   $("#asset-id").value = asset?.id || "";
+  $("#asset-account").value = defaultBroker;
   $("#asset-symbol").value = asset?.symbol || "";
   $("#asset-name").value = asset?.name || "";
   $("#asset-type").value = asset?.type || "stock";
@@ -490,6 +562,19 @@ async function refreshAllAssets() {
     }
   }
   toast("Quote refresh complete", `${ok} updated${failed ? ` · ${failed} failed` : ""}`, failed ? "error" : "success");
+}
+
+
+async function maybeRefreshFxRates() {
+  if (!navigator.onLine || state.settings.autoRefreshFx === "off") return;
+  const last = state.settings.fxLastUpdatedAt ? new Date(state.settings.fxLastUpdatedAt).getTime() : 0;
+  const stale = !last || Date.now() - last > 12 * 60 * 60 * 1000;
+  if (!stale) return;
+  try {
+    await refreshFxRates({ silent: true });
+  } catch (error) {
+    console.warn("FX refresh skipped", error);
+  }
 }
 
 function mappingSelect(field, label) {
@@ -566,28 +651,32 @@ function wireEvents() {
     }
   });
 
-  elements.createAccount.addEventListener("click", async () => {
-    setBusy(elements.authForm, true);
-    setMessage(elements.authMessage, "");
-    try {
-      await createUserWithEmailAndPassword(auth, elements.authEmail.value.trim(), elements.authPassword.value);
-    } catch (error) {
-      setMessage(elements.authMessage, firebaseErrorMessage(error), true);
-    } finally {
-      setBusy(elements.authForm, false);
-    }
-  });
+  if (elements.createAccount) {
+    elements.createAccount.addEventListener("click", async () => {
+      setBusy(elements.authForm, true);
+      setMessage(elements.authMessage, "");
+      try {
+        await createUserWithEmailAndPassword(auth, elements.authEmail.value.trim(), elements.authPassword.value);
+      } catch (error) {
+        setMessage(elements.authMessage, firebaseErrorMessage(error), true);
+      } finally {
+        setBusy(elements.authForm, false);
+      }
+    });
+  }
 
-  elements.resetPassword.addEventListener("click", async () => {
-    try {
-      const email = elements.authEmail.value.trim();
-      if (!email) return setMessage(elements.authMessage, "Enter your email first.", true);
-      await sendPasswordResetEmail(auth, email);
-      setMessage(elements.authMessage, "Password reset email sent.");
-    } catch (error) {
-      setMessage(elements.authMessage, firebaseErrorMessage(error), true);
-    }
-  });
+  if (elements.resetPassword) {
+    elements.resetPassword.addEventListener("click", async () => {
+      try {
+        const email = elements.authEmail.value.trim();
+        if (!email) return setMessage(elements.authMessage, "Enter your email first.", true);
+        await sendPasswordResetEmail(auth, email);
+        setMessage(elements.authMessage, "Password reset email sent.");
+      } catch (error) {
+        setMessage(elements.authMessage, firebaseErrorMessage(error), true);
+      }
+    });
+  }
 
   elements.signOut.addEventListener("click", () => signOut(auth));
   $$(`[data-view]`).forEach(button => button.addEventListener("click", () => navigateTo(button.dataset.view)));
@@ -603,9 +692,17 @@ function wireEvents() {
   $$(`[data-close-modal]`).forEach(button => button.addEventListener("click", closeModal));
   elements.modalBackdrop.addEventListener("click", event => { if (event.target === elements.modalBackdrop) closeModal(); });
 
-  ["#tx-search", "#tx-account-filter", "#tx-category-filter", "#tx-review-filter"].forEach(selector => $(selector).addEventListener("input", renderTransactions));
-  $("#export-button").addEventListener("click", exportTransactionsCsv);
-  $("#refresh-quotes-button").addEventListener("click", refreshAllAssets);
+  ["#tx-search", "#tx-account-filter", "#tx-category-filter", "#tx-review-filter"].forEach(selector => $(selector)?.addEventListener("input", renderTransactions));
+  $("#export-button")?.addEventListener("click", exportTransactionsCsv);
+  $("#refresh-quotes-button")?.addEventListener("click", refreshAllAssets);
+  $("#refresh-fx-button")?.addEventListener("click", async () => {
+    try {
+      const result = await refreshFxRates();
+      toast("Exchange rates updated", `${result.source} · ${formatDateTime(result.time)}`);
+    } catch (error) {
+      toast("Exchange-rate update failed", error.message, "error");
+    }
+  });
 
   $("#transaction-form").addEventListener("submit", async event => {
     event.preventDefault();
@@ -625,7 +722,7 @@ function wireEvents() {
     };
     if (!input.accountId || !input.date || input.amount == null) return toast("Invalid transaction", "Account, date and amount are required.", "error");
     if (!input.categoryId || input.categoryId === "auto") {
-      const cat = categorizeTransaction(input, state.rules, state.categories);
+      const cat = categorizeTransaction(input, state.rules, state.categories, state.accounts);
       Object.assign(input, cat);
     }
     setBusy(form, true);
@@ -648,43 +745,75 @@ function wireEvents() {
 
   $("#account-form").addEventListener("submit", async event => {
     event.preventDefault();
-    await saveAccount({
-      id: $("#account-id").value || undefined,
-      name: $("#account-name").value,
-      institution: $("#account-institution").value,
-      type: $("#account-type").value,
-      currency: $("#account-currency").value.toUpperCase() || selectedCurrency(),
-      openingBalance: parseMoney($("#account-opening").value) || 0,
-      hidden: $("#account-hidden").checked
-    });
-    toast("Account saved");
-    closeModal();
+    const form = event.currentTarget;
+    setBusy(form, true);
+    try {
+      await saveAccount({
+        id: $("#account-id").value || undefined,
+        name: $("#account-name").value,
+        institution: $("#account-institution").value,
+        type: $("#account-type").value,
+        currency: $("#account-currency").value.toUpperCase() || selectedCurrency(),
+        openingBalance: parseMoney($("#account-opening").value) || 0,
+        iban: $("#account-iban").value,
+        accountNumber: $("#account-number").value,
+        bic: $("#account-bic").value,
+        transferAliases: $("#account-aliases").value,
+        hidden: $("#account-hidden").checked
+      });
+      toast("Account saved");
+      closeModal();
+    } catch (error) {
+      toast("Account save failed", error.message, "error");
+    } finally {
+      setBusy(form, false);
+    }
   });
 
   $("#delete-account-button").addEventListener("click", async () => {
     const id = $("#account-id").value;
-    if (!id) return;
-    await deleteAccount(id, { hideOnly: true });
-    toast("Account hidden");
-    closeModal();
+    const account = state.accounts.find(item => item.id === id);
+    if (!id || !account) return;
+    const txCount = state.transactions.filter(tx => tx.accountId === id).length;
+    const assetCount = state.assets.filter(asset => asset.accountId === id).length;
+    const first = confirm(`Delete '${account.name}'? This account will be removed instead of hidden.`);
+    if (!first) return;
+    const second = confirm(`Final confirmation: delete '${account.name}' with ${txCount} linked transactions and ${assetCount} linked holdings?`);
+    if (!second) return;
+    try {
+      await deleteAccount(id, { hideOnly: false });
+      toast("Account deleted", "Transactions remain in the ledger but the account record is removed.");
+      closeModal();
+    } catch (error) {
+      toast("Delete failed", error.message, "error");
+    }
   });
 
   $("#asset-form").addEventListener("submit", async event => {
     event.preventDefault();
-    await saveAsset({
-      id: $("#asset-id").value || undefined,
-      symbol: $("#asset-symbol").value,
-      name: $("#asset-name").value,
-      type: $("#asset-type").value,
-      provider: $("#asset-provider").value,
-      quantity: parseMoney($("#asset-quantity").value) || 0,
-      currency: $("#asset-currency").value.toUpperCase() || selectedCurrency(),
-      manualPrice: parseMoney($("#asset-manual-price").value) || 0,
-      costBasis: parseMoney($("#asset-cost-basis").value) || 0,
-      hidden: $("#asset-hidden").checked
-    });
-    toast("Asset saved");
-    closeModal();
+    const form = event.currentTarget;
+    setBusy(form, true);
+    try {
+      await saveAsset({
+        id: $("#asset-id").value || undefined,
+        accountId: $("#asset-account").value,
+        symbol: $("#asset-symbol").value,
+        name: $("#asset-name").value,
+        type: $("#asset-type").value,
+        provider: $("#asset-provider").value,
+        quantity: parseMoney($("#asset-quantity").value) || 0,
+        currency: $("#asset-currency").value.toUpperCase() || selectedCurrency(),
+        manualPrice: parseMoney($("#asset-manual-price").value) || 0,
+        costBasis: parseMoney($("#asset-cost-basis").value) || 0,
+        hidden: $("#asset-hidden").checked
+      });
+      toast("Holding saved");
+      closeModal();
+    } catch (error) {
+      toast("Holding save failed", error.message, "error");
+    } finally {
+      setBusy(form, false);
+    }
   });
 
   $("#delete-asset-button").addEventListener("click", async () => {
@@ -773,7 +902,8 @@ function wireEvents() {
       accountId: $("#import-account").value,
       currency: account?.currency || selectedCurrency(),
       rules: state.rules,
-      categories: state.categories
+      categories: state.categories,
+      accounts: state.accounts
     }, state.transactions);
     $("#commit-import-button").disabled = !activePreview.transactions.length;
     setMessage($("#import-message"), `${activePreview.transactions.length} rows ready. ${activePreview.transactions.filter(tx => tx.review).length} need review.`);
