@@ -4,7 +4,7 @@
   "description": "Private finance organizer for accounts, imports, broker holdings and analytics.",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#080b10",
+  "background_color": "#f5f5ef",
   "theme_color": "#9fe870",
   "icons": [
     { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },

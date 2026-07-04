@@ -71,12 +71,9 @@ function updateSyncFromSnapshot(name, snapshot) {
   } else if (pending) {
     state.sync.status = "loading";
     state.sync.detail = "Saving local changes";
-  } else if (fromCache && snapshotsReady.size < 6) {
-    state.sync.status = "loading";
-    state.sync.detail = "Loading cache; waiting for server";
   } else {
     state.sync.status = "synced";
-    state.sync.detail = fromCache ? "Online cache active" : "Synced with Firebase";
+    state.sync.detail = fromCache ? "Ready · local cache active" : "Synced with Firebase";
   }
   state.sync.lastChangeAt = new Date().toISOString();
   notify();
@@ -378,6 +375,7 @@ export async function deleteTransaction(id) {
 
 export async function saveAsset(input) {
   const id = input.id || uid();
+  const existing = state.assets.find(asset => asset.id === id);
   await saveDoc("assets", id, {
     id,
     symbol: String(input.symbol || "").trim().toUpperCase(),
@@ -390,6 +388,7 @@ export async function saveAsset(input) {
     provider: input.provider || state.settings.marketProvider || "manual",
     accountId: input.accountId || "",
     hidden: Boolean(input.hidden),
+    createdAtMs: existing?.createdAtMs || input.createdAtMs || Date.now(),
     lastPrice: input.lastPrice == null ? null : Number(input.lastPrice),
     lastPriceAt: input.lastPriceAt || "",
     lastChangePercent: input.lastChangePercent == null ? null : Number(input.lastChangePercent)
@@ -435,6 +434,81 @@ export async function refreshFxRates({ silent = false } = {}) {
     fxSource: result.source
   });
   return result;
+}
+
+
+
+function sanitizeForFirestore(value) {
+  if (Array.isArray(value)) return value.map(sanitizeForFirestore);
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const [key, item] of Object.entries(value)) {
+      if (["pending", "updatedAt", "createdAt"].includes(key)) continue;
+      if (typeof item === "undefined") continue;
+      out[key] = sanitizeForFirestore(item);
+    }
+    return out;
+  }
+  return value;
+}
+
+async function deleteCollectionDocs(name) {
+  const snapshot = await getDocs(query(userCollection(name)));
+  for (let index = 0; index < snapshot.docs.length; index += 400) {
+    const batch = writeBatch(db);
+    snapshot.docs.slice(index, index + 400).forEach(item => batch.delete(userDoc(name, item.id)));
+    await batch.commit();
+  }
+}
+
+async function writeCollectionDocs(name, rows = []) {
+  let count = 0;
+  const cleanRows = Array.isArray(rows) ? rows : [];
+  for (let index = 0; index < cleanRows.length; index += 400) {
+    const batch = writeBatch(db);
+    for (const row of cleanRows.slice(index, index + 400)) {
+      const id = String(row.id || uid());
+      batch.set(userDoc(name, id), {
+        ...sanitizeForFirestore(row),
+        id,
+        clientUpdatedAtMs: Date.now(),
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+      count += 1;
+    }
+    await batch.commit();
+  }
+  return count;
+}
+
+export async function importStateBackup(backup, { replace = false } = {}) {
+  if (!backup || typeof backup !== "object") throw new Error("The selected file is not a VaultPilot JSON backup.");
+  const collections = ["accounts", "categories", "rules", "transactions", "assets"];
+  const hasAny = collections.some(name => Array.isArray(backup[name]));
+  if (!hasAny) throw new Error("JSON backup is missing accounts, transactions, categories, rules and assets arrays.");
+
+  setSync("loading", replace ? "Replacing data from JSON" : "Importing JSON backup", true);
+  if (replace) {
+    for (const name of collections) await deleteCollectionDocs(name);
+  }
+
+  const counts = {};
+  for (const name of collections) counts[name] = await writeCollectionDocs(name, backup[name] || []);
+
+  if (backup.settings && typeof backup.settings === "object") {
+    const settings = sanitizeForFirestore({ ...backup.settings, marketApiKeyLocalOnly: "" });
+    await saveDoc("settings", "preferences", {
+      ...DEFAULT_SETTINGS,
+      ...settings,
+      fxRates: { ...DEFAULT_SETTINGS.fxRates, ...(settings.fxRates || {}) },
+      marketApiKeyLocalOnly: ""
+    });
+    counts.settings = 1;
+  } else {
+    counts.settings = 0;
+  }
+  setSync("synced", "JSON import complete");
+  return counts;
 }
 
 export async function exportState() {

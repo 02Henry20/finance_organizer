@@ -15,6 +15,7 @@ import {
   deleteTransaction,
   disconnectUser,
   exportState,
+  importStateBackup,
   getLocalMarketApiKey,
   saveAccount,
   saveAsset,
@@ -35,6 +36,7 @@ import {
   buildCategorySpend,
   calculateMonthlySnapshot,
   calculatePortfolio,
+  calculatePortfolioSnapshot,
   categorizeTransaction,
   convertCurrency,
   formatCurrency,
@@ -80,6 +82,7 @@ let activeView = "overview";
 let activeParsedFile = null;
 let activePreview = null;
 let renderTimer = null;
+let quoteRefreshTimer = null;
 
 function firebaseErrorMessage(error) {
   const messages = {
@@ -139,6 +142,8 @@ async function bootAuth() {
       await connectUser(user);
       navigateTo("overview");
       setTimeout(() => maybeRefreshFxRates(), 1200);
+      setTimeout(() => maybeRefreshQuotes().catch(error => console.warn("Initial quote refresh skipped", error)), 1800);
+      setupAutoRefreshTimers();
     } catch (error) {
       toast("Firebase synchronization failed", firebaseErrorMessage(error), "error");
     }
@@ -156,7 +161,7 @@ function syncStatus() {
   const status = state.sync.status || "loading";
   pill.className = `sync-pill ${status}`.trim();
   const label = status === "synced"
-    ? "Synced"
+    ? "Ready"
     : status === "offline"
       ? "Offline cache"
       : status === "error"
@@ -235,9 +240,35 @@ function maskIban(value) {
   return `${clean.slice(0, 4)} •••• ${clean.slice(-4)}`;
 }
 
+function comparisonDateFromSettings() {
+  const mode = state.settings.portfolioComparisonMode || "rolling";
+  if (mode === "date" && state.settings.portfolioComparisonDate) return state.settings.portfolioComparisonDate;
+  const days = Math.max(1, Number(state.settings.portfolioComparisonDays || 30));
+  const d = new Date(`${TODAY()}T00:00:00`);
+  d.setDate(d.getDate() - days);
+  return d.toISOString().slice(0, 10);
+}
+
+function comparisonLabel(compareDate) {
+  if ((state.settings.portfolioComparisonMode || "rolling") === "date") return `since ${compareDate}`;
+  return `since ${Number(state.settings.portfolioComparisonDays || 30)}d`;
+}
+
+function deltaHtml(current, previous, { inverted = false, label = "" } = {}) {
+  const delta = Number(current || 0) - Number(previous || 0);
+  const pct = Math.abs(previous) > 0.0001 ? delta / Math.abs(previous) * 100 : 0;
+  const arrow = delta > 0 ? "↗" : delta < 0 ? "↘" : "→";
+  const good = inverted ? delta <= 0 : delta >= 0;
+  const cls = Math.abs(delta) < 0.005 ? "delta-flat" : good ? "delta-up" : "delta-down";
+  return `<span class="${cls}">${arrow} ${formatCurrency(Math.abs(delta), selectedCurrency())} · ${Math.abs(pct).toFixed(1)}%</span> ${escapeHtml(label)}`;
+}
+
 function renderOverview() {
   const currency = selectedCurrency();
   const portfolio = calculatePortfolio(state);
+  const compareDate = comparisonDateFromSettings();
+  const previousPortfolio = calculatePortfolioSnapshot(state, compareDate);
+  const compareText = comparisonLabel(compareDate);
   const monthly = calculateMonthlySnapshot(state);
   const categorySpend = buildCategorySpend(state.transactions, state.categories, state.settings, monthly.currentMonth);
   const review = state.transactions.filter(tx => tx.review).slice(0, 8);
@@ -246,12 +277,18 @@ function renderOverview() {
   $("#liquidity-value").textContent = formatCurrency(portfolio.liquidity, currency);
   $("#asset-value").textContent = formatCurrency(portfolio.assetValue, currency);
   $("#debt-value").textContent = formatCurrency(portfolio.debt, currency);
+  const liquidityDelta = $("#liquidity-delta");
+  const assetDelta = $("#asset-delta");
+  const debtDelta = $("#debt-delta");
+  if (liquidityDelta) liquidityDelta.innerHTML = deltaHtml(portfolio.liquidity, previousPortfolio.liquidity, { label: compareText });
+  if (assetDelta) assetDelta.innerHTML = deltaHtml(portfolio.assetValue, previousPortfolio.assetValue, { label: compareText });
+  if (debtDelta) debtDelta.innerHTML = deltaHtml(portfolio.debt, previousPortfolio.debt, { inverted: true, label: compareText });
   $("#month-income").textContent = formatCurrency(monthly.current.income, currency);
   $("#month-expense").textContent = formatCurrency(monthly.current.expense, currency);
   $("#month-net").textContent = formatCurrency(monthly.current.net, currency);
   $("#month-net").className = monthly.current.net >= 0 ? "amount-pos" : "amount-neg";
   $("#current-month-pill").textContent = monthly.currentMonth;
-  $("#review-count").textContent = state.transactions.filter(tx => tx.review).length.toString();
+  $("#review-count").textContent = `${state.transactions.filter(tx => tx.review).length} to review`;
   const reviewList = $("#review-list");
   reviewList.replaceChildren();
   if (!review.length) {
@@ -333,7 +370,7 @@ function renderAccounts() {
   container.replaceChildren();
   const accounts = visibleAccounts();
   if (!accounts.length) {
-    container.innerHTML = `<article class="glass-card item-card empty-card"><h3>No accounts yet</h3><p class="muted">Add a checking, cash, broker or debt account.</p></article>`;
+    container.innerHTML = `<article class="surface-card item-card empty-card"><h3>No accounts yet</h3><p class="muted">Add a checking, cash, broker or debt account.</p></article>`;
     return;
   }
   for (const account of accounts) {
@@ -343,7 +380,7 @@ function renderAccounts() {
     const totalValue = row.balance.converted + holdingsValue;
     const isBroker = ["broker", "asset"].includes(account.type);
     const card = document.createElement("article");
-    card.className = `glass-card item-card account-card ${isBroker ? "broker-card" : ""}`;
+    card.className = `surface-card item-card account-card ${isBroker ? "broker-card" : ""}`;
     const holdingsHtml = holdings.length
       ? `<div class="holding-list">${holdings.slice(0, 6).map(asset => {
           const price = Number(asset.lastPrice ?? asset.manualPrice ?? 0);
@@ -424,6 +461,10 @@ function renderSettings() {
   $("#setting-market-provider").value = state.settings.marketProvider || "twelvedata";
   $("#setting-market-key").value = getLocalMarketApiKey();
   $("#setting-hide-transfers").value = String(state.settings.hideInternalTransfersInSpending !== false);
+  $("#setting-quote-interval").value = String(state.settings.quoteRefreshIntervalMinutes ?? 720);
+  $("#setting-compare-mode").value = state.settings.portfolioComparisonMode || "rolling";
+  $("#setting-compare-days").value = Number(state.settings.portfolioComparisonDays || 30);
+  $("#setting-compare-date").value = state.settings.portfolioComparisonDate || "";
   const fxStatus = $("#fx-status");
   if (fxStatus) {
     fxStatus.textContent = `${state.settings.fxSource || "static fallback"} · ${state.settings.fxLastUpdatedAt ? formatDateTime(state.settings.fxLastUpdatedAt) : "not refreshed yet"}`;
@@ -546,9 +587,12 @@ async function refreshAsset(id) {
   }
 }
 
-async function refreshAllAssets() {
-  const visible = state.assets.filter(asset => !asset.hidden);
-  if (!visible.length) return toast("No assets", "Add an asset first.", "error");
+async function refreshAllAssets({ silent = false } = {}) {
+  const visible = state.assets.filter(asset => !asset.hidden && (asset.provider || state.settings.marketProvider) !== "manual");
+  if (!visible.length) {
+    if (!silent) toast("No online holdings", "Add a non-manual holding first.", "error");
+    return { ok: 0, failed: 0 };
+  }
   let ok = 0;
   let failed = 0;
   for (const asset of visible) {
@@ -561,7 +605,30 @@ async function refreshAllAssets() {
       console.warn("Quote failed", asset.symbol, error);
     }
   }
-  toast("Quote refresh complete", `${ok} updated${failed ? ` · ${failed} failed` : ""}`, failed ? "error" : "success");
+  if (!silent) toast("Quote refresh complete", `${ok} updated${failed ? ` · ${failed} failed` : ""}`, failed ? "error" : "success");
+  return { ok, failed };
+}
+
+async function maybeRefreshQuotes() {
+  if (!navigator.onLine) return;
+  const intervalMinutes = Number(state.settings.quoteRefreshIntervalMinutes ?? 720);
+  if (!Number.isFinite(intervalMinutes) || intervalMinutes <= 0) return;
+  const visible = state.assets.filter(asset => !asset.hidden && (asset.provider || state.settings.marketProvider) !== "manual");
+  if (!visible.length) return;
+  const maxAgeMs = intervalMinutes * 60 * 1000;
+  const stale = visible.some(asset => {
+    const last = asset.lastPriceAt ? new Date(asset.lastPriceAt).getTime() : 0;
+    return !last || Date.now() - last > maxAgeMs;
+  });
+  if (!stale) return;
+  await refreshAllAssets({ silent: true });
+}
+
+function setupAutoRefreshTimers() {
+  if (quoteRefreshTimer) clearInterval(quoteRefreshTimer);
+  const intervalMinutes = Number(state.settings.quoteRefreshIntervalMinutes ?? 720);
+  if (!Number.isFinite(intervalMinutes) || intervalMinutes <= 0) return;
+  quoteRefreshTimer = setInterval(() => maybeRefreshQuotes().catch(error => console.warn("Auto quote refresh skipped", error)), Math.max(15, intervalMinutes) * 60 * 1000);
 }
 
 
@@ -637,6 +704,30 @@ async function exportTransactionsCsv() {
   setTimeout(() => URL.revokeObjectURL(url), 1200);
 }
 
+
+async function exportBackupJson() {
+  const backup = await exportState();
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `vaultpilot-full-backup-${TODAY()}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1200);
+}
+
+function readJsonFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try { resolve(JSON.parse(String(reader.result || "{}"))); }
+      catch (error) { reject(new Error("The selected file is not valid JSON.")); }
+    };
+    reader.onerror = () => reject(new Error("Could not read JSON file."));
+    reader.readAsText(file);
+  });
+}
+
 function wireEvents() {
   elements.authForm.addEventListener("submit", async event => {
     event.preventDefault();
@@ -694,7 +785,31 @@ function wireEvents() {
 
   ["#tx-search", "#tx-account-filter", "#tx-category-filter", "#tx-review-filter"].forEach(selector => $(selector)?.addEventListener("input", renderTransactions));
   $("#export-button")?.addEventListener("click", exportTransactionsCsv);
-  $("#refresh-quotes-button")?.addEventListener("click", refreshAllAssets);
+  $("#export-json-button")?.addEventListener("click", () => exportBackupJson().catch(error => toast("JSON export failed", error.message, "error")));
+  $("#import-json-file")?.addEventListener("change", event => {
+    const file = event.target.files?.[0];
+    $("#import-json-button").disabled = !file;
+    setMessage($("#import-json-message"), file ? `${file.name} selected.` : "");
+  });
+  $("#import-json-button")?.addEventListener("click", async () => {
+    const file = $("#import-json-file").files?.[0];
+    if (!file) return;
+    const replace = $("#import-json-mode").value === "replace";
+    if (replace && !confirm("Replace all current VaultPilot data with this JSON backup?")) return;
+    if (replace && !confirm("Final confirmation: this deletes current accounts, rules, transactions and holdings before importing.")) return;
+    try {
+      setMessage($("#import-json-message"), "Importing JSON backup…");
+      const backup = await readJsonFile(file);
+      const counts = await importStateBackup(backup, { replace });
+      setMessage($("#import-json-message"), `Imported ${counts.accounts || 0} accounts, ${counts.transactions || 0} transactions, ${counts.assets || 0} holdings, ${counts.categories || 0} categories and ${counts.rules || 0} rules.`);
+      toast("JSON import complete", replace ? "Current data was replaced." : "Backup was merged into current data.");
+      $("#import-json-file").value = "";
+      $("#import-json-button").disabled = true;
+    } catch (error) {
+      setMessage($("#import-json-message"), error.message, true);
+      toast("JSON import failed", error.message, "error");
+    }
+  });
   $("#refresh-fx-button")?.addEventListener("click", async () => {
     try {
       const result = await refreshFxRates();
@@ -868,10 +983,16 @@ function wireEvents() {
         theme: $("#setting-theme").value,
         motion: $("#setting-motion").value,
         marketProvider: $("#setting-market-provider").value,
+        quoteRefreshIntervalMinutes: Number($("#setting-quote-interval").value || 720),
+        portfolioComparisonMode: $("#setting-compare-mode").value || "rolling",
+        portfolioComparisonDays: Number($("#setting-compare-days").value || 30),
+        portfolioComparisonDate: $("#setting-compare-date").value || "",
         hideInternalTransfersInSpending: $("#setting-hide-transfers").value === "true"
       });
       setMessage($("#settings-message"), "Settings saved.");
       toast("Settings saved");
+      setupAutoRefreshTimers();
+      maybeRefreshQuotes().catch(error => console.warn("Quote refresh skipped", error));
     } catch (error) {
       setMessage($("#settings-message"), error.message, true);
     }
