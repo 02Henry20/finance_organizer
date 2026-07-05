@@ -31,3 +31,18 @@ If a browser keeps old behavior, open `/cache-reset.html`, reset cache once, the
 - Account display currency is now set independently per account card or in the account edit modal.
 - Mobile Reports first box has been rearranged to keep Month/Year in the upper-right and Month/Compare Year below.
 - Desktop sync troubleshooting has a wider, single-line button layout.
+
+
+## v21 update
+
+- Desktop sync troubleshooting buttons are below the explanation text.
+- Account display currency is inside each account's gear menu.
+- Display currency options are limited to main currency and the account's native currency.
+- Removed the explanatory note below account display currency.
+
+
+## v22 update
+
+- Desktop broker positions modal keeps the two toggle groups side by side:
+  - Since buy / Today
+  - Amount / Percent

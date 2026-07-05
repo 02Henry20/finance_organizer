@@ -256,10 +256,14 @@ function accountDisplayCurrency(account = null) {
 }
 
 function accountCurrencyOptions(selected = "", nativeCurrency = "") {
-  const chosen = (selected || "").toUpperCase();
-  const native = (nativeCurrency || selectedCurrency()).toUpperCase();
-  const currencies = [...new Set([selectedCurrency(), native, ...VALID_CURRENCIES])];
-  return `<option value="" ${chosen ? "" : "selected"}>Main (${escapeHtml(selectedCurrency())})</option>${currencies.map(code => `<option value="${escapeHtml(code)}" ${code === chosen ? "selected" : ""}>${escapeHtml(code)}${code === native ? " · native" : ""}</option>`).join("")}`;
+  const main = selectedCurrency();
+  const native = (nativeCurrency || main).toUpperCase();
+  const chosen = [main, native].includes((selected || "").toUpperCase()) ? (selected || "").toUpperCase() : "";
+  const options = [`<option value="" ${chosen ? "" : "selected"}>Main (${escapeHtml(main)})</option>`];
+  if (native && native !== main) {
+    options.push(`<option value="${escapeHtml(native)}" ${chosen === native ? "selected" : ""}>${escapeHtml(native)} · account</option>`);
+  }
+  return options.join("");
 }
 
 function convertPrimaryToAccountDisplay(value, targetCurrency = selectedCurrency()) {
@@ -938,15 +942,15 @@ function buildAccountCard(account, row, previousRow, { hidden = false } = {}) {
       </div>
       <div class="account-card-controls">
         ${hidden ? `<span class="category-pill hidden-pill">Hidden</span>` : ""}
-        <label class="account-card-currency-field" title="Display currency">
-          <span>Show</span>
-          <select data-account-display-currency="${escapeHtml(account.id)}">
-            ${accountCurrencyOptions(account.displayCurrency || "", account.currency || currency)}
-          </select>
-        </label>
         <div class="account-menu-wrap">
           <button class="icon-button account-menu-button" type="button" data-account-menu-toggle aria-haspopup="menu" aria-label="Account options">⚙</button>
           <div class="account-menu" role="menu">
+            <label class="account-menu-currency-field" role="none">
+              <span>Show currency</span>
+              <select data-account-display-currency="${escapeHtml(account.id)}">
+                ${accountCurrencyOptions(account.displayCurrency || "", account.currency || currency)}
+              </select>
+            </label>
             ${!hidden ? `<button type="button" role="menuitem" data-account-transactions="${escapeHtml(account.id)}">Txns</button>` : ""}
             ${isBroker && !hidden ? `<button type="button" role="menuitem" data-view-positions="${escapeHtml(account.id)}">Positions</button>` : ""}
             <button type="button" role="menuitem" data-edit-account="${escapeHtml(account.id)}">${hidden ? "Restore | edit" : "Edit"}</button>

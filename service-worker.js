@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v20-account-display-sync-reports";
+const CACHE_NAME = "capito-v22-position-toggles";
 const CORE = [
   "./",
   "./index.html",

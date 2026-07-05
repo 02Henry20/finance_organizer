@@ -1,14 +1,7 @@
-Capito v20 verified build
-Build ID: capito-v20-account-display-sync-reports
-Created: 2026-07-05T12:22:25
+Capito v22 verified build
+Build ID: capito-v22-position-toggles
+Created: 2026-07-05T12:31:56
 
 Changes:
-- Per-account display currency selector on each account card.
-- Per-account display currency field in account edit modal.
-- Removed global account display currency selector.
-- Mobile Reports toolbar layout:
-  Reports                Month / Year
-  Period analysis
-  Month                  Compare year
-- Desktop sync troubleshooting layout widened so buttons stay single-line and text is not squeezed.
-- Previous v19 features retained: sync resolution, unified import, icons, network-first service worker.
+- Desktop broker positions modal: "Since buy / Today" and "Amount / Percent" toggle groups are side by side.
+- Previous v21 features retained.

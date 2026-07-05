@@ -1521,3 +1521,104 @@ td .category-pill .category-pill-text,
     padding-inline: 13px;
   }
 }
+
+
+/* v21: account display currency lives inside the gear menu only */
+.account-card-currency-field {
+  display: none !important;
+}
+.account-menu {
+  min-width: 178px;
+}
+.account-menu-currency-field {
+  display: grid;
+  gap: 5px;
+  padding: 8px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 4px;
+}
+.account-menu-currency-field span {
+  color: var(--muted);
+  font-size: .63rem;
+  font-weight: 850;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.account-menu-currency-field select {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 7px 9px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: .76rem;
+  font-weight: 760;
+}
+
+/* v21: desktop sync troubleshooting buttons below explanation text */
+@media (min-width: 761px) {
+  .settings-row.sync-choice-row {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 13px !important;
+    align-items: start !important;
+    padding-block: 17px !important;
+  }
+  .settings-row.sync-choice-row > div:first-child {
+    max-width: 100% !important;
+  }
+  .settings-row.sync-choice-row > div:first-child small {
+    max-width: 860px !important;
+    line-height: 1.45 !important;
+  }
+  .settings-row.sync-choice-row .sync-choice-actions {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    justify-content: flex-start !important;
+    gap: 10px !important;
+    width: 100% !important;
+    white-space: nowrap !important;
+  }
+  .settings-row.sync-choice-row .sync-choice-actions > button {
+    flex: 0 0 auto !important;
+    white-space: nowrap !important;
+    min-width: max-content !important;
+    padding-inline: 14px !important;
+  }
+}
+
+
+/* v22: desktop broker positions modal toggles stay side by side */
+@media (min-width: 921px) {
+  .positions-toolbar {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    flex-wrap: nowrap !important;
+    gap: 14px !important;
+  }
+  .position-toggle-row {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 10px !important;
+    width: auto !important;
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+  }
+  .positions-toolbar .compact-segments {
+    width: auto !important;
+    min-width: 194px !important;
+    max-width: 240px !important;
+    flex: 0 0 auto !important;
+  }
+  .positions-toolbar .segment-button {
+    white-space: nowrap !important;
+    padding-inline: 12px !important;
+  }
+  #add-position-holding {
+    flex: 0 0 auto !important;
+    white-space: nowrap !important;
+  }
+}
