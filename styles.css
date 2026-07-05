@@ -1928,3 +1928,83 @@ td .category-pill .category-pill-text,
     align-self: end !important;
   }
 }
+
+
+/* v25: visible but design-conform net-worth accent */
+.balance-card .hero-value,
+:root[data-theme="light"] .balance-card .hero-value,
+:root[data-theme="dark"] .balance-card .hero-value {
+  color: color-mix(in srgb, var(--accent) 78%, #ffffff) !important;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.15), rgba(255,255,255,.055)) !important;
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, rgba(255,255,255,.28)) !important;
+  box-shadow:
+    0 16px 34px rgba(0,0,0,.27),
+    inset 0 1px 0 rgba(255,255,255,.18) !important;
+  text-shadow:
+    0 2px 8px rgba(0,0,0,.72),
+    0 0 1px rgba(0,0,0,.88) !important;
+}
+:root[data-theme="light"] .balance-card .hero-value {
+  color: color-mix(in srgb, var(--accent) 84%, #ffffff) !important;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.22), rgba(255,255,255,.075)) !important;
+}
+
+/* v25: desktop Reports selector box should only contain the selectors */
+@media (min-width: 681px) {
+  .reports-toolbar > div:first-child {
+    display: none !important;
+  }
+  .reports-toolbar {
+    justify-content: flex-end !important;
+    align-items: center !important;
+  }
+  .reports-toolbar .report-controls {
+    margin-left: auto !important;
+  }
+}
+
+/* v25: mobile keeps Reports title and colors the supertext green */
+@media (max-width: 680px) {
+  .reports-toolbar > div:first-child .eyebrow {
+    color: var(--accent) !important;
+    opacity: 1 !important;
+  }
+}
+
+/* v25: mobile hidden-account toggle sits left of Add account */
+@media (max-width: 920px) {
+  .accounts-page-toolbar .accounts-toolbar-actions {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    align-items: stretch !important;
+    justify-content: stretch !important;
+    gap: 10px !important;
+    width: 100% !important;
+  }
+  .accounts-page-toolbar .accounts-toolbar-actions > button {
+    width: 100% !important;
+    min-width: 0 !important;
+    justify-content: center !important;
+    text-align: center !important;
+    white-space: nowrap !important;
+  }
+  #hidden-accounts-toggle {
+    grid-column: 1 !important;
+    min-height: 48px !important;
+    padding-inline: 10px !important;
+    font-size: .76rem !important;
+  }
+  .add-account-main-button {
+    grid-column: 2 !important;
+    min-height: 48px !important;
+    padding-inline: 12px !important;
+    font-size: .86rem !important;
+  }
+  #hidden-accounts-toggle[hidden] + .add-account-main-button {
+    grid-column: 1 / -1 !important;
+    justify-self: center !important;
+    width: min(100%, 220px) !important;
+  }
+}

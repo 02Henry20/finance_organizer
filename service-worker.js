@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v24-visual-refine-networth-accounts-reports";
+const CACHE_NAME = "capito-v25-reports-accounts-networth";
 const CORE = [
   "./",
   "./index.html",

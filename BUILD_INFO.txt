@@ -1,11 +1,9 @@
-Capito v24 verified build
-Build ID: capito-v24-visual-refine-networth-accounts-reports
-Created: 2026-07-05T13:14:21
+Capito v25 verified build
+Build ID: capito-v25-reports-accounts-networth
+Created: 2026-07-05T13:26:49
 
 Changes:
-- Redesigned home net-worth number for better contrast in light/dark mode; removed green glow.
-- Removed the mobile account menu X button.
-- Accounts toolbar now only contains centered actions; Add account is larger and centered.
-- Accounts desktop section kicker changed to Money Containers.
-- Replaced duplicate page kickers such as Reports/Reports and Transactions/Transactions with more useful labels.
-- Mobile Reports toolbar places Month/Year beside Period analysis and Compare year back in the right lower field.
+- Net-worth number has a subtle accent color while staying readable in light/dark mode.
+- Desktop Reports selector box hides the Reports / Period analysis title block.
+- Mobile Reports keeps the title block and colors Reports green.
+- Mobile hidden account toggle sits left of Add account when visible.

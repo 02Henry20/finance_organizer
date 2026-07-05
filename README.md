@@ -68,3 +68,11 @@ If a browser keeps old behavior, open `/cache-reset.html`, reset cache once, the
 - Accounts page kicker is now Money Containers.
 - Duplicate page kickers were replaced with more meaningful labels.
 - Mobile Reports toolbar layout corrected again.
+
+
+## v25 update
+
+- Net-worth number now has a visible accent color without the green light background.
+- Desktop Reports toolbar shows only selectors.
+- Mobile Reports keeps the Reports heading with green supertext.
+- Mobile hidden-account toggle sits left of Add account when it appears.
