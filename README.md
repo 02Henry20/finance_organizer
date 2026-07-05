@@ -91,3 +91,10 @@ If a browser keeps old behavior, open `/cache-reset.html`, reset cache once, the
 - Cost basis total is calculated automatically from quantity × buy price.
 - Current/manual price is disabled unless the provider is Manual.
 - Broker position imports create starting/given holdings by default.
+
+
+## v28 update
+
+- Revolut CSV import now ignores PENDING/REVERTED rows and imports only COMPLETED rows.
+- Revolut fees now keep their sign, so fee refunds increase the balance instead of decreasing it.
+- Revolut Product is included in the import description/external ID.

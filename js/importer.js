@@ -188,14 +188,16 @@ function normalizeRevolut(headers, rows) {
   const idx = headerIndex(headers);
   const i = { type: idx("Type"), product: idx("Product"), started: idx("Started Date"), completed: idx("Completed Date"), description: idx("Description"), amount: idx("Amount"), fee: idx("Fee"), currency: idx("Currency"), state: idx("State"), balance: idx("Balance") };
   const outHeaders = ["Date", "Amount", "Currency", "Counterparty", "Description", "Balance", "External ID"];
-  const outRows = rows.map(row => {
-    const baseAmount = money(row[i.amount]);
-    const fee = Math.abs(money(row[i.fee]));
-    const amount = baseAmount - fee;
-    const description = [row[i.type], row[i.description], fee ? `Fee ${row[i.fee]} ${row[i.currency] || ""}` : ""].filter(Boolean).join(" · ");
-    const id = [row[i.completed] || row[i.started], row[i.description], row[i.amount], row[i.fee], row[i.currency]].join("|");
-    return [row[i.completed] || row[i.started], amount, row[i.currency], row[i.description], description, row[i.balance], id];
-  });
+  const outRows = rows
+    .filter(row => String(row[i.state] || "").toUpperCase() === "COMPLETED")
+    .map(row => {
+      const baseAmount = money(row[i.amount]);
+      const fee = money(row[i.fee]);
+      const amount = baseAmount - fee;
+      const description = [row[i.product], row[i.type], row[i.description], fee ? `Fee ${row[i.fee]} ${row[i.currency] || ""}` : ""].filter(Boolean).join(" · ");
+      const id = [row[i.product], row[i.completed] || row[i.started], row[i.description], row[i.amount], row[i.fee], row[i.currency]].join("|");
+      return [row[i.completed] || row[i.started], amount, row[i.currency], row[i.description], description, row[i.balance], id];
+    });
   return { headers: outHeaders, rows: outRows };
 }
 
