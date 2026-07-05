@@ -58,3 +58,13 @@ If a browser keeps old behavior, open `/cache-reset.html`, reset cache once, the
 - Removed Show currency from account gear menu.
 - Mobile account gear menu is now a full pop menu with an X close button.
 - Desktop gear menu closes when clicking the gear again.
+
+
+## v24 update
+
+- Net-worth number recolored for readability in both themes, without green glow.
+- Removed the mobile account menu X button.
+- Accounts toolbar simplified to centered actions with a larger Add account button.
+- Accounts page kicker is now Money Containers.
+- Duplicate page kickers were replaced with more meaningful labels.
+- Mobile Reports toolbar layout corrected again.

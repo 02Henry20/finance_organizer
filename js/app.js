@@ -64,10 +64,10 @@ import { drawAccountBars, drawDonut, drawIncomeExpense, drawNetSeries, drawYearC
 
 const VIEW_LABELS = {
   overview: ["COMMAND CENTER", "Overview"],
-  reports: ["REPORTS", "Reports"],
-  transactions: ["TRANSACTIONS", "Transactions"],
+  reports: ["PERIOD ANALYSIS", "Reports"],
+  transactions: ["LEDGER", "Transactions"],
   import: ["BANK DATA", "Import"],
-  accounts: ["ACCOUNTS", "Accounts"],
+  accounts: ["MONEY CONTAINERS", "Accounts"],
   assets: ["PORTFOLIO", "Assets"],
   rules: ["AUTOMATION", "Rules"],
   settings: ["CONTROL", "Settings"]
@@ -945,7 +945,6 @@ function buildAccountCard(account, row, previousRow, { hidden = false } = {}) {
         <div class="account-menu-wrap">
           <button class="icon-button account-menu-button" type="button" data-account-menu-toggle aria-haspopup="menu" aria-label="Account options">⚙</button>
           <div class="account-menu" role="menu">
-            <button type="button" class="account-menu-close mobile-account-menu-close" data-account-menu-close aria-label="Close account menu">×</button>
             ${!hidden ? `<button type="button" role="menuitem" data-account-transactions="${escapeHtml(account.id)}">Txns</button>` : ""}
             ${isBroker && !hidden ? `<button type="button" role="menuitem" data-view-positions="${escapeHtml(account.id)}">Positions</button>` : ""}
             <button type="button" role="menuitem" data-edit-account="${escapeHtml(account.id)}">${hidden ? "Restore | edit" : "Edit"}</button>
@@ -1054,11 +1053,6 @@ function wireAccountCardActions(root) {
     const wasOpen = Boolean(wrap?.classList.contains("menu-open"));
     document.querySelectorAll(".account-menu-wrap.menu-open").forEach(open => open.classList.remove("menu-open"));
     if (!wasOpen) wrap?.classList.add("menu-open");
-  }));
-  root.querySelectorAll("[data-account-menu-close]").forEach(btn => btn.addEventListener("click", event => {
-    event.preventDefault();
-    event.stopPropagation();
-    btn.closest(".account-menu-wrap")?.classList.remove("menu-open");
   }));
 }
 

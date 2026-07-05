@@ -1799,3 +1799,132 @@ td .category-pill .category-pill-text,
 #category-group {
   display: none !important;
 }
+
+
+/* v24: net-worth number readable in both themes, without green glow */
+.balance-card .hero-value,
+:root[data-theme="light"] .balance-card .hero-value,
+:root[data-theme="dark"] .balance-card .hero-value {
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.14), rgba(255,255,255,.055)) !important;
+  color: #fbfff7 !important;
+  border: 1px solid rgba(255,255,255,.22) !important;
+  box-shadow:
+    0 14px 36px rgba(0,0,0,.26),
+    inset 0 1px 0 rgba(255,255,255,.18) !important;
+  text-shadow:
+    0 2px 10px rgba(0,0,0,.72),
+    0 0 1px rgba(0,0,0,.85) !important;
+}
+:root[data-theme="light"] .balance-card .hero-value {
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.20), rgba(255,255,255,.08)) !important;
+  color: #ffffff !important;
+}
+
+/* v24: accounts toolbar is only the centered action area */
+.accounts-page-toolbar {
+  display: grid !important;
+  place-items: center !important;
+  padding: 20px !important;
+}
+.accounts-page-toolbar .accounts-toolbar-actions {
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  width: 100% !important;
+  gap: 12px !important;
+}
+.add-account-main-button {
+  min-height: 50px !important;
+  min-width: 190px !important;
+  padding: 14px 26px !important;
+  border-radius: 18px !important;
+  font-size: .98rem !important;
+  font-weight: 900 !important;
+}
+@media (max-width: 920px) {
+  .accounts-page-toolbar {
+    padding: 16px !important;
+  }
+  .accounts-page-toolbar .accounts-toolbar-actions {
+    justify-content: center !important;
+  }
+  .add-account-main-button {
+    min-height: 48px !important;
+    min-width: min(100%, 210px) !important;
+    width: auto !important;
+  }
+}
+
+/* v24: mobile account pop menu has no close button */
+.mobile-account-menu-close,
+.account-menu-close {
+  display: none !important;
+}
+@media (max-width: 920px) {
+  .account-menu button {
+    min-height: 46px !important;
+    border-radius: 15px !important;
+    font-size: .9rem !important;
+  }
+}
+
+/* v24: mobile Reports toolbar order */
+@media (max-width: 680px) {
+  .reports-toolbar {
+    display: grid !important;
+    min-height: 0 !important;
+    height: auto !important;
+    grid-template-columns: minmax(0, 1fr) minmax(126px, 42vw) !important;
+    grid-template-areas:
+      "reports-title reports-title"
+      "period-title reports-mode"
+      "report-controls report-controls" !important;
+    align-items: start !important;
+    gap: 6px 10px !important;
+    padding: 14px !important;
+  }
+  .reports-toolbar > div:first-child {
+    display: contents !important;
+  }
+  .reports-toolbar > div:first-child .eyebrow {
+    grid-area: reports-title !important;
+    margin: 0 !important;
+  }
+  .reports-toolbar > div:first-child h3 {
+    grid-area: period-title !important;
+    margin: 0 !important;
+    align-self: center !important;
+    line-height: 1.1 !important;
+  }
+  .reports-toolbar .report-mode-control {
+    grid-area: reports-mode !important;
+    grid-column: auto !important;
+    grid-row: auto !important;
+    align-self: center !important;
+    justify-self: end !important;
+    width: 100% !important;
+    max-width: 164px !important;
+  }
+  .reports-toolbar .report-controls {
+    display: grid !important;
+    grid-area: report-controls !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    gap: 10px !important;
+    width: 100% !important;
+    margin-top: 8px !important;
+    align-items: end !important;
+  }
+  .reports-toolbar #report-month-field,
+  .reports-toolbar #report-year-field {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+  }
+  .reports-toolbar #report-compare-field {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    justify-self: stretch !important;
+    align-self: end !important;
+  }
+}
