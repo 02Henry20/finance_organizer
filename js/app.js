@@ -99,16 +99,18 @@ let activePositionsAccountId = "";
 let activeAccountTransactionsId = "";
 let positionsPeriod = "basis";
 let positionsUnit = "absolute";
+let mobileCategoriesExpanded = false;
+let mobileRulesExpanded = false;
 let reportsMode = "month";
 let reportsMonth = monthKey(TODAY());
 let reportsYear = String(new Date().getFullYear());
 let reportsCompareYear = String(new Date().getFullYear() - 1);
 
 const PAGE_SIZES = {
-  transactions: 25,
-  importPreview: 25,
-  positions: 8,
-  accountTransactions: 8
+  transactions: 10,
+  importPreview: 10,
+  positions: 10,
+  accountTransactions: 10
 };
 
 function firebaseErrorMessage(error) {
@@ -250,7 +252,7 @@ function safeColor(value, fallback = DEFAULT_CATEGORY_COLOR) {
 
 function categoryPill(cat, { review = false } = {}) {
   const color = safeColor(cat?.color);
-  return `<span class="category-pill colored ${review ? "review-pill" : ""}" style="--cat-color:${color}">${escapeHtml(cat?.icon || "?")} ${escapeHtml(cat?.name || "Misc")}</span>`;
+  return `<span class="category-pill colored ${review ? "review-pill" : ""}" style="--cat-color:${color}" title="${escapeHtml(cat?.name || "Misc")}"><span class="category-icon">${escapeHtml(cat?.icon || "?")}</span><span class="category-label">${escapeHtml(cat?.name || "Misc")}</span></span>`;
 }
 
 function colorOptions(selected = DEFAULT_CATEGORY_COLOR) {
@@ -272,6 +274,10 @@ function normalizedCurrencyFrom(selector, fallback = selectedCurrency()) {
 
 function visibleAccounts() {
   return state.accounts.filter(account => !account.hidden);
+}
+
+function isMobileViewport() {
+  return typeof window !== "undefined" && window.matchMedia("(max-width: 920px)").matches;
 }
 
 function holdingsForAccount(accountId) {
@@ -311,7 +317,7 @@ function updateSortButtons(tableName, sort) {
     const active = button.dataset.sortKey === sort.key;
     button.classList.toggle("active", active);
     const indicator = button.querySelector(".sort-indicator");
-    if (indicator) indicator.textContent = active ? (sort.dir === "asc" ? "^" : "v") : "";
+    if (indicator) indicator.textContent = active ? (sort.dir === "asc" ? "↑" : "↓") : "";
   });
 }
 
@@ -474,7 +480,7 @@ function deltaHtml(current, previous, { inverted = false, label = "" } = {}) {
   const arrow = delta > 0 ? "↗" : delta < 0 ? "↘" : "→";
   const good = inverted ? delta <= 0 : delta >= 0;
   const cls = Math.abs(delta) < 0.005 ? "delta-flat" : good ? "delta-up" : "delta-down";
-  return `<span class="${cls}">${arrow} ${formatCurrency(Math.abs(delta), selectedCurrency())} · ${Math.abs(pct).toFixed(1)}%</span> ${escapeHtml(label)}`;
+  return `<span class="${cls} delta-value">${arrow} ${formatCurrency(Math.abs(delta), selectedCurrency())} · ${Math.abs(pct).toFixed(1)}%</span><span class="delta-label">${escapeHtml(label)}</span>`;
 }
 
 function comparisonWindowFlow(compareDate) {
@@ -643,6 +649,7 @@ function renderReports() {
 function fillFilters() {
   const txAccountFilter = $("#tx-account-filter");
   const txCategoryFilter = $("#tx-category-filter");
+  const txCurrencyFilter = $("#tx-currency-filter");
   const importAccount = $("#import-account");
   const transactionAccount = $("#transaction-account");
   const transactionCategory = $("#transaction-category");
@@ -651,6 +658,12 @@ function fillFilters() {
   const assetAccount = $("#asset-account");
   if (txAccountFilter) txAccountFilter.innerHTML = `<option value="all">All accounts</option>${accountOptions(txAccountFilter.value)}`;
   if (txCategoryFilter) txCategoryFilter.innerHTML = `<option value="all">All categories</option>${categoryOptions(txCategoryFilter.value)}`;
+  if (txCurrencyFilter) {
+    const current = txCurrencyFilter.value || "all";
+    const currencies = [...new Set([selectedCurrency(), ...state.transactions.map(tx => tx.currency), ...VALID_CURRENCIES].map(code => String(code || "").toUpperCase()).filter(Boolean))].sort();
+    txCurrencyFilter.innerHTML = `<option value="all">All currencies</option>${currencies.map(code => `<option value="${escapeHtml(code)}" ${code === current ? "selected" : ""}>${escapeHtml(code)}</option>`).join("")}`;
+    if (current !== "all" && !currencies.includes(current)) txCurrencyFilter.value = "all";
+  }
   if (importAccount) importAccount.innerHTML = accountOptions(importAccount.value || visibleAccounts()[0]?.id);
   if (transactionAccount) transactionAccount.innerHTML = accountOptions(transactionAccount.value || visibleAccounts()[0]?.id);
   if (transactionCategory) transactionCategory.innerHTML = categoryOptions(transactionCategory.value || "misc");
@@ -667,11 +680,17 @@ function renderTransactions() {
   const search = $("#tx-search").value.trim().toLowerCase();
   const accountFilter = $("#tx-account-filter").value || "all";
   const categoryFilter = $("#tx-category-filter").value || "all";
+  const currencyFilter = $("#tx-currency-filter")?.value || "all";
+  const minAmount = parseMoney($("#tx-min-amount")?.value);
+  const maxAmount = parseMoney($("#tx-max-amount")?.value);
   const reviewFilter = $("#tx-review-filter").value || "all";
   let rows = state.transactions;
   if (search) rows = rows.filter(tx => [tx.description, tx.counterparty, tx.note, tx.reason].join(" ").toLowerCase().includes(search));
   if (accountFilter !== "all") rows = rows.filter(tx => tx.accountId === accountFilter);
   if (categoryFilter !== "all") rows = rows.filter(tx => tx.categoryId === categoryFilter);
+  if (currencyFilter !== "all") rows = rows.filter(tx => String(tx.currency || selectedCurrency()).toUpperCase() === currencyFilter);
+  if (minAmount != null) rows = rows.filter(tx => Math.abs(Number(tx.amount || 0)) >= Math.abs(minAmount));
+  if (maxAmount != null) rows = rows.filter(tx => Math.abs(Number(tx.amount || 0)) <= Math.abs(maxAmount));
   if (reviewFilter === "review") rows = rows.filter(tx => tx.review);
   if (reviewFilter === "clean") rows = rows.filter(tx => !tx.review);
   rows = sortedRows(rows, txSort, {
@@ -721,7 +740,10 @@ function renderAccounts() {
   if (!hiddenAccounts.length) hiddenAccountsExpanded = false;
   if (hiddenToggle) {
     hiddenToggle.hidden = hiddenAccounts.length === 0;
-    hiddenToggle.textContent = hiddenAccountsExpanded ? `Hide hidden accounts (${hiddenAccounts.length})` : `Show hidden accounts (${hiddenAccounts.length})`;
+    const mobile = isMobileViewport();
+    hiddenToggle.textContent = hiddenAccountsExpanded
+      ? (mobile ? `Hide (${hiddenAccounts.length})` : `Hide hidden accounts (${hiddenAccounts.length})`)
+      : (mobile ? `Hidden (${hiddenAccounts.length})` : `Show hidden accounts (${hiddenAccounts.length})`);
     hiddenToggle.setAttribute("aria-expanded", String(hiddenAccountsExpanded));
   }
   if (hiddenSection) hiddenSection.hidden = hiddenAccounts.length === 0 || !hiddenAccountsExpanded;
@@ -749,7 +771,7 @@ function renderAccounts() {
         <div><span>Cash balance</span><strong class="${row.balance.converted >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(row.balance.raw, account.currency || currency)}</strong></div>
         ${isBroker ? `<div><span>Holdings</span><strong>${formatCurrency(holdingsValue, currency)}</strong></div><div><span>Total</span><strong>${formatCurrency(totalValue, currency)}</strong></div>` : ""}
       </div>
-      ${isBroker ? `<div class="account-holding-summary"><small>${holdings.length ? `${holdings.length} positions hidden from the card.` : "No positions yet."}</small></div>` : ""}
+      ${isBroker && !holdings.length ? `<div class="account-holding-summary"><small>No positions yet.</small></div>` : ""}
       <div class="item-card-actions">
         ${isBroker ? `<button class="secondary-button compact" data-view-positions="${escapeHtml(account.id)}" type="button">View positions</button><button class="secondary-button compact" data-add-asset-for="${escapeHtml(account.id)}" type="button">Add holding</button>` : ""}
         <button class="ghost-button compact" data-account-transactions="${escapeHtml(account.id)}" type="button">Latest transactions</button>
@@ -781,18 +803,49 @@ function renderRules() {
   const rulesList = $("#rules-list");
   if (!categoriesList || !rulesList) return;
   const cats = categoryMap();
+  const categoryQuery = ($("#category-search")?.value || "").trim().toLowerCase();
+  const ruleQuery = ($("#rule-search")?.value || "").trim().toLowerCase();
+  const mobile = isMobileViewport();
+  const categoriesPanel = $("#categories-panel");
+  const rulesPanel = $("#rules-panel");
+  const categoriesToggle = $("#categories-fold-toggle");
+  const rulesToggle = $("#rules-fold-toggle");
+
+  if (categoriesPanel) categoriesPanel.classList.toggle("is-folded", mobile && !mobileCategoriesExpanded);
+  if (rulesPanel) rulesPanel.classList.toggle("is-folded", mobile && !mobileRulesExpanded);
+  if (categoriesToggle) {
+    categoriesToggle.hidden = !mobile;
+    categoriesToggle.textContent = mobileCategoriesExpanded ? "Hide" : "Show";
+    categoriesToggle.setAttribute("aria-expanded", String(mobileCategoriesExpanded));
+  }
+  if (rulesToggle) {
+    rulesToggle.hidden = !mobile;
+    rulesToggle.textContent = mobileRulesExpanded ? "Hide" : "Show";
+    rulesToggle.setAttribute("aria-expanded", String(mobileRulesExpanded));
+  }
+
   categoriesList.replaceChildren();
   rulesList.replaceChildren();
-  for (const cat of state.categories) {
+  const categoryRows = state.categories.filter(cat => {
+    if (!categoryQuery) return true;
+    return [cat.name, cat.group, cat.type, cat.icon].join(" ").toLowerCase().includes(categoryQuery);
+  });
+  for (const cat of categoryRows) {
     const related = state.rules.filter(rule => rule.categoryId === cat.id);
     const row = document.createElement("div");
     row.className = "settings-row category-row";
     row.innerHTML = `<div><strong><span class="category-color-dot" style="--cat-color:${safeColor(cat.color)}"></span>${escapeHtml(cat.icon || "•")} ${escapeHtml(cat.name)}</strong><small>${escapeHtml(cat.group)} · ${escapeHtml(cat.type)} · ${related.length} keyword rules</small></div><button class="ghost-button compact" data-edit-category="${escapeHtml(cat.id)}" type="button">Edit</button>`;
     categoriesList.append(row);
   }
+  if (!categoryRows.length) categoriesList.innerHTML = `<p class="muted empty-list-note">No categories match this search.</p>`;
 
+  const ruleRows = state.rules.filter(rule => {
+    if (!ruleQuery) return true;
+    const cat = cats.get(rule.categoryId) || cats.get("misc");
+    return [rule.label, rule.categoryId, cat?.name, cat?.group, ...(rule.keywords || [])].join(" ").toLowerCase().includes(ruleQuery);
+  });
   const grouped = new Map();
-  for (const rule of state.rules) {
+  for (const rule of ruleRows) {
     const cat = cats.get(rule.categoryId) || cats.get("misc");
     const key = cat?.id || "misc";
     if (!grouped.has(key)) grouped.set(key, { cat, rules: [] });
@@ -811,6 +864,7 @@ function renderRules() {
     }
     rulesList.append(wrapper);
   }
+  if (!ruleRows.length) rulesList.innerHTML = `<p class="muted empty-list-note">No rules match this search.</p>`;
   categoriesList.querySelectorAll("[data-edit-category]").forEach(btn => btn.addEventListener("click", () => openCategoryModal(btn.dataset.editCategory)));
   rulesList.querySelectorAll("[data-edit-rule]").forEach(btn => btn.addEventListener("click", () => openRuleModal(btn.dataset.editRule)));
 }
@@ -948,13 +1002,15 @@ function openAssetModal(id = "", accountId = "") {
   $("#asset-account").value = defaultBroker;
   $("#asset-symbol").value = asset?.symbol || "";
   $("#asset-name").value = asset?.name || "";
+  $("#asset-wkn").value = asset?.wkn || "";
+  $("#asset-isin").value = asset?.isin || "";
   $("#asset-type").value = asset?.type || "stock";
   $("#asset-provider").value = asset?.provider || state.settings.marketProvider || "manual";
   $("#asset-quantity").value = asset?.quantity ?? 1;
   $("#asset-currency").value = asset?.currency || selectedCurrency();
   $("#asset-manual-price").value = asset?.manualPrice ?? asset?.lastPrice ?? 0;
+  $("#asset-buy-price").value = asset?.buyPrice ?? (Number(asset?.quantity || 0) > 0 && Number(asset?.costBasis || 0) > 0 ? Number(asset.costBasis) / Number(asset.quantity) : 0);
   $("#asset-cost-basis").value = asset?.costBasis ?? 0;
-  $("#asset-hidden").checked = Boolean(asset?.hidden);
   $("#delete-asset-button").hidden = !asset;
   openModal("asset");
 }
@@ -996,12 +1052,13 @@ function renderPositionsModal() {
   });
   tbody.replaceChildren();
   if (!holdings.length) {
-    tbody.innerHTML = `<tr><td colspan="6" class="muted">No positions in this account yet.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="muted">No positions in this account yet.</td></tr>`;
     return;
   }
   for (const asset of pagedRows(holdings, positionsPage, PAGE_SIZES.positions)) {
     const price = Number(asset.lastPrice ?? asset.manualPrice ?? 0);
     const value = assetMarketValue(asset);
+    const buyPrice = Number(asset.buyPrice || (Number(asset.quantity || 0) > 0 ? Number(asset.costBasis || 0) / Number(asset.quantity || 1) : 0));
     const currency = asset.currency || account?.currency || selectedCurrency();
     const delta = positionDelta(asset);
     const deltaValue = positionsUnit === "percent" ? delta.percent : delta.amount;
@@ -1016,6 +1073,7 @@ function renderPositionsModal() {
       <td><strong>${escapeHtml(asset.symbol || asset.name)}</strong><small class="muted table-ellipsis">${escapeHtml(asset.name || asset.type || "")}</small></td>
       <td>${Number(asset.quantity || 0).toLocaleString()}</td>
       <td>${formatCurrency(price, currency)}</td>
+      <td>${Number.isFinite(buyPrice) && buyPrice > 0 ? formatCurrency(buyPrice, currency) : "—"}</td>
       <td>${formatCurrency(value, currency)}</td>
       <td><span class="${deltaClass}">${deltaText}</span></td>
       <td class="action-cell"><button class="ghost-button compact" type="button" data-edit-asset="${escapeHtml(asset.id)}">Edit</button></td>`;
@@ -1440,7 +1498,7 @@ function wireEvents() {
     importPage = 1;
     renderImportPreview();
   });
-  ["#tx-search", "#tx-account-filter", "#tx-category-filter", "#tx-review-filter"].forEach(selector => $(selector)?.addEventListener("input", () => {
+  ["#tx-search", "#tx-account-filter", "#tx-category-filter", "#tx-currency-filter", "#tx-min-amount", "#tx-max-amount", "#tx-review-filter"].forEach(selector => $(selector)?.addEventListener("input", () => {
     txPage = 1;
     renderTransactions();
   }));
@@ -1448,6 +1506,9 @@ function wireEvents() {
     $("#tx-search").value = "";
     $("#tx-account-filter").value = "all";
     $("#tx-category-filter").value = "all";
+    $("#tx-currency-filter").value = "all";
+    $("#tx-min-amount").value = "";
+    $("#tx-max-amount").value = "";
     $("#tx-review-filter").value = "all";
     txPage = 1;
     renderTransactions();
@@ -1456,7 +1517,16 @@ function wireEvents() {
     const panel = $("#tx-filter-panel");
     const expanded = !panel.classList.toggle("is-collapsed");
     $("#tx-filter-toggle").setAttribute("aria-expanded", String(expanded));
-    $("#tx-filter-toggle b").textContent = expanded ? "-" : "+";
+    $("#tx-filter-toggle b").textContent = expanded ? "−" : "+";
+  });
+  ["#category-search", "#rule-search"].forEach(selector => $(selector)?.addEventListener("input", renderRules));
+  $("#categories-fold-toggle")?.addEventListener("click", () => {
+    mobileCategoriesExpanded = !mobileCategoriesExpanded;
+    renderRules();
+  });
+  $("#rules-fold-toggle")?.addEventListener("click", () => {
+    mobileRulesExpanded = !mobileRulesExpanded;
+    renderRules();
   });
   $$("[data-report-mode]").forEach(button => button.addEventListener("click", () => {
     reportsMode = button.dataset.reportMode === "year" ? "year" : "month";
@@ -1594,18 +1664,25 @@ function wireEvents() {
     const form = event.currentTarget;
     setBusy(form, true);
     try {
+      const quantity = parseMoney($("#asset-quantity").value) || 0;
+      const buyPrice = parseMoney($("#asset-buy-price").value) || 0;
+      const costBasisInput = parseMoney($("#asset-cost-basis").value);
+      const costBasis = costBasisInput != null ? costBasisInput : buyPrice * quantity;
       await saveAsset({
         id: $("#asset-id").value || undefined,
         accountId: $("#asset-account").value,
         symbol: $("#asset-symbol").value,
         name: $("#asset-name").value,
+        wkn: $("#asset-wkn").value,
+        isin: $("#asset-isin").value,
         type: $("#asset-type").value,
         provider: $("#asset-provider").value,
-        quantity: parseMoney($("#asset-quantity").value) || 0,
+        quantity,
         currency: normalizedCurrencyFrom("#asset-currency"),
         manualPrice: parseMoney($("#asset-manual-price").value) || 0,
-        costBasis: parseMoney($("#asset-cost-basis").value) || 0,
-        hidden: $("#asset-hidden").checked
+        buyPrice,
+        costBasis,
+        hidden: false
       });
       toast("Holding saved");
       closeModal();

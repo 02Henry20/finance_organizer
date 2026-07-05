@@ -604,3 +604,143 @@ td { font-size: .9rem; }
   .modal-toolbar { display: grid; }
   .compact-segments { width: 100%; }
 }
+
+/* Newest requested refinements */
+.delta-value {
+  display: inline-block;
+  font-size: 1.05rem;
+  line-height: 1.1;
+}
+.delta-label {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: .68rem;
+  font-weight: 720;
+  line-height: 1.15;
+}
+.net-worth-meta .delta-value { font-size: clamp(1.15rem, 2.2vw, 1.55rem); }
+.net-worth-meta .delta-label { color: color-mix(in srgb, var(--text) 56%, transparent); font-size: .66rem; }
+.net-worth-meta b { font-size: clamp(1.05rem, 2vw, 1.42rem); letter-spacing: -.035em; }
+.net-worth-meta span { line-height: 1.4; }
+
+.category-pill {
+  max-width: min(100%, 13.5rem);
+  min-width: 0;
+  overflow: hidden;
+  vertical-align: middle;
+}
+.category-pill .category-icon { flex: 0 0 auto; }
+.category-pill .category-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.category-pill.colored::before { flex: 0 0 auto; }
+
+.transactions-table {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+}
+.transactions-table .date-col { width: 94px; }
+.transactions-table .description-col { width: 30%; }
+.transactions-table .account-col { width: 120px; }
+.transactions-table .category-col { width: 150px; }
+.transactions-table .amount-col { width: 118px; }
+.transactions-table .note-col { width: 128px; }
+.transactions-table .actions-col { width: 72px; }
+.transactions-table th,
+.transactions-table td { padding-left: 8px; padding-right: 8px; }
+.transactions-table .category-pill,
+.dialog-table .category-pill,
+.import-preview-table .category-pill { max-width: 100%; }
+.dialog-table { table-layout: fixed; }
+.dialog-table th:nth-child(3),
+.dialog-table td:nth-child(3) { width: 150px; }
+.sort-indicator { min-width: 1em; font-size: .9rem; }
+.amount-filter-grid { gap: 8px; }
+
+.hidden-account-card {
+  opacity: .58;
+  filter: grayscale(.45);
+  background: color-mix(in srgb, var(--surface-2) 78%, transparent);
+}
+.hidden-account-card:hover { opacity: .78; filter: grayscale(.2); }
+
+.rules-panel .panel-heading { margin-bottom: 14px; }
+.rules-heading-actions { display: inline-flex; gap: 8px; align-items: center; }
+.rules-search { margin-bottom: 12px; }
+.rules-scroll-list {
+  max-height: min(64vh, 720px);
+  overflow: auto;
+  padding-right: 4px;
+}
+.empty-list-note { padding: 12px; }
+.mobile-fold-button { display: none; }
+
+.chart-card:has(#category-donut-chart) .chart-wrap,
+.chart-card:has(#report-category-chart) .chart-wrap { min-height: 270px; }
+
+@media (max-width: 920px) {
+  .mobile-fold-button { display: inline-flex; }
+  .rules-panel.is-folded .rules-search,
+  .rules-panel.is-folded .rules-scroll-list { display: none; }
+  .rules-scroll-list { max-height: 52vh; }
+
+  .report-controls {
+    grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr);
+    gap: 8px;
+    align-items: end;
+  }
+  .report-mode-control { grid-column: 1 / 2; }
+  #report-month-field,
+  #report-year-field { grid-column: 1 / 2; }
+  #report-compare-field { grid-column: 2 / 3; }
+  .reports-toolbar { gap: 10px; padding: 16px; }
+  .reports-toolbar > div:first-child { display: none; }
+
+  .metric-card strong { font-size: clamp(2.05rem, 9vw, 2.8rem); }
+  .metric-card small { font-size: .72rem; }
+  .delta-value { font-size: 1.12rem; }
+  .delta-label { font-size: .64rem; }
+
+  #hidden-accounts-toggle { max-width: 112px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .modal-toolbar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .compact-segments { width: 100%; }
+}
+
+@media (max-width: 680px) {
+  .net-worth-meta { gap: 10px; }
+  .net-worth-meta > div { padding: 12px 13px; }
+  .net-worth-meta .delta-value { font-size: 1.32rem; }
+  .net-worth-meta .delta-label { font-size: .62rem; }
+  .net-worth-meta b { font-size: 1.18rem; }
+  .metric-card strong { font-size: clamp(2.15rem, 11vw, 3.1rem); }
+  .metric-card { min-height: 132px; }
+
+  .chart-card:has(#category-donut-chart) .chart-wrap,
+  .chart-card:has(#report-category-chart) .chart-wrap {
+    min-height: 238px;
+    height: 238px;
+  }
+  .chart-card:has(#category-donut-chart),
+  .chart-card:has(#report-category-chart) { align-self: start; }
+
+  .transactions-table { min-width: 760px; }
+  .category-pill { max-width: 10.5rem; }
+  .dialog-table { min-width: 760px; }
+  .report-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .reports-metric-grid .metric-card strong { font-size: clamp(1.75rem, 8vw, 2.45rem); }
+}
+@media (max-width: 920px) {
+  .report-mode-control { grid-row: 1; }
+  #report-month-field,
+  #report-year-field { grid-row: 2; }
+  #report-compare-field { grid-row: 2; }
+}

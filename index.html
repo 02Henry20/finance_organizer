@@ -157,6 +157,8 @@
               <label class="field"><span>Search</span><input id="tx-search" type="search" placeholder="Search txns"></label>
               <label class="field"><span>Account</span><select id="tx-account-filter"></select></label>
               <label class="field"><span>Category</span><select id="tx-category-filter"></select></label>
+              <label class="field"><span>Currency</span><select id="tx-currency-filter"><option value="all">All currencies</option></select></label>
+              <div class="form-grid two amount-filter-grid"><label class="field"><span>Min amount</span><input id="tx-min-amount" type="number" step="0.01" placeholder="Any"></label><label class="field"><span>Max amount</span><input id="tx-max-amount" type="number" step="0.01" placeholder="Any"></label></div>
               <label class="field"><span>Status</span><select id="tx-review-filter"><option value="all">All</option><option value="review">Needs review</option><option value="clean">Clean</option></select></label>
               <button id="reset-tx-filters" class="secondary-button" type="button">Reset filters</button>
             </div>
@@ -199,13 +201,15 @@
 
       <section class="view" data-view-section="rules">
         <div class="rules-layout">
-          <article class="surface-card table-card">
-            <div class="panel-heading"><div><p class="eyebrow">CATEGORIES</p><h3>Available categories</h3></div><button class="primary-button compact" data-open-modal="category" type="button">Add</button></div>
-            <div id="categories-list" class="settings-list"></div>
+          <article id="categories-panel" class="surface-card table-card rules-panel">
+            <div class="panel-heading"><div><p class="eyebrow">CATEGORIES</p><h3>Available categories</h3></div><div class="rules-heading-actions"><button id="categories-fold-toggle" class="ghost-button compact mobile-fold-button" type="button" aria-expanded="false">Show</button><button class="primary-button compact" data-open-modal="category" type="button">Add</button></div></div>
+            <label class="field rules-search"><span>Search categories</span><input id="category-search" type="search" placeholder="Name, group, type"></label>
+            <div id="categories-list" class="settings-list rules-scroll-list"></div>
           </article>
-          <article class="surface-card table-card">
-            <div class="panel-heading"><div><p class="eyebrow">AUTO CATEGORIZATION</p><h3>Rules by target category</h3></div><button class="primary-button compact" data-open-modal="rule" type="button">Add rule</button></div>
-            <div id="rules-list" class="settings-list"></div>
+          <article id="rules-panel" class="surface-card table-card rules-panel">
+            <div class="panel-heading"><div><p class="eyebrow">AUTO CATEGORIZATION</p><h3>Rules by target category</h3></div><div class="rules-heading-actions"><button id="rules-fold-toggle" class="ghost-button compact mobile-fold-button" type="button" aria-expanded="false">Show</button><button class="primary-button compact" data-open-modal="rule" type="button">Add rule</button></div></div>
+            <label class="field rules-search"><span>Search rules</span><input id="rule-search" type="search" placeholder="Label, keyword, category"></label>
+            <div id="rules-list" class="settings-list rules-scroll-list"></div>
           </article>
         </div>
       </section>
@@ -259,8 +263,8 @@
 
     <nav class="mobile-nav" aria-label="Mobile navigation">
       <button class="active" data-view="overview" type="button"><span>⌂</span><small>Home</small></button>
-      <button data-view="transactions" type="button"><span>≡</span><small>Txns</small></button>
       <button data-view="reports" type="button"><span>#</span><small>Reports</small></button>
+      <button data-view="transactions" type="button"><span>≡</span><small>Txns</small></button>
       <button data-view="accounts" type="button"><span>💳</span><small>Accounts</small></button>
       <button data-view="settings" type="button"><span>⚙</span><small>More</small></button>
     </nav>
@@ -305,11 +309,11 @@
       <form id="asset-form" class="form-stack">
         <input id="asset-id" type="hidden">
         <label class="field"><span>Broker account</span><select id="asset-account"></select></label>
-        <div class="form-grid two"><label class="field"><span>Symbol</span><input id="asset-symbol" placeholder="AAPL or AAPL.US"></label><label class="field"><span>Name</span><input id="asset-name" placeholder="Apple"></label></div>
+        <div class="form-grid two"><label class="field"><span>Symbol / ticker</span><input id="asset-symbol" placeholder="AAPL or AAPL.US"></label><label class="field"><span>Name</span><input id="asset-name" placeholder="Apple"></label></div>
+        <div class="form-grid two"><label class="field"><span>WKN</span><input id="asset-wkn" placeholder="Optional WKN"></label><label class="field"><span>ISIN</span><input id="asset-isin" placeholder="Optional ISIN"></label></div>
         <div class="form-grid two"><label class="field"><span>Type</span><select id="asset-type"><option value="stock">Stock</option><option value="etf">ETF</option><option value="bond">Bond</option><option value="crypto">Crypto</option><option value="fund">Fund</option><option value="manual">Manual asset</option></select></label><label class="field"><span>Provider</span><select id="asset-provider"><option value="twelvedata">Twelve Data</option><option value="stooq">Stooq</option><option value="manual">Manual</option></select></label></div>
-        <div class="form-grid three"><label class="field"><span>Quantity</span><input id="asset-quantity" type="number" step="0.000001" value="1"></label><label class="field"><span>Currency</span><input id="asset-currency" list="currency-options" maxlength="3" placeholder="EUR"></label><label class="field"><span>Manual price</span><input id="asset-manual-price" type="number" step="0.0001" value="0"></label></div>
-        <label class="field"><span>Cost basis total</span><input id="asset-cost-basis" type="number" step="0.01" value="0"></label>
-        <label class="check-row"><input id="asset-hidden" type="checkbox"> Hide holding</label>
+        <div class="form-grid three"><label class="field"><span>Quantity</span><input id="asset-quantity" type="number" step="0.000001" value="1"></label><label class="field"><span>Currency</span><input id="asset-currency" list="currency-options" maxlength="3" placeholder="EUR"></label><label class="field"><span>Current/manual price</span><input id="asset-manual-price" type="number" step="0.0001" value="0"></label></div>
+        <div class="form-grid two"><label class="field"><span>Buy price</span><input id="asset-buy-price" type="number" step="0.0001" value="0"></label><label class="field"><span>Cost basis total</span><input id="asset-cost-basis" type="number" step="0.01" value="0"></label></div>
         <div class="button-row"><button class="primary-button" type="submit">Save holding</button><button id="delete-asset-button" class="danger-button" type="button" hidden>Delete</button></div>
       </form>
     </section>
@@ -326,7 +330,7 @@
           <button class="segment-button" data-position-unit="percent" type="button" aria-pressed="false">Percent</button>
         </div>
       </div>
-      <div class="modal-table-wrap"><table class="dialog-table"><thead><tr><th>Holding</th><th>Quantity</th><th>Price</th><th>Value</th><th id="positions-delta-heading">Change</th><th></th></tr></thead><tbody id="positions-body"></tbody></table></div>
+      <div class="modal-table-wrap"><table class="dialog-table"><thead><tr><th>Holding</th><th>Quantity</th><th>Price</th><th>Buy</th><th>Value</th><th id="positions-delta-heading">Change</th><th></th></tr></thead><tbody id="positions-body"></tbody></table></div>
       <div id="positions-pagination" class="pagination-bar"></div>
     </section>
 
