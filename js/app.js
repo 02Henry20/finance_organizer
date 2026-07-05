@@ -1648,7 +1648,7 @@ function updateImportFileLabel() {
   }
   title.textContent = activeParsedFile?.filename || brokerParsedFile?.filename || "Selected file";
   const parts = [];
-  if (activeParsedFile) parts.push(`${activeParsedFile.formatLabel || "Bank export"} · ${activeParsedFile.rows.length} rows`);
+  if (activeParsedFile) parts.push(`${activeParsedFile.formatLabel || "Bank export"} · ${activeParsedFile.rows.length} rows${Number.isFinite(Number(activeParsedFile.openingBalanceHint)) ? ` · opening ${formatCurrency(Number(activeParsedFile.openingBalanceHint), selectedCurrency())}` : ""}`);
   if (brokerParsedFile) parts.push(`${brokerParsedFile.formatLabel || "Broker positions"} · ${brokerParsedFile.positions.length} positions`);
   detail.textContent = `${parts.join(" · ")}; click to replace`;
 }
@@ -1847,7 +1847,7 @@ function updateUnifiedImportSummary() {
   const resetButton = $("#reset-import-button");
   if (resetButton) resetButton.disabled = !(activeParsedFile || brokerParsedFile);
   const parts = [];
-  if (activeParsedFile) parts.push(`${activeParsedFile.formatLabel || "Bank export"}: ${txCount} transactions, ${reviewCount} review, ${txSkipped} duplicates/skipped`);
+  if (activeParsedFile) parts.push(`${activeParsedFile.formatLabel || "Bank export"}: ${txCount} transactions, ${reviewCount} review, ${txSkipped} duplicates/skipped${Number.isFinite(Number(activeParsedFile.openingBalanceHint)) ? `, opening ${formatCurrency(Number(activeParsedFile.openingBalanceHint), selectedCurrency())}` : ""}`);
   if (brokerParsedFile) parts.push(`${brokerParsedFile.formatLabel || "Broker export"}: ${posCount} positions, ${posSkipped} skipped`);
   if (parts.length) setMessage($("#import-message"), parts.join(" · "));
 }
@@ -2404,6 +2404,11 @@ function wireEvents() {
       let txCount = 0;
       let positionCount = 0;
       if (activePreview?.transactions?.length) {
+        const importAccount = state.accounts.find(account => account.id === $("#import-account")?.value);
+        const openingHint = Number(activeParsedFile?.openingBalanceHint);
+        if (importAccount && Number.isFinite(openingHint)) {
+          await saveAccount({ ...importAccount, openingBalance: openingHint });
+        }
         await saveTransactionsBatch(activePreview.transactions);
         txCount = activePreview.transactions.length;
       }

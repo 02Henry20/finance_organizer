@@ -1,9 +1,9 @@
-Capito v28 verified build
-Build ID: capito-v28-revolut-import-fix
-Created: 2026-07-05T14:11:30
+Capito v30 verified build
+Build ID: capito-v30-stooq-symbol-currency-fix
+Created: 2026-07-05T14:50:06
 
 Changes:
-- Revolut import now imports only State=COMPLETED rows.
-- Revolut import now applies Fee with its real sign: amount = Amount - Fee.
-- Revolut import includes Product in description and external ID, so Current/Deposit rows are clearer and less collision-prone.
-- Previous v27 baseline-position features retained.
+- Stooq quote lookup now tries Stooq suffix candidates, e.g. AAPL -> AAPL.US.
+- Stooq quote currency is inferred from the resolved market suffix, e.g. AAPL.US -> USD.
+- Error messages show which Stooq symbols were tried.
+- Previous v29 Revolut opening-balance and v27 starting-position features retained.

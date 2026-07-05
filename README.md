@@ -98,3 +98,17 @@ If a browser keeps old behavior, open `/cache-reset.html`, reset cache once, the
 - Revolut CSV import now ignores PENDING/REVERTED rows and imports only COMPLETED rows.
 - Revolut fees now keep their sign, so fee refunds increase the balance instead of decreasing it.
 - Revolut Product is included in the import description/external ID.
+
+
+## v29 update
+
+- Revolut import infers the opening balance from the Balance column.
+- Import commit applies that opening balance to the selected account.
+- This fixes the case where the app showed only the transaction sum, e.g. 424.26 €, instead of opening balance + transactions.
+
+
+## v30 update
+
+- Stooq lookup tries ticker suffix candidates automatically, so AAPL can resolve as AAPL.US.
+- Stooq quote currency is inferred from the resolved symbol suffix.
+- Stooq errors now list the attempted symbols.

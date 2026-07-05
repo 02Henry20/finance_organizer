@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v28-revolut-import-fix";
+const CACHE_NAME = "capito-v30-stooq-symbol-currency-fix";
 const CORE = [
   "./",
   "./index.html",

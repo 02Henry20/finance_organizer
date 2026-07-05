@@ -11,6 +11,49 @@ function normalizeStooqSymbol(symbol) {
   return `${value}.us`;
 }
 
+function stooqSymbolCandidates(asset = {}) {
+  const raw = String(asset.symbol || "").trim();
+  const base = raw.toLowerCase();
+  if (!base) return [];
+  const candidates = [];
+  const add = value => {
+    const next = String(value || "").trim().toLowerCase();
+    if (next && !candidates.includes(next)) candidates.push(next);
+  };
+
+  add(base.includes(".") ? base : `${base}.us`);
+
+  const isin = String(asset.isin || "").trim().toUpperCase();
+  const wkn = String(asset.wkn || "").trim().toUpperCase();
+  const type = String(asset.type || "").toLowerCase();
+
+  if (!base.includes(".")) {
+    if (isin.startsWith("US")) add(`${base}.us`);
+    if (isin.startsWith("DE")) add(`${base}.de`);
+    if (isin.startsWith("IE") || isin.startsWith("LU") || isin.startsWith("FR")) add(`${base}.de`);
+    if (type === "etf" || type === "fund") {
+      add(`${base}.de`);
+      add(`${base}.uk`);
+      add(`${base}.nl`);
+    }
+    add(base);
+  }
+
+  if (wkn && !base.includes(".")) add(`${wkn.toLowerCase()}.de`);
+  return candidates;
+}
+
+function stooqCurrencyForSymbol(symbol, fallback = "USD") {
+  const value = String(symbol || "").toUpperCase();
+  if (value.endsWith(".US")) return "USD";
+  if (value.endsWith(".UK")) return "GBP";
+  if (value.endsWith(".CH")) return "CHF";
+  if (value.endsWith(".JP")) return "JPY";
+  if (value.endsWith(".PL")) return "PLN";
+  if (value.endsWith(".DE") || value.endsWith(".NL") || value.endsWith(".FR") || value.endsWith(".IT") || value.endsWith(".ES") || value.endsWith(".BE") || value.endsWith(".AT")) return "EUR";
+  return fallback || "USD";
+}
+
 export async function fetchTwelveDataQuote(asset, apiKey) {
   if (!apiKey) throw new Error("Add a Twelve Data API key in Settings or switch the asset provider to Stooq/manual.");
   const symbol = encodeURIComponent(asset.symbol);
@@ -31,23 +74,34 @@ export async function fetchTwelveDataQuote(asset, apiKey) {
 }
 
 export async function fetchStooqQuote(asset) {
-  const symbol = normalizeStooqSymbol(asset.symbol);
-  if (!symbol) throw new Error("Missing Stooq symbol. Example: AAPL.US, VUSA.UK, IWDA.NL.");
-  const url = `https://stooq.com/q/l/?s=${encodeURIComponent(symbol)}&f=sd2t2ohlcv&h&e=csv`;
-  const response = await fetch(url, { mode: "cors" });
-  if (!response.ok) throw new Error(`Stooq request failed: HTTP ${response.status}`);
-  const [row] = parseCsv(await response.text());
-  if (!row || row.Close === "N/D" || row.Date === "N/D") throw new Error("Stooq did not find this symbol.");
-  const price = Number(row.Close);
-  if (!Number.isFinite(price)) throw new Error("No price in Stooq response.");
-  return {
-    provider: "stooq",
-    symbol: row.Symbol || asset.symbol,
-    price,
-    currency: asset.currency,
-    changePercent: null,
-    time: row.Date ? new Date(`${row.Date}T${row.Time || "00:00:00"}`).toISOString() : new Date().toISOString()
-  };
+  const candidates = stooqSymbolCandidates(asset);
+  if (!candidates.length) throw new Error("Missing Stooq symbol. Example: AAPL.US, VUSA.UK, IWDA.NL.");
+
+  const errors = [];
+  for (const symbol of candidates) {
+    try {
+      const url = `https://stooq.com/q/l/?s=${encodeURIComponent(symbol)}&f=sd2t2ohlcv&h&e=csv`;
+      const response = await fetch(url, { mode: "cors" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const [row] = parseCsv(await response.text());
+      if (!row || row.Close === "N/D" || row.Date === "N/D") throw new Error("not found");
+      const price = Number(row.Close);
+      if (!Number.isFinite(price)) throw new Error("no price");
+      const resolvedSymbol = row.Symbol || symbol.toUpperCase();
+      return {
+        provider: "stooq",
+        symbol: resolvedSymbol,
+        price,
+        currency: stooqCurrencyForSymbol(resolvedSymbol, asset.currency),
+        changePercent: null,
+        time: row.Date ? new Date(`${row.Date}T${row.Time || "00:00:00"}`).toISOString() : new Date().toISOString()
+      };
+    } catch (error) {
+      errors.push(`${symbol}: ${error.message}`);
+    }
+  }
+
+  throw new Error(`Stooq did not find this symbol. Tried: ${candidates.map(item => item.toUpperCase()).join(", ")}.`);
 }
 
 export async function fetchQuote(asset, settings) {
