@@ -385,8 +385,8 @@ export async function saveAsset(input) {
     type: input.type || "stock",
     quantity: Number(input.quantity || 0),
     currency: (input.currency || state.settings.primaryCurrency || "EUR").toUpperCase(),
-    buyPrice: Number(input.buyPrice || 0),
     costBasis: Number(input.costBasis || 0),
+    buyPrice: Number(input.buyPrice || 0),
     manualPrice: Number(input.manualPrice || 0),
     provider: input.provider || state.settings.marketProvider || "manual",
     accountId: input.accountId || "",
@@ -482,6 +482,25 @@ async function writeCollectionDocs(name, rows = []) {
     await batch.commit();
   }
   return count;
+}
+
+
+export async function deleteAllUserData() {
+  if (!state.user?.uid) throw new Error("No signed-in user.");
+  setSync("loading", "Deleting all data", true);
+  for (const name of ["transactions", "assets", "accounts", "categories", "rules", "settings", "meta"]) {
+    await deleteCollectionDocs(name);
+  }
+  writeLocalSettings({ marketApiKeyLocalOnly: "" });
+  state.accounts = [];
+  state.categories = [...DEFAULT_CATEGORIES];
+  state.rules = [...DEFAULT_RULES];
+  state.transactions = [];
+  state.assets = [];
+  state.settings = { ...DEFAULT_SETTINGS, marketApiKeyLocalOnly: "" };
+  setSync("synced", "All data deleted");
+  notify();
+  return { deleted: true };
 }
 
 export async function importStateBackup(backup, { replace = false } = {}) {

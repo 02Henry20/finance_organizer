@@ -253,8 +253,14 @@
             <div class="form-stack import-json-box">
               <label class="field"><span>Import mode</span><select id="import-json-mode"><option value="merge">Merge into current data</option><option value="replace">Replace current data</option></select></label>
               <input id="import-json-file" class="hidden-file-input" type="file" accept=".json,application/json">
-              <button id="import-json-button" class="danger-button" type="button">Import JSON</button>
+              <button id="import-json-button" class="secondary-button import-json-button" type="button">Import JSON</button>
               <p id="import-json-message" class="form-message"></p>
+            </div>
+            <div class="settings-row danger-zone-row"><div><strong>Delete all data</strong><small>Type DELETE ALL DATA to permanently clear accounts, transactions, holdings, categories, rules and settings.</small></div></div>
+            <div class="form-stack delete-all-box">
+              <label class="field"><span>Confirmation text</span><input id="delete-all-confirm" autocomplete="off" placeholder="DELETE ALL DATA"></label>
+              <button id="delete-all-data-button" class="danger-button" type="button" disabled>Delete all data</button>
+              <p id="delete-all-message" class="form-message"></p>
             </div>
           </article>
         </div>

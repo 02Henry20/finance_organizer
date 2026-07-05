@@ -11,6 +11,7 @@ import {
   connectUser,
   deleteAccount,
   deleteAsset,
+  deleteAllUserData,
   deleteRule,
   deleteTransaction,
   disconnectUser,
@@ -44,6 +45,7 @@ import {
   convertCurrency,
   formatCurrency,
   monthKey,
+  normalizeText,
   parseMoney
 } from "./finance.js";
 import { buildImportPreview, parseBankFile, serializeTransactionsCsv } from "./importer.js";
@@ -99,8 +101,6 @@ let activePositionsAccountId = "";
 let activeAccountTransactionsId = "";
 let positionsPeriod = "basis";
 let positionsUnit = "absolute";
-let mobileCategoriesExpanded = false;
-let mobileRulesExpanded = false;
 let reportsMode = "month";
 let reportsMonth = monthKey(TODAY());
 let reportsYear = String(new Date().getFullYear());
@@ -252,7 +252,7 @@ function safeColor(value, fallback = DEFAULT_CATEGORY_COLOR) {
 
 function categoryPill(cat, { review = false } = {}) {
   const color = safeColor(cat?.color);
-  return `<span class="category-pill colored ${review ? "review-pill" : ""}" style="--cat-color:${color}" title="${escapeHtml(cat?.name || "Misc")}"><span class="category-icon">${escapeHtml(cat?.icon || "?")}</span><span class="category-label">${escapeHtml(cat?.name || "Misc")}</span></span>`;
+  return `<span class="category-pill colored ${review ? "review-pill" : ""}" style="--cat-color:${color}">${escapeHtml(cat?.icon || "?")} ${escapeHtml(cat?.name || "Misc")}</span>`;
 }
 
 function colorOptions(selected = DEFAULT_CATEGORY_COLOR) {
@@ -274,10 +274,6 @@ function normalizedCurrencyFrom(selector, fallback = selectedCurrency()) {
 
 function visibleAccounts() {
   return state.accounts.filter(account => !account.hidden);
-}
-
-function isMobileViewport() {
-  return typeof window !== "undefined" && window.matchMedia("(max-width: 920px)").matches;
 }
 
 function holdingsForAccount(accountId) {
@@ -480,7 +476,7 @@ function deltaHtml(current, previous, { inverted = false, label = "" } = {}) {
   const arrow = delta > 0 ? "↗" : delta < 0 ? "↘" : "→";
   const good = inverted ? delta <= 0 : delta >= 0;
   const cls = Math.abs(delta) < 0.005 ? "delta-flat" : good ? "delta-up" : "delta-down";
-  return `<span class="${cls} delta-value">${arrow} ${formatCurrency(Math.abs(delta), selectedCurrency())} · ${Math.abs(pct).toFixed(1)}%</span><span class="delta-label">${escapeHtml(label)}</span>`;
+  return `<span class="${cls}">${arrow} ${formatCurrency(Math.abs(delta), selectedCurrency())} · ${Math.abs(pct).toFixed(1)}%</span> ${escapeHtml(label)}`;
 }
 
 function comparisonWindowFlow(compareDate) {
@@ -659,10 +655,14 @@ function fillFilters() {
   if (txAccountFilter) txAccountFilter.innerHTML = `<option value="all">All accounts</option>${accountOptions(txAccountFilter.value)}`;
   if (txCategoryFilter) txCategoryFilter.innerHTML = `<option value="all">All categories</option>${categoryOptions(txCategoryFilter.value)}`;
   if (txCurrencyFilter) {
-    const current = txCurrencyFilter.value || "all";
-    const currencies = [...new Set([selectedCurrency(), ...state.transactions.map(tx => tx.currency), ...VALID_CURRENCIES].map(code => String(code || "").toUpperCase()).filter(Boolean))].sort();
-    txCurrencyFilter.innerHTML = `<option value="all">All currencies</option>${currencies.map(code => `<option value="${escapeHtml(code)}" ${code === current ? "selected" : ""}>${escapeHtml(code)}</option>`).join("")}`;
-    if (current !== "all" && !currencies.includes(current)) txCurrencyFilter.value = "all";
+    const previous = txCurrencyFilter.value || "all";
+    const currencies = [...new Set([
+      selectedCurrency(),
+      ...state.accounts.map(account => account.currency),
+      ...state.transactions.map(tx => tx.currency)
+    ].map(value => String(value || "").toUpperCase()).filter(Boolean))].sort();
+    txCurrencyFilter.innerHTML = `<option value="all">All currencies</option>${currencies.map(code => `<option value="${escapeHtml(code)}">${escapeHtml(code)}</option>`).join("")}`;
+    txCurrencyFilter.value = previous === "all" || currencies.includes(previous) ? previous : "all";
   }
   if (importAccount) importAccount.innerHTML = accountOptions(importAccount.value || visibleAccounts()[0]?.id);
   if (transactionAccount) transactionAccount.innerHTML = accountOptions(transactionAccount.value || visibleAccounts()[0]?.id);
@@ -680,10 +680,10 @@ function renderTransactions() {
   const search = $("#tx-search").value.trim().toLowerCase();
   const accountFilter = $("#tx-account-filter").value || "all";
   const categoryFilter = $("#tx-category-filter").value || "all";
+  const reviewFilter = $("#tx-review-filter").value || "all";
   const currencyFilter = $("#tx-currency-filter")?.value || "all";
   const minAmount = parseMoney($("#tx-min-amount")?.value);
   const maxAmount = parseMoney($("#tx-max-amount")?.value);
-  const reviewFilter = $("#tx-review-filter").value || "all";
   let rows = state.transactions;
   if (search) rows = rows.filter(tx => [tx.description, tx.counterparty, tx.note, tx.reason].join(" ").toLowerCase().includes(search));
   if (accountFilter !== "all") rows = rows.filter(tx => tx.accountId === accountFilter);
@@ -716,7 +716,7 @@ function renderTransactions() {
       <td>${escapeHtml(tx.date)}</td>
       <td class="description-cell"><strong>${escapeHtml(tx.description)}</strong><small class="muted table-ellipsis">${escapeHtml(tx.counterparty || tx.reason || "")}</small></td>
       <td>${escapeHtml(account?.name || tx.accountId || "—")}</td>
-      <td>${categoryPill(cat, { review: tx.review })}</td>
+      <td class="category-cell">${categoryPill(cat, { review: tx.review })}</td>
       <td class="${Number(tx.amount) >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(tx.amount, tx.currency || selectedCurrency())}</td>
       <td class="note-cell"><span class="table-ellipsis" title="${escapeHtml(tx.note || "")}">${escapeHtml(tx.note || "")}</span></td>
       <td class="action-cell"><button class="ghost-button compact" type="button" data-edit-tx="${escapeHtml(tx.id)}">Edit</button></td>`;
@@ -725,11 +725,29 @@ function renderTransactions() {
   tbody.querySelectorAll("[data-edit-tx]").forEach(btn => btn.addEventListener("click", () => openTransactionModal(btn.dataset.editTx)));
 }
 
+
+function accountChangeHtml(current, previous, label, { inverted = false, currency = selectedCurrency() } = {}) {
+  const delta = Number(current || 0) - Number(previous || 0);
+  const pct = Math.abs(previous) > 0.0001 ? delta / Math.abs(previous) * 100 : 0;
+  const arrow = delta > 0 ? "↗" : delta < 0 ? "↘" : "→";
+  const good = inverted ? delta <= 0 : delta >= 0;
+  const cls = Math.abs(delta) < 0.005 ? "delta-flat" : good ? "delta-up" : "delta-down";
+  return `<small class="account-change ${cls}" title="${escapeHtml(label)}">${arrow} ${formatCurrency(Math.abs(delta), currency)} · ${Math.abs(pct).toFixed(1)}% ${escapeHtml(label)}</small>`;
+}
+
+function accountGroupLabel(account) {
+  if (["broker", "asset"].includes(account.type)) return "broker";
+  return "cashbank";
+}
+
 function renderAccounts() {
   const container = $("#accounts-grid");
   if (!container) return;
   const portfolio = calculatePortfolio(state);
+  const previousPortfolio = calculatePortfolioSnapshot(state, comparisonDateFromSettings());
+  const compareText = comparisonLabel(comparisonDateFromSettings());
   const rows = portfolio.accountRows;
+  const previousRows = previousPortfolio.accountRows || [];
   const currency = selectedCurrency();
   container.replaceChildren();
   const accounts = visibleAccounts();
@@ -737,61 +755,81 @@ function renderAccounts() {
   const hiddenSection = $("#hidden-accounts-section");
   const hiddenGrid = $("#hidden-accounts-grid");
   const hiddenToggle = $("#hidden-accounts-toggle");
+
   if (!hiddenAccounts.length) hiddenAccountsExpanded = false;
   if (hiddenToggle) {
     hiddenToggle.hidden = hiddenAccounts.length === 0;
-    const mobile = isMobileViewport();
-    hiddenToggle.textContent = hiddenAccountsExpanded
-      ? (mobile ? `Hide (${hiddenAccounts.length})` : `Hide hidden accounts (${hiddenAccounts.length})`)
-      : (mobile ? `Hidden (${hiddenAccounts.length})` : `Show hidden accounts (${hiddenAccounts.length})`);
+    hiddenToggle.textContent = hiddenAccountsExpanded ? `Hide hidden (${hiddenAccounts.length})` : `Hidden (${hiddenAccounts.length})`;
     hiddenToggle.setAttribute("aria-expanded", String(hiddenAccountsExpanded));
   }
   if (hiddenSection) hiddenSection.hidden = hiddenAccounts.length === 0 || !hiddenAccountsExpanded;
   if (hiddenGrid) hiddenGrid.replaceChildren();
-  if (!accounts.length) {
-    container.innerHTML = `<article class="surface-card item-card empty-card"><h3>No visible accounts</h3><p class="muted">Add an account or restore one from the hidden accounts toggle above.</p></article>`;
-  }
-  for (const account of accounts) {
+
+  const buildCard = (account, { hidden = false } = {}) => {
     const row = rows.find(item => item.id === account.id) || { ...account, balance: { raw: Number(account.openingBalance || 0), converted: Number(account.openingBalance || 0) } };
+    const previousRow = previousRows.find(item => item.id === account.id) || { balance: { converted: Number(account.openingBalance || 0) } };
     const holdings = holdingsForAccount(account.id);
     const holdingsValue = holdings.reduce((sum, asset) => sum + convertCurrency(assetMarketValue(asset), asset.currency || account.currency || currency, state.settings), 0);
     const totalValue = row.balance.converted + holdingsValue;
+    const previousComparable = previousRow.balance.converted + (["broker", "asset"].includes(account.type) ? holdingsValue : 0);
+    const currentComparable = ["broker", "asset"].includes(account.type) ? totalValue : row.balance.converted;
     const isBroker = ["broker", "asset"].includes(account.type);
+    const identifier = maskIban(account.iban || account.accountNumber || account.bic);
     const card = document.createElement("article");
-    card.className = `surface-card item-card account-card ${isBroker ? "broker-card" : ""}`;
+    card.className = `surface-card item-card account-card ${isBroker ? "broker-card" : "cash-account-card"} ${hidden ? "hidden-account-card" : ""}`;
     card.innerHTML = `
-      <div class="item-card-header">
-        <div>
-          <h3>${escapeHtml(account.name)}</h3>
-          <small>${escapeHtml(account.institution || "Manual")} · ${escapeHtml(account.type)} · ${escapeHtml(account.currency)}</small>
+      <div class="item-card-header account-card-header">
+        <div class="account-title-block">
+          <h3 title="${escapeHtml(account.name)}">${escapeHtml(account.name)}</h3>
+          <small class="account-meta" title="${escapeHtml(`${account.institution || "Manual"} · ${account.type} · ${account.currency}`)}">${escapeHtml(account.institution || "Manual")} · ${escapeHtml(account.type)} · ${escapeHtml(account.currency)}</small>
+          <small class="account-identifier" title="${escapeHtml(identifier)}">${escapeHtml(identifier)}</small>
         </div>
-        <span class="category-pill">${escapeHtml(maskIban(account.iban || account.accountNumber))}</span>
+        ${hidden ? `<span class="category-pill hidden-pill">Hidden</span>` : ""}
       </div>
       <div class="account-value-row">
-        <div><span>Cash balance</span><strong class="${row.balance.converted >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(row.balance.raw, account.currency || currency)}</strong></div>
-        ${isBroker ? `<div><span>Holdings</span><strong>${formatCurrency(holdingsValue, currency)}</strong></div><div><span>Total</span><strong>${formatCurrency(totalValue, currency)}</strong></div>` : ""}
+        <div><span>Cash balance</span><strong class="account-main-value">${formatCurrency(row.balance.raw, account.currency || currency)}</strong>${accountChangeHtml(currentComparable, previousComparable, compareText, { inverted: account.type === "debt", currency })}</div>
+        ${isBroker ? `<div><span>Holdings</span><strong class="account-main-value">${formatCurrency(holdingsValue, currency)}</strong></div><div><span>Total</span><strong class="account-main-value">${formatCurrency(totalValue, currency)}</strong></div>` : ""}
       </div>
-      ${isBroker && !holdings.length ? `<div class="account-holding-summary"><small>No positions yet.</small></div>` : ""}
-      <div class="item-card-actions">
-        ${isBroker ? `<button class="secondary-button compact" data-view-positions="${escapeHtml(account.id)}" type="button">View positions</button><button class="secondary-button compact" data-add-asset-for="${escapeHtml(account.id)}" type="button">Add holding</button>` : ""}
-        <button class="ghost-button compact" data-account-transactions="${escapeHtml(account.id)}" type="button">Latest transactions</button>
-        <button class="ghost-button compact" data-edit-account="${escapeHtml(account.id)}" type="button">Edit account</button>
+      ${isBroker ? `<div class="account-holding-summary"><small>${holdings.length ? `${holdings.length} positions` : "No positions yet"}</small></div>` : ""}
+      <div class="item-card-actions account-card-actions">
+        ${isBroker ? `<button class="secondary-button compact" data-view-positions="${escapeHtml(account.id)}" type="button">Positions</button><button class="secondary-button compact" data-add-asset-for="${escapeHtml(account.id)}" type="button">+ Holding</button>` : ""}
+        <button class="ghost-button compact" data-account-transactions="${escapeHtml(account.id)}" type="button">Txns</button>
+        <button class="ghost-button compact" data-edit-account="${escapeHtml(account.id)}" type="button">Edit</button>
       </div>`;
-    container.append(card);
+    return card;
+  };
+
+  const appendGroup = (title, items, className) => {
+    if (!items.length) return;
+    const section = document.createElement("section");
+    section.className = `account-group ${className}`;
+    section.innerHTML = `<div class="account-group-heading"><p class="eyebrow">${escapeHtml(title)}</p><span class="metric-tag">${items.length}</span></div><div class="cards-grid account-group-grid"></div>`;
+    const grid = section.querySelector(".account-group-grid");
+    items.forEach(account => grid.append(buildCard(account)));
+    container.append(section);
+  };
+
+  if (!accounts.length) {
+    container.innerHTML = `<article class="surface-card item-card empty-card"><h3>No visible accounts</h3><p class="muted">Add an account or restore one from the hidden accounts toggle above.</p></article>`;
+  } else {
+    appendGroup("Cash & bank", accounts.filter(account => accountGroupLabel(account) === "cashbank"), "cash-bank-group");
+    appendGroup("Broker", accounts.filter(account => accountGroupLabel(account) === "broker"), "broker-group");
   }
+
   if (hiddenGrid) {
-    for (const account of hiddenAccounts) {
-      const card = document.createElement("article");
-      card.className = "surface-card item-card account-card hidden-account-card";
-      card.innerHTML = `<div class="item-card-header"><div><h3>${escapeHtml(account.name)}</h3><small>${escapeHtml(account.institution || "Manual")} · ${escapeHtml(account.type)} · ${escapeHtml(account.currency)}</small></div><span class="category-pill">Hidden</span></div><small>${escapeHtml(maskIban(account.iban || account.accountNumber))}</small><div class="item-card-actions"><button class="ghost-button compact" data-edit-account="${escapeHtml(account.id)}" type="button">Edit / restore</button></div>`;
-      hiddenGrid.append(card);
-    }
+    const hiddenNormal = hiddenAccounts.filter(account => accountGroupLabel(account) === "cashbank");
+    const hiddenBroker = hiddenAccounts.filter(account => accountGroupLabel(account) === "broker");
+    [...hiddenNormal, ...hiddenBroker].forEach(account => hiddenGrid.append(buildCard(account, { hidden: true })));
   }
+
   container.querySelectorAll("[data-edit-account]").forEach(btn => btn.addEventListener("click", () => openAccountModal(btn.dataset.editAccount)));
   container.querySelectorAll("[data-add-asset-for]").forEach(btn => btn.addEventListener("click", () => openAssetModal("", btn.dataset.addAssetFor)));
   container.querySelectorAll("[data-view-positions]").forEach(btn => btn.addEventListener("click", () => openPositionsModal(btn.dataset.viewPositions)));
   container.querySelectorAll("[data-account-transactions]").forEach(btn => btn.addEventListener("click", () => openAccountTransactionsModal(btn.dataset.accountTransactions)));
   hiddenGrid?.querySelectorAll("[data-edit-account]").forEach(btn => btn.addEventListener("click", () => openAccountModal(btn.dataset.editAccount)));
+  hiddenGrid?.querySelectorAll("[data-add-asset-for]").forEach(btn => btn.addEventListener("click", () => openAssetModal("", btn.dataset.addAssetFor)));
+  hiddenGrid?.querySelectorAll("[data-view-positions]").forEach(btn => btn.addEventListener("click", () => openPositionsModal(btn.dataset.viewPositions)));
+  hiddenGrid?.querySelectorAll("[data-account-transactions]").forEach(btn => btn.addEventListener("click", () => openAccountTransactionsModal(btn.dataset.accountTransactions)));
 }
 
 function renderAssets() {
@@ -803,49 +841,32 @@ function renderRules() {
   const rulesList = $("#rules-list");
   if (!categoriesList || !rulesList) return;
   const cats = categoryMap();
-  const categoryQuery = ($("#category-search")?.value || "").trim().toLowerCase();
-  const ruleQuery = ($("#rule-search")?.value || "").trim().toLowerCase();
-  const mobile = isMobileViewport();
-  const categoriesPanel = $("#categories-panel");
-  const rulesPanel = $("#rules-panel");
-  const categoriesToggle = $("#categories-fold-toggle");
-  const rulesToggle = $("#rules-fold-toggle");
-
-  if (categoriesPanel) categoriesPanel.classList.toggle("is-folded", mobile && !mobileCategoriesExpanded);
-  if (rulesPanel) rulesPanel.classList.toggle("is-folded", mobile && !mobileRulesExpanded);
-  if (categoriesToggle) {
-    categoriesToggle.hidden = !mobile;
-    categoriesToggle.textContent = mobileCategoriesExpanded ? "Hide" : "Show";
-    categoriesToggle.setAttribute("aria-expanded", String(mobileCategoriesExpanded));
-  }
-  if (rulesToggle) {
-    rulesToggle.hidden = !mobile;
-    rulesToggle.textContent = mobileRulesExpanded ? "Hide" : "Show";
-    rulesToggle.setAttribute("aria-expanded", String(mobileRulesExpanded));
-  }
-
+  const categorySearch = normalizeText($("#category-search")?.value || "");
+  const ruleSearch = normalizeText($("#rule-search")?.value || "");
   categoriesList.replaceChildren();
   rulesList.replaceChildren();
-  const categoryRows = state.categories.filter(cat => {
-    if (!categoryQuery) return true;
-    return [cat.name, cat.group, cat.type, cat.icon].join(" ").toLowerCase().includes(categoryQuery);
-  });
-  for (const cat of categoryRows) {
+
+  const categoryMatches = cat => {
+    if (!categorySearch) return true;
+    return normalizeText([cat.name, cat.group, cat.type, cat.id].join(" ")).includes(categorySearch);
+  };
+
+  for (const cat of state.categories.filter(categoryMatches)) {
     const related = state.rules.filter(rule => rule.categoryId === cat.id);
     const row = document.createElement("div");
     row.className = "settings-row category-row";
     row.innerHTML = `<div><strong><span class="category-color-dot" style="--cat-color:${safeColor(cat.color)}"></span>${escapeHtml(cat.icon || "•")} ${escapeHtml(cat.name)}</strong><small>${escapeHtml(cat.group)} · ${escapeHtml(cat.type)} · ${related.length} keyword rules</small></div><button class="ghost-button compact" data-edit-category="${escapeHtml(cat.id)}" type="button">Edit</button>`;
     categoriesList.append(row);
   }
-  if (!categoryRows.length) categoriesList.innerHTML = `<p class="muted empty-list-note">No categories match this search.</p>`;
 
-  const ruleRows = state.rules.filter(rule => {
-    if (!ruleQuery) return true;
+  const ruleMatches = rule => {
+    if (!ruleSearch) return true;
     const cat = cats.get(rule.categoryId) || cats.get("misc");
-    return [rule.label, rule.categoryId, cat?.name, cat?.group, ...(rule.keywords || [])].join(" ").toLowerCase().includes(ruleQuery);
-  });
+    return normalizeText([rule.label, rule.categoryId, cat?.name, cat?.group, ...(rule.keywords || [])].join(" ")).includes(ruleSearch);
+  };
+
   const grouped = new Map();
-  for (const rule of ruleRows) {
+  for (const rule of state.rules.filter(ruleMatches)) {
     const cat = cats.get(rule.categoryId) || cats.get("misc");
     const key = cat?.id || "misc";
     if (!grouped.has(key)) grouped.set(key, { cat, rules: [] });
@@ -864,7 +885,9 @@ function renderRules() {
     }
     rulesList.append(wrapper);
   }
-  if (!ruleRows.length) rulesList.innerHTML = `<p class="muted empty-list-note">No rules match this search.</p>`;
+
+  if (!categoriesList.children.length) categoriesList.innerHTML = `<p class="muted empty-list-note">No categories match this search.</p>`;
+  if (!rulesList.children.length) rulesList.innerHTML = `<p class="muted empty-list-note">No rules match this search.</p>`;
   categoriesList.querySelectorAll("[data-edit-category]").forEach(btn => btn.addEventListener("click", () => openCategoryModal(btn.dataset.editCategory)));
   rulesList.querySelectorAll("[data-edit-rule]").forEach(btn => btn.addEventListener("click", () => openRuleModal(btn.dataset.editRule)));
 }
@@ -1009,7 +1032,7 @@ function openAssetModal(id = "", accountId = "") {
   $("#asset-quantity").value = asset?.quantity ?? 1;
   $("#asset-currency").value = asset?.currency || selectedCurrency();
   $("#asset-manual-price").value = asset?.manualPrice ?? asset?.lastPrice ?? 0;
-  $("#asset-buy-price").value = asset?.buyPrice ?? (Number(asset?.quantity || 0) > 0 && Number(asset?.costBasis || 0) > 0 ? Number(asset.costBasis) / Number(asset.quantity) : 0);
+  $("#asset-buy-price").value = asset?.buyPrice ?? (Number(asset?.quantity || 0) ? Number(asset?.costBasis || 0) / Number(asset?.quantity || 1) : 0);
   $("#asset-cost-basis").value = asset?.costBasis ?? 0;
   $("#delete-asset-button").hidden = !asset;
   openModal("asset");
@@ -1057,8 +1080,8 @@ function renderPositionsModal() {
   }
   for (const asset of pagedRows(holdings, positionsPage, PAGE_SIZES.positions)) {
     const price = Number(asset.lastPrice ?? asset.manualPrice ?? 0);
+    const buyPrice = Number(asset.buyPrice ?? (Number(asset.quantity || 0) ? Number(asset.costBasis || 0) / Number(asset.quantity || 1) : 0));
     const value = assetMarketValue(asset);
-    const buyPrice = Number(asset.buyPrice || (Number(asset.quantity || 0) > 0 ? Number(asset.costBasis || 0) / Number(asset.quantity || 1) : 0));
     const currency = asset.currency || account?.currency || selectedCurrency();
     const delta = positionDelta(asset);
     const deltaValue = positionsUnit === "percent" ? delta.percent : delta.amount;
@@ -1073,7 +1096,7 @@ function renderPositionsModal() {
       <td><strong>${escapeHtml(asset.symbol || asset.name)}</strong><small class="muted table-ellipsis">${escapeHtml(asset.name || asset.type || "")}</small></td>
       <td>${Number(asset.quantity || 0).toLocaleString()}</td>
       <td>${formatCurrency(price, currency)}</td>
-      <td>${Number.isFinite(buyPrice) && buyPrice > 0 ? formatCurrency(buyPrice, currency) : "—"}</td>
+      <td>${buyPrice > 0 ? formatCurrency(buyPrice, currency) : "—"}</td>
       <td>${formatCurrency(value, currency)}</td>
       <td><span class="${deltaClass}">${deltaText}</span></td>
       <td class="action-cell"><button class="ghost-button compact" type="button" data-edit-asset="${escapeHtml(asset.id)}">Edit</button></td>`;
@@ -1116,7 +1139,7 @@ function renderAccountTransactionsModal() {
     tr.innerHTML = `
       <td>${escapeHtml(tx.date)}</td>
       <td class="description-cell"><strong>${escapeHtml(tx.description)}</strong><small class="muted table-ellipsis">${escapeHtml(tx.counterparty || tx.reason || "")}</small></td>
-      <td>${categoryPill(cat, { review: tx.review })}</td>
+      <td class="category-cell">${categoryPill(cat, { review: tx.review })}</td>
       <td class="${Number(tx.amount) >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(tx.amount, tx.currency || selectedCurrency())}</td>
       <td class="note-cell"><span class="table-ellipsis" title="${escapeHtml(tx.note || "")}">${escapeHtml(tx.note || "")}</span></td>
       <td class="action-cell"><button class="ghost-button compact" type="button" data-edit-tx="${escapeHtml(tx.id)}">Edit</button></td>`;
@@ -1517,17 +1540,20 @@ function wireEvents() {
     const panel = $("#tx-filter-panel");
     const expanded = !panel.classList.toggle("is-collapsed");
     $("#tx-filter-toggle").setAttribute("aria-expanded", String(expanded));
-    $("#tx-filter-toggle b").textContent = expanded ? "−" : "+";
+    $("#tx-filter-toggle b").textContent = expanded ? "-" : "+";
   });
   ["#category-search", "#rule-search"].forEach(selector => $(selector)?.addEventListener("input", renderRules));
-  $("#categories-fold-toggle")?.addEventListener("click", () => {
-    mobileCategoriesExpanded = !mobileCategoriesExpanded;
-    renderRules();
+  [["#categories-fold-toggle", "#categories-panel"], ["#rules-fold-toggle", "#rules-panel"]].forEach(([buttonSelector, panelSelector]) => {
+    const button = $(buttonSelector);
+    const panel = $(panelSelector);
+    if (!button || !panel) return;
+    button.addEventListener("click", () => {
+      const expanded = !panel.classList.toggle("mobile-expanded");
+      button.textContent = expanded ? "Hide" : "Show";
+      button.setAttribute("aria-expanded", String(expanded));
+    });
   });
-  $("#rules-fold-toggle")?.addEventListener("click", () => {
-    mobileRulesExpanded = !mobileRulesExpanded;
-    renderRules();
-  });
+
   $$("[data-report-mode]").forEach(button => button.addEventListener("click", () => {
     reportsMode = button.dataset.reportMode === "year" ? "year" : "month";
     renderReports();
@@ -1664,10 +1690,6 @@ function wireEvents() {
     const form = event.currentTarget;
     setBusy(form, true);
     try {
-      const quantity = parseMoney($("#asset-quantity").value) || 0;
-      const buyPrice = parseMoney($("#asset-buy-price").value) || 0;
-      const costBasisInput = parseMoney($("#asset-cost-basis").value);
-      const costBasis = costBasisInput != null ? costBasisInput : buyPrice * quantity;
       await saveAsset({
         id: $("#asset-id").value || undefined,
         accountId: $("#asset-account").value,
@@ -1677,11 +1699,11 @@ function wireEvents() {
         isin: $("#asset-isin").value,
         type: $("#asset-type").value,
         provider: $("#asset-provider").value,
-        quantity,
+        quantity: parseMoney($("#asset-quantity").value) || 0,
         currency: normalizedCurrencyFrom("#asset-currency"),
         manualPrice: parseMoney($("#asset-manual-price").value) || 0,
-        buyPrice,
-        costBasis,
+        buyPrice: parseMoney($("#asset-buy-price").value) || 0,
+        costBasis: parseMoney($("#asset-cost-basis").value) || 0,
         hidden: false
       });
       toast("Holding saved");
@@ -1715,16 +1737,46 @@ function wireEvents() {
     closeModal();
   });
 
+
+  async function reapplyRulesToReviewRows(nextRules = state.rules, nextCategories = state.categories) {
+    const reviewRows = state.transactions.filter(tx => tx.review);
+    if (!reviewRows.length) return 0;
+    const updates = reviewRows.map(tx => {
+      const result = categorizeTransaction(tx, nextRules, nextCategories, state.accounts);
+      return {
+        ...tx,
+        categoryId: result.categoryId,
+        confidence: result.confidence,
+        review: result.review,
+        reason: result.reason,
+        candidates: result.candidates
+      };
+    }).filter((tx, index) => {
+      const original = reviewRows[index];
+      return tx.categoryId !== original.categoryId || tx.review !== original.review || tx.reason !== original.reason;
+    });
+    if (!updates.length) return 0;
+    await saveTransactionsBatch(updates);
+    return updates.length;
+  }
+
   $("#rule-form").addEventListener("submit", async event => {
     event.preventDefault();
-    await saveRule({
+    const ruleInput = {
       id: $("#rule-id").value || undefined,
       label: $("#rule-label").value,
       categoryId: $("#rule-category").value,
       keywords: $("#rule-keywords").value,
       caseSensitive: $("#rule-case-sensitive").value === "true"
-    });
-    toast("Rule saved");
+    };
+    const savedId = await saveRule(ruleInput);
+    const normalizedKeywords = String(ruleInput.keywords || "").split(",").map(value => value.trim()).filter(Boolean);
+    const savedRule = { ...ruleInput, id: savedId, keywords: normalizedKeywords };
+    const nextRules = state.rules.some(rule => rule.id === savedId)
+      ? state.rules.map(rule => rule.id === savedId ? savedRule : rule)
+      : [...state.rules, savedRule];
+    const updated = await reapplyRulesToReviewRows(nextRules);
+    toast("Rule saved", updated ? `${updated} review entries rechecked.` : "No review entries needed changes.");
     closeModal();
   });
 
@@ -1732,8 +1784,36 @@ function wireEvents() {
     const id = $("#rule-id").value;
     if (!id) return;
     await deleteRule(id);
-    toast("Rule deleted");
+    const updated = await reapplyRulesToReviewRows(state.rules.filter(rule => rule.id !== id));
+    toast("Rule deleted", updated ? `${updated} review entries rechecked.` : "No review entries needed changes.");
     closeModal();
+  });
+
+
+  const deleteConfirmInput = $("#delete-all-confirm");
+  const deleteAllButton = $("#delete-all-data-button");
+  const deletePhrase = "DELETE ALL DATA";
+  deleteConfirmInput?.addEventListener("input", () => {
+    if (deleteAllButton) deleteAllButton.disabled = deleteConfirmInput.value.trim() !== deletePhrase;
+    setMessage($("#delete-all-message"), "");
+  });
+  deleteAllButton?.addEventListener("click", async () => {
+    if (!deleteConfirmInput || deleteConfirmInput.value.trim() !== deletePhrase) {
+      setMessage($("#delete-all-message"), `Type ${deletePhrase} to confirm.`, true);
+      return;
+    }
+    deleteAllButton.disabled = true;
+    try {
+      await deleteAllUserData();
+      deleteConfirmInput.value = "";
+      setMessage($("#delete-all-message"), "All app data was deleted. Default categories/rules may reappear as empty app scaffolding.");
+      toast("All data deleted", "Transactions, holdings, accounts, rules, categories and settings were cleared.");
+    } catch (error) {
+      setMessage($("#delete-all-message"), error.message, true);
+      toast("Delete failed", error.message, "error");
+    } finally {
+      deleteAllButton.disabled = true;
+    }
   });
 
   $("#settings-form").addEventListener("submit", async event => {

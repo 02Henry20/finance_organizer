@@ -164,26 +164,26 @@ export function drawNetSeries(canvas, rows) {
   drawLabels(ctx, rows.map(row => row.month), area, x, c);
 }
 
-function compactDonutRows(rows) {
-  const sorted = (rows || []).filter(row => Number(row.value) > 0).sort((a, b) => Number(b.value || 0) - Number(a.value || 0));
-  if (sorted.length <= 8) return sorted;
-  const shown = sorted.slice(0, 8);
-  const restValue = sorted.slice(8).reduce((sum, row) => sum + Number(row.value || 0), 0);
-  if (restValue > 0) shown.push({ categoryId: "rest", name: "Rest", group: "Rest", color: css("--muted") || "#64748B", value: restValue });
-  return shown;
-}
-
 export function drawDonut(canvas, rows, currency = "EUR") {
-  const data = compactDonutRows(rows);
+  const sorted = (rows || []).filter(row => row.value > 0).sort((a, b) => b.value - a.value);
+  const data = sorted.length <= 9
+    ? sorted
+    : [...sorted.slice(0, 8), {
+      categoryId: "rest",
+      name: "Rest",
+      group: "Rest",
+      color: css("--muted") || "#94a3b8",
+      value: sorted.slice(8).reduce((sum, row) => sum + row.value, 0)
+    }];
   setEmpty(canvas, !data.length);
   if (!data.length) return;
   const { ctx, width, height, colors: c } = prepare(canvas);
   const compact = width < 430;
-  const cx = compact ? width * 0.245 : width * 0.34;
+  const cx = compact ? width * 0.26 : width * 0.34;
   const cy = height * 0.5;
-  const radius = compact ? Math.min(height * 0.27, width * 0.18) : Math.min(height * 0.34, width * 0.23);
+  const radius = Math.min(height * (compact ? 0.28 : 0.34), width * (compact ? 0.18 : 0.23));
   const total = data.reduce((sum, row) => sum + row.value, 0);
-  const palette = [c.primary, c.accent, c.yellow, c.violet, c.green, c.red, "#69d2ff", "#d19dff", css("--muted") || "#64748B"];
+  const palette = [c.primary, c.accent, c.yellow, c.violet, c.green, c.red, "#69d2ff", "#d19dff"];
   let angle = -Math.PI / 2;
   data.forEach((row, i) => {
     const slice = row.value / total * Math.PI * 2;
@@ -197,24 +197,23 @@ export function drawDonut(canvas, rows, currency = "EUR") {
   });
   ctx.save();
   ctx.fillStyle = c.fg;
-  ctx.font = compact ? "700 15px Inter, system-ui" : "700 20px Inter, system-ui";
+  ctx.font = "700 20px Inter, system-ui";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(new Intl.NumberFormat(undefined, { style: "currency", currency, notation: "compact" }).format(total), cx, cy - (compact ? 4 : 6));
+  ctx.fillText(new Intl.NumberFormat(undefined, { style: "currency", currency, notation: "compact" }).format(total), cx, cy - 6);
   ctx.fillStyle = c.text;
-  ctx.font = compact ? "10px Inter, system-ui" : "12px Inter, system-ui";
-  ctx.fillText("spent", cx, cy + (compact ? 13 : 15));
+  ctx.font = "12px Inter, system-ui";
+  ctx.fillText("spent", cx, cy + 15);
   ctx.restore();
-  const legendX = compact ? width * 0.47 : width * 0.58;
-  ctx.font = compact ? "11px Inter, system-ui" : "12px Inter, system-ui";
+  const legendX = compact ? width * 0.44 : width * 0.58;
+  ctx.font = "12px Inter, system-ui";
   const valueFormatter = new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: 0 });
   const valueLabels = data.map(row => valueFormatter.format(row.value));
-  const valueWidth = Math.max(...valueLabels.map(label => ctx.measureText(label).width), compact ? 38 : 44);
+  const valueWidth = Math.max(...valueLabels.map(label => ctx.measureText(label).width), 44);
   const valueX = width - 12;
   const labelX = legendX + 18;
-  const labelMax = Math.max(compact ? 38 : 48, valueX - valueWidth - 14 - labelX);
-  const rowGap = compact ? 22 : 26;
-  let legendY = Math.max(compact ? 18 : 24, cy - data.length * rowGap * 0.5 + 5);
+  const labelMax = Math.max(48, valueX - valueWidth - 14 - labelX);
+  let legendY = Math.max(24, cy - data.length * (compact ? 11 : 13));
   data.forEach((row, i) => {
     ctx.fillStyle = row.color || palette[i % palette.length];
     roundedRect(ctx, legendX, legendY - 8, 10, 10, 3);
@@ -226,7 +225,7 @@ export function drawDonut(canvas, rows, currency = "EUR") {
     ctx.textAlign = "right";
     ctx.fillText(valueLabels[i], valueX, legendY);
     ctx.textAlign = "left";
-    legendY += rowGap;
+    legendY += compact ? 22 : 26;
   });
 }
 
