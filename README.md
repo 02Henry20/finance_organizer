@@ -1,12 +1,15 @@
-# Capito stable rollback package
+# Capito complete stable package
 
-This package reverts the app code to the last known working Capito build and only adds:
-- the selected Capito icon pack in `icons/`
-- the updated `manifest.webmanifest`
-- corrected icon/head links in `index.html`
-- a safer service worker cache name
-- `cache-reset.html` for clearing stale browser caches if needed
+Deploy this folder exactly as-is.
 
-The tutorial patches were removed because they appear to be the likely cause of the broken Firebase/login behavior.
+Included:
+- Working Capito app code based on the stable login version.
+- New Capito icon artwork in the login/start screen and top-left header.
+- Full `icons/` folder with favicon, Apple touch icon, Android round icons and Android maskable icons.
+- Updated `manifest.webmanifest` using the new icon pack.
+- Bank CSV recognition for Wise, Revolut, Sparkasse and generic CSV/TSV.
+- Exact duplicate transaction filtering during import.
+- Broker position import for Smartbroker XLSX/CSV exports into a selected broker account.
+- `cache-reset.html` helper if a browser keeps an older broken service-worker cache.
 
-Deploy the files in this folder exactly as-is.
+If an old browser build is still stuck, open `/cache-reset.html`, click **Reset local app cache**, then open `/index.html` again.

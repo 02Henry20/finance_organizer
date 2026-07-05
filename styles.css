@@ -1267,3 +1267,51 @@ td .category-pill .category-pill-text,
     padding-bottom: 15px;
   }
 }
+
+/* Capito icon integration */
+.brand-mark-img {
+  width: 52px;
+  height: 52px;
+  border-radius: 18px;
+  object-fit: cover;
+  flex: 0 0 auto;
+  box-shadow: 0 14px 35px rgba(0,0,0,.18), 0 0 0 1px color-mix(in srgb, var(--line-strong) 60%, transparent);
+}
+.brand-mark-img.small {
+  width: 44px;
+  height: 44px;
+  border-radius: 15px;
+}
+.auth-copy .brand-mark-img {
+  width: 60px;
+  height: 60px;
+  border-radius: 20px;
+}
+.import-flow-layout {
+  align-items: stretch;
+}
+.broker-preview-card {
+  margin-top: 16px;
+}
+.positions-preview-table td,
+.positions-preview-table th {
+  white-space: nowrap;
+}
+.positions-preview-table .table-ellipsis {
+  max-width: 280px;
+}
+@media (max-width: 920px) {
+  .brand-mark-img.small {
+    width: 42px;
+    height: 42px;
+  }
+}
+@media (max-width: 680px) {
+  .auth-copy .brand-mark-img {
+    width: 52px;
+    height: 52px;
+  }
+  .positions-preview-table .table-ellipsis {
+    max-width: 160px;
+  }
+}

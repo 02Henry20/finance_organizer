@@ -48,7 +48,15 @@ import {
   normalizeText,
   parseMoney
 } from "./finance.js";
-import { buildImportPreview, parseBankFile, serializeTransactionsCsv } from "./importer.js";
+import {
+  RECOGNIZED_BANK_FORMATS,
+  RECOGNIZED_BROKER_FORMATS,
+  buildBrokerPositionsPreview,
+  buildImportPreview,
+  parseBankFile,
+  parseBrokerPositionsFile,
+  serializeTransactionsCsv
+} from "./importer.js";
 import { fetchQuote } from "./market.js";
 import { drawAccountBars, drawDonut, drawIncomeExpense, drawNetSeries, drawYearComparison } from "./charts.js";
 
@@ -87,6 +95,9 @@ const elements = {
 let activeView = "overview";
 let activeParsedFile = null;
 let activePreview = null;
+let brokerParsedFile = null;
+let brokerPreview = null;
+let brokerPositionsPage = 1;
 let renderTimer = null;
 let quoteRefreshTimer = null;
 let settingsDirty = false;
@@ -110,7 +121,8 @@ const PAGE_SIZES = {
   transactions: 10,
   importPreview: 10,
   positions: 10,
-  accountTransactions: 10
+  accountTransactions: 10,
+  brokerPositions: 10
 };
 
 function firebaseErrorMessage(error) {
@@ -730,6 +742,7 @@ function fillFilters() {
   const txCategoryFilter = $("#tx-category-filter");
   const txCurrencyFilter = $("#tx-currency-filter");
   const importAccount = $("#import-account");
+  const positionsImportAccount = $("#positions-import-account");
   const transactionAccount = $("#transaction-account");
   const transactionCategory = $("#transaction-category");
   const accountType = $("#account-type");
@@ -743,6 +756,7 @@ function fillFilters() {
     txCurrencyFilter.innerHTML = `<option value="all">All currencies</option>${currencies.map(code => `<option value="${escapeHtml(code)}" ${code === current ? "selected" : ""}>${escapeHtml(code)}</option>`).join("")}`;
   }
   if (importAccount) importAccount.innerHTML = accountOptions(importAccount.value || visibleAccounts()[0]?.id);
+  if (positionsImportAccount) positionsImportAccount.innerHTML = accountOptions(positionsImportAccount.value || state.accounts.find(account => !account.hidden && account.type === "broker")?.id || visibleAccounts()[0]?.id, { brokerOnly: true });
   if (transactionAccount) transactionAccount.innerHTML = accountOptions(transactionAccount.value || visibleAccounts()[0]?.id);
   if (transactionCategory) transactionCategory.innerHTML = categoryOptions(transactionCategory.value || "misc");
   if (accountType) accountType.innerHTML = typeOptions(accountType.value || "checking");
@@ -1519,11 +1533,11 @@ function updateImportFileLabel() {
   label.classList.toggle("has-file", Boolean(activeParsedFile));
   if (!activeParsedFile) {
     title.textContent = "Choose a bank export";
-    detail.textContent = "CSV, semicolon CSV, tab-separated, German and English headers";
+    detail.textContent = `Recognized: ${RECOGNIZED_BANK_FORMATS.join(" · ")}`;
     return;
   }
   title.textContent = activeParsedFile.filename;
-  detail.textContent = `${activeParsedFile.rows.length} rows loaded; click to replace`;
+  detail.textContent = `${activeParsedFile.formatLabel || "Bank export"} recognized · ${activeParsedFile.rows.length} rows loaded; click to replace`;
 }
 
 function buildActiveImportPreview() {
@@ -1539,7 +1553,7 @@ function buildActiveImportPreview() {
   importPage = 1;
   $("#commit-import-button").disabled = !activePreview.transactions.length;
   $("#reset-import-button").disabled = false;
-  setMessage($("#import-message"), `${activePreview.transactions.length} rows ready. ${activePreview.transactions.filter(tx => tx.review).length} need review.`);
+  setMessage($("#import-message"), `${activeParsedFile.formatLabel || "Bank export"} recognized. ${activePreview.transactions.length} rows ready. ${activePreview.transactions.filter(tx => tx.review).length} need review. ${activePreview.skipped.length} exact duplicates/skipped.`);
   renderImportPreview();
 }
 
@@ -1584,6 +1598,81 @@ function renderImportPreview() {
     const cat = cats.get(tx.categoryId) || cats.get("misc");
     const tr = document.createElement("tr");
     tr.innerHTML = `<td>${escapeHtml(tx.date)}</td><td class="description-cell"><strong>${escapeHtml(tx.description)}</strong><small class="muted table-ellipsis">${escapeHtml(tx.reason || "")}</small></td><td class="${tx.amount >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(tx.amount, tx.currency)}</td><td>${categoryPill(cat, { review: tx.review })}</td><td>${tx.review ? "Needs review" : "Prepared"}</td>`;
+    tbody.append(tr);
+  }
+}
+
+
+function updateBrokerPositionsFileLabel() {
+  const label = $("#positions-file-label");
+  const title = $("#positions-file-title");
+  const detail = $("#positions-file-detail");
+  if (!label || !title || !detail) return;
+  label.classList.toggle("has-file", Boolean(brokerParsedFile));
+  if (!brokerParsedFile) {
+    title.textContent = "Choose broker position export";
+    detail.textContent = `Recognized: ${RECOGNIZED_BROKER_FORMATS.join(" · ")}`;
+    return;
+  }
+  title.textContent = brokerParsedFile.filename;
+  detail.textContent = `${brokerParsedFile.formatLabel || "Broker positions"} recognized · ${brokerParsedFile.positions.length} positions loaded`;
+}
+
+function buildBrokerPositionsImportPreview() {
+  if (!brokerParsedFile) return;
+  const accountId = $("#positions-import-account")?.value || state.accounts.find(account => !account.hidden && account.type === "broker")?.id || visibleAccounts()[0]?.id || "";
+  brokerPreview = buildBrokerPositionsPreview(brokerParsedFile, { accountId }, state.assets);
+  brokerPositionsPage = 1;
+  const button = $("#commit-positions-import-button");
+  if (button) button.disabled = !brokerPreview.positions.length;
+  const resetButton = $("#reset-positions-import-button");
+  if (resetButton) resetButton.disabled = false;
+  setMessage($("#positions-import-message"), `${brokerPreview.formatLabel || "Broker export"} recognized. ${brokerPreview.positions.length} positions ready. ${brokerPreview.skipped.length} skipped.`);
+  renderBrokerPositionsPreview();
+}
+
+function resetBrokerPositionsImportFlow(message = "") {
+  brokerParsedFile = null;
+  brokerPreview = null;
+  brokerPositionsPage = 1;
+  const fileInput = $("#positions-import-file");
+  if (fileInput) fileInput.value = "";
+  const button = $("#commit-positions-import-button");
+  if (button) button.disabled = true;
+  const resetButton = $("#reset-positions-import-button");
+  if (resetButton) resetButton.disabled = true;
+  updateBrokerPositionsFileLabel();
+  setMessage($("#positions-import-message"), message);
+  renderBrokerPositionsPreview();
+}
+
+function renderBrokerPositionsPreview() {
+  const tbody = $("#positions-preview-body");
+  if (!tbody) return;
+  tbody.replaceChildren();
+  if (!brokerPreview) {
+    const count = $("#positions-preview-count");
+    if (count) count.textContent = "No file";
+    renderPagination($("#positions-preview-pagination"), 0, 1, PAGE_SIZES.brokerPositions, () => {});
+    return;
+  }
+  const rows = brokerPreview.positions;
+  const count = $("#positions-preview-count");
+  if (count) count.textContent = `${rows.length} positions · ${brokerPreview.skipped.length} skipped`;
+  brokerPositionsPage = renderPagination($("#positions-preview-pagination"), rows.length, brokerPositionsPage, PAGE_SIZES.brokerPositions, page => {
+    brokerPositionsPage = page;
+    renderBrokerPositionsPreview();
+  });
+  for (const asset of pagedRows(rows, brokerPositionsPage, PAGE_SIZES.brokerPositions)) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><strong>${escapeHtml(asset.symbol || asset.wkn || asset.isin || "—")}</strong><small class="muted table-ellipsis">${escapeHtml(asset.name || "")}</small></td>
+      <td>${escapeHtml(asset.isin || "—")}</td>
+      <td>${escapeHtml(asset.wkn || "—")}</td>
+      <td>${Number(asset.quantity || 0).toLocaleString()}</td>
+      <td>${formatCurrency(asset.manualPrice || asset.lastPrice || 0, asset.currency || selectedCurrency())}</td>
+      <td>${formatCurrency((asset.manualPrice || asset.lastPrice || 0) * Number(asset.quantity || 0), asset.currency || selectedCurrency())}</td>
+      <td><span class="metric-tag">${escapeHtml(asset.action || "New")}</span></td>`;
     tbody.append(tr);
   }
 }
@@ -2020,6 +2109,41 @@ function wireEvents() {
     if (activeParsedFile) buildActiveImportPreview();
   });
 
+  $("#positions-import-account")?.addEventListener("change", () => {
+    if (brokerParsedFile) buildBrokerPositionsImportPreview();
+  });
+
+  $("#positions-import-file")?.addEventListener("change", async event => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      brokerParsedFile = await parseBrokerPositionsFile(file);
+      brokerPreview = null;
+      updateBrokerPositionsFileLabel();
+      setMessage($("#positions-import-message"), `${brokerParsedFile.formatLabel || "Broker positions"} recognized. Preview built for the selected broker account.`);
+      buildBrokerPositionsImportPreview();
+    } catch (error) {
+      toast("Position import failed", error.message, "error");
+      setMessage($("#positions-import-message"), error.message, true);
+    }
+  });
+
+  $("#reset-positions-import-button")?.addEventListener("click", () => {
+    resetBrokerPositionsImportFlow("Position import reset.");
+  });
+
+  $("#commit-positions-import-button")?.addEventListener("click", async () => {
+    if (!brokerPreview?.positions?.length) return;
+    try {
+      for (const asset of brokerPreview.positions) await saveAsset(asset);
+      toast("Positions imported", `${brokerPreview.positions.length} positions saved or updated.`);
+      resetBrokerPositionsImportFlow("Position import complete.");
+    } catch (error) {
+      toast("Position import failed", error.message, "error");
+      setMessage($("#positions-import-message"), error.message, true);
+    }
+  });
+
   $("#import-file").addEventListener("change", async event => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -2027,7 +2151,7 @@ function wireEvents() {
       activeParsedFile = await parseBankFile(file);
       activePreview = null;
       updateImportFileLabel();
-      setMessage($("#import-message"), "File loaded. Preview built from expected column names.");
+      setMessage($("#import-message"), `${activeParsedFile.formatLabel || "Bank export"} recognized. Preview built in Capito format.`);
       buildActiveImportPreview();
     } catch (error) {
       toast("Import failed", error.message, "error");
@@ -2042,7 +2166,7 @@ function wireEvents() {
     if (!activePreview?.transactions?.length) return;
     try {
       await saveTransactionsBatch(activePreview.transactions);
-      toast("Import complete", `${activePreview.transactions.length} transactions saved.`);
+      toast("Import complete", `${activePreview.transactions.length} transactions saved. ${activePreview.skipped.length} exact duplicates/skipped.`);
       resetImportFlow("Import complete.");
     } catch (error) {
       toast("Import save failed", error.message, "error");

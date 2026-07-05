@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-stable-v1";
+const CACHE_NAME = "capito-stable-v2";
 const CORE = [
   "./",
   "./index.html",
