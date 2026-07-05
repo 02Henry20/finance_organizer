@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#111827">
   <meta name="description" content="Capito is a private finance organizer for accounts, transactions, holdings, rules and analytics.">
   <title>Capito</title>
-  <meta name="capito-build" content="capito-v22-position-toggles">
+  <meta name="capito-build" content="capito-v23-home-mobile-menu-reports">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16x16.png">
@@ -68,9 +68,9 @@
                 <small>Change</small>
                 <strong id="net-worth-delta">—</strong>
               </div>
-              <div>
-                <small id="net-worth-window">Selected window</small>
+              <div class="cashflow-summary-box">
                 <span class="cashflow-line"><b id="window-income">—</b> <em id="window-income-label">in</em> <i aria-hidden="true">|</i> <b id="window-expense">—</b> <em id="window-expense-label">out</em></span>
+                <small id="net-worth-window">Cashflow selected window</small>
               </div>
             </div>
           </article>
@@ -372,7 +372,7 @@
       <form id="category-form" class="form-stack">
         <input id="category-id" type="hidden">
         <label class="field"><span>Name</span><input id="category-name" required></label>
-        <div class="form-grid three"><label class="field"><span>Group</span><input id="category-group" placeholder="Lifestyle"></label><label class="field"><span>Icon</span><input id="category-icon" maxlength="2" placeholder="•"></label><label class="field"><span>Type</span><select id="category-type"><option value="expense">Expense</option><option value="income">Income</option><option value="transfer">Transfer</option><option value="neutral">Neutral</option></select></label></div>
+        <div class="form-grid two"><label class="field"><span>Icon</span><input id="category-icon" maxlength="2" placeholder="•"></label><label class="field"><span>Type</span><select id="category-type"><option value="expense">Expense</option><option value="income">Income</option><option value="transfer">Transfer</option><option value="neutral">Neutral</option></select></label></div>
         <label class="field"><span>Color</span><select id="category-color"></select></label>
         <button class="primary-button" type="submit">Save category</button>
       </form>

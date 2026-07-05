@@ -46,3 +46,15 @@ If a browser keeps old behavior, open `/cache-reset.html`, reset cache once, the
 - Desktop broker positions modal keeps the two toggle groups side by side:
   - Since buy / Today
   - Amount / Percent
+
+
+## v23 update
+
+- Home card visual polish: centered change box, larger trend line, stronger net-worth number styling.
+- Cashflow order changed to amount line first, label second.
+- Header logo/wordmark enlarged.
+- Removed category group input.
+- Mobile Reports toolbar compacted.
+- Removed Show currency from account gear menu.
+- Mobile account gear menu is now a full pop menu with an X close button.
+- Desktop gear menu closes when clicking the gear again.

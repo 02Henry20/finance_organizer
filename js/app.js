@@ -945,12 +945,7 @@ function buildAccountCard(account, row, previousRow, { hidden = false } = {}) {
         <div class="account-menu-wrap">
           <button class="icon-button account-menu-button" type="button" data-account-menu-toggle aria-haspopup="menu" aria-label="Account options">⚙</button>
           <div class="account-menu" role="menu">
-            <label class="account-menu-currency-field" role="none">
-              <span>Show currency</span>
-              <select data-account-display-currency="${escapeHtml(account.id)}">
-                ${accountCurrencyOptions(account.displayCurrency || "", account.currency || currency)}
-              </select>
-            </label>
+            <button type="button" class="account-menu-close mobile-account-menu-close" data-account-menu-close aria-label="Close account menu">×</button>
             ${!hidden ? `<button type="button" role="menuitem" data-account-transactions="${escapeHtml(account.id)}">Txns</button>` : ""}
             ${isBroker && !hidden ? `<button type="button" role="menuitem" data-view-positions="${escapeHtml(account.id)}">Positions</button>` : ""}
             <button type="button" role="menuitem" data-edit-account="${escapeHtml(account.id)}">${hidden ? "Restore | edit" : "Edit"}</button>
@@ -1037,25 +1032,33 @@ function renderAccounts() {
 }
 
 function wireAccountCardActions(root) {
-  root.querySelectorAll("[data-account-display-currency]").forEach(select => select.addEventListener("change", async event => {
-    const id = event.currentTarget.dataset.accountDisplayCurrency;
-    const account = state.accounts.find(item => item.id === id);
-    if (!account) return;
-    try {
-      await saveAccount({ ...account, displayCurrency: event.currentTarget.value || "" });
-      toast("Display currency saved", `${account.name} now shows ${event.currentTarget.value || selectedCurrency()}.`);
-    } catch (error) {
-      toast("Display currency failed", error.message, "error");
-    }
+  root.querySelectorAll("[data-edit-account]").forEach(btn => btn.addEventListener("click", event => {
+    event.stopPropagation();
+    btn.closest(".account-menu-wrap")?.classList.remove("menu-open");
+    openAccountModal(btn.dataset.editAccount);
   }));
-  root.querySelectorAll("[data-edit-account]").forEach(btn => btn.addEventListener("click", () => openAccountModal(btn.dataset.editAccount)));
-  root.querySelectorAll("[data-view-positions]").forEach(btn => btn.addEventListener("click", () => openPositionsModal(btn.dataset.viewPositions)));
-  root.querySelectorAll("[data-account-transactions]").forEach(btn => btn.addEventListener("click", () => openAccountTransactionsModal(btn.dataset.accountTransactions)));
+  root.querySelectorAll("[data-view-positions]").forEach(btn => btn.addEventListener("click", event => {
+    event.stopPropagation();
+    btn.closest(".account-menu-wrap")?.classList.remove("menu-open");
+    openPositionsModal(btn.dataset.viewPositions);
+  }));
+  root.querySelectorAll("[data-account-transactions]").forEach(btn => btn.addEventListener("click", event => {
+    event.stopPropagation();
+    btn.closest(".account-menu-wrap")?.classList.remove("menu-open");
+    openAccountTransactionsModal(btn.dataset.accountTransactions);
+  }));
   root.querySelectorAll("[data-account-menu-toggle]").forEach(btn => btn.addEventListener("click", event => {
+    event.preventDefault();
     event.stopPropagation();
     const wrap = btn.closest(".account-menu-wrap");
-    document.querySelectorAll(".account-menu-wrap.menu-open").forEach(open => { if (open !== wrap) open.classList.remove("menu-open"); });
-    wrap?.classList.toggle("menu-open");
+    const wasOpen = Boolean(wrap?.classList.contains("menu-open"));
+    document.querySelectorAll(".account-menu-wrap.menu-open").forEach(open => open.classList.remove("menu-open"));
+    if (!wasOpen) wrap?.classList.add("menu-open");
+  }));
+  root.querySelectorAll("[data-account-menu-close]").forEach(btn => btn.addEventListener("click", event => {
+    event.preventDefault();
+    event.stopPropagation();
+    btn.closest(".account-menu-wrap")?.classList.remove("menu-open");
   }));
 }
 
@@ -1448,7 +1451,6 @@ function openCategoryModal(id = "") {
   const cat = id ? state.categories.find(item => item.id === id) : null;
   $("#category-id").value = cat?.id || "";
   $("#category-name").value = cat?.name || "";
-  $("#category-group").value = cat?.group || "Custom";
   $("#category-icon").value = cat?.icon || "•";
   $("#category-type").value = cat?.type || "expense";
   $("#category-color").innerHTML = colorOptions(cat?.color || DEFAULT_CATEGORY_COLOR);
@@ -2232,7 +2234,7 @@ function wireEvents() {
     await saveCategory({
       id: $("#category-id").value || undefined,
       name: $("#category-name").value,
-      group: $("#category-group").value,
+      group: state.categories.find(cat => cat.id === $("#category-id").value)?.group || "Custom",
       icon: $("#category-icon").value,
       type: $("#category-type").value,
       color: $("#category-color").value

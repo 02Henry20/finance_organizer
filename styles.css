@@ -1622,3 +1622,180 @@ td .category-pill .category-pill-text,
     white-space: nowrap !important;
   }
 }
+
+
+/* v23: home card visual refinements */
+.net-worth-meta > div:first-child {
+  display: grid;
+  place-items: center;
+  text-align: center;
+}
+#net-worth-delta {
+  display: grid !important;
+  justify-items: center;
+  gap: 4px;
+  width: 100%;
+  margin-top: 5px;
+  text-align: center;
+}
+#net-worth-delta > span {
+  font-size: clamp(1.04rem, 2.15vw, 1.42rem);
+  font-weight: 980;
+  line-height: 1.1;
+  letter-spacing: -.035em;
+  text-align: center;
+}
+#net-worth-delta .delta-period {
+  margin-top: 3px !important;
+  text-align: center;
+  font-size: .74rem !important;
+}
+.cashflow-summary-box {
+  display: grid;
+  align-content: center;
+  gap: 7px;
+  text-align: center;
+}
+.cashflow-summary-box .cashflow-line {
+  display: block;
+  padding-top: 0;
+  font-size: clamp(1.06rem, 2vw, 1.38rem);
+  font-weight: 950;
+  letter-spacing: -.035em;
+  line-height: 1.1;
+}
+.cashflow-summary-box .cashflow-line b {
+  font-size: 1em;
+}
+.cashflow-summary-box .cashflow-line em,
+.cashflow-summary-box .cashflow-line i {
+  font-size: .72em;
+  font-weight: 860;
+}
+#net-worth-window {
+  margin: 0 !important;
+  font-size: .72rem !important;
+  font-weight: 820;
+  text-align: center;
+}
+.balance-card .net-worth-title {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+}
+.hero-value {
+  justify-self: center;
+  width: fit-content;
+  max-width: 100%;
+  padding: clamp(12px, 2vw, 20px) clamp(18px, 3vw, 34px);
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, transparent);
+  border-radius: clamp(24px, 3vw, 40px);
+  background:
+    radial-gradient(circle at 50% 25%, color-mix(in srgb, var(--accent) 40%, transparent), transparent 58%),
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 20%, transparent), color-mix(in srgb, var(--green) 18%, transparent));
+  box-shadow:
+    0 22px 70px color-mix(in srgb, var(--accent) 24%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #fff 30%, transparent);
+  color: color-mix(in srgb, var(--accent) 88%, #ffffff);
+  text-align: center;
+  text-shadow: 0 0 26px color-mix(in srgb, var(--accent) 42%, transparent);
+  font-size: clamp(3.45rem, 8.8vw, 6.8rem) !important;
+}
+.brand-lockup.compact {
+  gap: 16px !important;
+}
+.brand-lockup.compact .brand-mark-img,
+.brand-lockup.compact .brand-mark.small {
+  width: 54px !important;
+  height: 54px !important;
+  border-radius: 18px !important;
+}
+.brand-lockup.compact > strong {
+  font-size: clamp(1.72rem, 2.35vw, 2.1rem) !important;
+  letter-spacing: -.045em !important;
+}
+
+/* v23: account gear menu mobile becomes a full pop menu */
+.mobile-account-menu-close {
+  display: none !important;
+}
+@media (max-width: 920px) {
+  .account-menu-wrap.menu-open .account-menu {
+    position: fixed !important;
+    inset: auto 14px max(14px, env(safe-area-inset-bottom)) 14px !important;
+    top: auto !important;
+    right: 14px !important;
+    left: 14px !important;
+    z-index: 1000 !important;
+    display: grid !important;
+    gap: 8px !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    padding: 16px !important;
+    border-radius: 26px !important;
+    background: color-mix(in srgb, var(--surface) 98%, transparent) !important;
+    box-shadow: 0 28px 90px rgba(0,0,0,.36), 0 0 0 9999px rgba(0,0,0,.38) !important;
+  }
+  .account-menu-wrap:focus-within .account-menu {
+    display: none;
+  }
+  .account-menu-wrap.menu-open:focus-within .account-menu {
+    display: grid !important;
+  }
+  .mobile-account-menu-close {
+    display: grid !important;
+    place-items: center !important;
+    justify-self: end !important;
+    width: 38px !important;
+    min-height: 38px !important;
+    border-radius: 999px !important;
+    font-size: 1.2rem !important;
+    text-align: center !important;
+    background: var(--surface-2) !important;
+  }
+  .account-menu button:not(.mobile-account-menu-close) {
+    min-height: 46px !important;
+    border-radius: 15px !important;
+    font-size: .9rem !important;
+  }
+}
+
+/* v23: mobile Reports first box compact layout */
+@media (max-width: 680px) {
+  .reports-toolbar {
+    min-height: 0 !important;
+    height: auto !important;
+    align-content: start !important;
+    grid-template-columns: minmax(0, 1fr) minmax(118px, 41vw) !important;
+    grid-template-areas:
+      "reports-title reports-mode"
+      "period-title reports-mode"
+      "report-controls report-controls" !important;
+    gap: 6px 10px !important;
+    padding: 14px !important;
+  }
+  .reports-toolbar .report-mode-control {
+    grid-area: reports-mode !important;
+    align-self: start !important;
+    justify-self: end !important;
+    width: 100% !important;
+    max-width: 158px !important;
+  }
+  .reports-toolbar > div:first-child h3 {
+    line-height: 1.08 !important;
+  }
+  .reports-toolbar .report-controls {
+    margin-top: 3px !important;
+    align-items: end !important;
+  }
+  .reports-toolbar #report-compare-field {
+    align-self: end !important;
+  }
+}
+
+/* v23: categories no longer expose a group field */
+#category-group {
+  display: none !important;
+}

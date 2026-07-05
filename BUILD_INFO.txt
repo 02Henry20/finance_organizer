@@ -1,7 +1,14 @@
-Capito v22 verified build
-Build ID: capito-v22-position-toggles
-Created: 2026-07-05T12:31:56
+Capito v23 verified build
+Build ID: capito-v23-home-mobile-menu-reports
+Created: 2026-07-05T12:55:36
 
 Changes:
-- Desktop broker positions modal: "Since buy / Today" and "Amount / Percent" toggle groups are side by side.
-- Previous v21 features retained.
+- Home net-worth card: centered change box value, larger trend line, redesigned net-worth value.
+- Cashflow summary now shows the in/out amounts first, then the window label below.
+- Mobile Net worth label centered.
+- Header logo and Capito wordmark enlarged.
+- Category modal no longer exposes the group input.
+- Mobile Reports toolbar compacted; Month/Year selector is above the Compare year field.
+- Account gear menu no longer contains Show currency.
+- Mobile account gear menu opens as a full pop menu with close button.
+- Desktop gear button toggles closed when clicked again.
