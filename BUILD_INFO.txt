@@ -1,0 +1,9 @@
+Capito verified latest build
+Build ID: capito-v19-verified-latest
+Created: 2026-07-05T12:10:44
+
+Verified included features:
+- Settings sync resolution: Keep local / Merge both / Take Firebase
+- Accounts display currency selector
+- Unified import for bank transactions and broker holdings
+- Network-first service worker for app shell files
