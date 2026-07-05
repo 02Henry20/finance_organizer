@@ -233,6 +233,7 @@ export async function saveAccount(input) {
     institution: input.institution?.trim() || "Manual",
     type: input.type || "checking",
     currency: (input.currency || state.settings.primaryCurrency || "EUR").toUpperCase(),
+    displayCurrency: input.displayCurrency ? String(input.displayCurrency).toUpperCase() : "",
     openingBalance: Number(input.openingBalance || 0),
     hidden: Boolean(input.hidden),
     iban: String(input.iban || "").replace(/\s+/g, "").toUpperCase(),

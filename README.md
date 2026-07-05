@@ -24,3 +24,10 @@ If a browser keeps old behavior, open `/cache-reset.html`, reset cache once, the
   - Take Firebase: discard the local/offline view and reload server data.
 - Accounts page has a Display currency selector. This affects account cards and the home balances chart display only; it does not change native account currencies.
 - The import page now uses one unified file input. It auto-detects bank transactions and broker holdings from the same file when possible.
+
+
+## v20 update
+
+- Account display currency is now set independently per account card or in the account edit modal.
+- Mobile Reports first box has been rearranged to keep Month/Year in the upper-right and Month/Compare Year below.
+- Desktop sync troubleshooting has a wider, single-line button layout.

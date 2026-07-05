@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#111827">
   <meta name="description" content="Capito is a private finance organizer for accounts, transactions, holdings, rules and analytics.">
   <title>Capito</title>
-  <meta name="capito-build" content="capito-v19-verified-latest">
+  <meta name="capito-build" content="capito-v20-account-display-sync-reports">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16x16.png">
@@ -110,7 +110,7 @@
 
       <section class="view" data-view-section="reports">
         <div class="surface-card reports-toolbar">
-          <div><p class="eyebrow">REPORTS</p><h3>Period analysis</h3></div>
+          <div><p class="eyebrow">Reports</p><h3>Period analysis</h3></div>
           <div class="report-controls">
             <div class="segmented-control report-mode-control" role="group" aria-label="Report period mode">
               <button class="segment-button active" data-report-mode="month" type="button" aria-pressed="true">Month</button>
@@ -206,7 +206,7 @@
       </section>
 
       <section class="view" data-view-section="accounts">
-        <div class="page-toolbar surface-card"><div><p class="eyebrow">MONEY CONTAINERS</p><h3>Accounts</h3><small id="accounts-period-note" class="toolbar-subnote">Comparison period</small></div><div class="toolbar-actions accounts-toolbar-actions"><label class="field compact-field accounts-currency-field"><span>Display currency</span><select id="accounts-display-currency"></select></label><button id="hidden-accounts-toggle" class="ghost-button compact" type="button" hidden aria-expanded="false">Show hidden accounts</button><button class="primary-button compact" data-open-modal="account" type="button">Add account</button></div></div>
+        <div class="page-toolbar surface-card"><div><p class="eyebrow">MONEY CONTAINERS</p><h3>Accounts</h3><small id="accounts-period-note" class="toolbar-subnote">Comparison period</small></div><div class="toolbar-actions accounts-toolbar-actions"><button id="hidden-accounts-toggle" class="ghost-button compact" type="button" hidden aria-expanded="false">Show hidden accounts</button><button class="primary-button compact" data-open-modal="account" type="button">Add account</button></div></div>
         <div id="accounts-grid" class="cards-grid"></div>
         <section id="hidden-accounts-section" class="hidden-accounts-section" hidden>
           <div class="account-group-heading hidden-group-heading"><p class="eyebrow">Hidden</p><span id="hidden-accounts-count" class="metric-tag">0</span></div>
@@ -319,7 +319,8 @@
         <input id="account-id" type="hidden">
         <label class="field"><span>Name</span><input id="account-name" required placeholder="Sparkasse Giro"></label>
         <div class="form-grid two"><label class="field"><span>Institution</span><input id="account-institution" placeholder="Bank name"></label><label class="field"><span>Type</span><select id="account-type"></select></label></div>
-        <div class="form-grid two"><label class="field"><span>Currency</span><input id="account-currency" list="currency-options" maxlength="3" placeholder="EUR"></label><label class="field"><span>Start balance</span><input id="account-opening" type="number" step="0.01" value="0"><small class="field-help">Starting point only. This is not saved as income, spending or a transaction.</small></label></div>
+        <div class="form-grid two"><label class="field"><span>Native currency</span><input id="account-currency" list="currency-options" maxlength="3" placeholder="EUR"></label><label class="field"><span>Display currency</span><select id="account-display-currency"></select><small class="field-help">Only changes how this account is shown. It does not change the account's native currency.</small></label></div>
+        <label class="field"><span>Start balance</span><input id="account-opening" type="number" step="0.01" value="0"><small class="field-help">Starting point only. This is not saved as income, spending or a transaction.</small></label>
         <div class="form-grid two"><label class="field"><span>IBAN</span><input id="account-iban" placeholder="Optional IBAN"></label><label class="field"><span>Account | depot number</span><input id="account-number" placeholder="Optional identifier"></label></div>
         <div class="form-grid two"><label class="field"><span>BIC</span><input id="account-bic" placeholder="Optional BIC"></label><label class="field"><span>Transfer aliases</span><input id="account-aliases" placeholder="broker, depot, own account"></label></div>
         <label class="check-row"><input id="account-hidden" type="checkbox"> Hide from app</label>

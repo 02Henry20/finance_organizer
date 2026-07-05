@@ -1,9 +1,14 @@
-Capito verified latest build
-Build ID: capito-v19-verified-latest
-Created: 2026-07-05T12:10:44
+Capito v20 verified build
+Build ID: capito-v20-account-display-sync-reports
+Created: 2026-07-05T12:22:25
 
-Verified included features:
-- Settings sync resolution: Keep local / Merge both / Take Firebase
-- Accounts display currency selector
-- Unified import for bank transactions and broker holdings
-- Network-first service worker for app shell files
+Changes:
+- Per-account display currency selector on each account card.
+- Per-account display currency field in account edit modal.
+- Removed global account display currency selector.
+- Mobile Reports toolbar layout:
+  Reports                Month / Year
+  Period analysis
+  Month                  Compare year
+- Desktop sync troubleshooting layout widened so buttons stay single-line and text is not squeezed.
+- Previous v19 features retained: sync resolution, unified import, icons, network-first service worker.

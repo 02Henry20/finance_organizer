@@ -1367,3 +1367,157 @@ td .category-pill .category-pill-text,
     width: 100%;
   }
 }
+
+
+/* v20: per-account display currency selectors */
+.account-card-currency-field {
+  display: grid;
+  gap: 3px;
+  min-width: 96px;
+  max-width: 116px;
+  margin: 0;
+}
+.account-card-currency-field span {
+  color: var(--muted);
+  font-size: .62rem;
+  font-weight: 850;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.account-card-currency-field select {
+  min-height: 34px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 6px 9px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: .76rem;
+  font-weight: 760;
+}
+.account-card-controls {
+  align-items: flex-start;
+}
+@media (max-width: 920px) {
+  .account-card-currency-field {
+    min-width: 82px;
+    max-width: 98px;
+  }
+  .account-card-currency-field span { font-size: .56rem; }
+  .account-card-currency-field select {
+    min-height: 30px;
+    padding: 5px 7px;
+    font-size: .7rem;
+  }
+}
+
+/* v20: requested mobile Reports first-box layout */
+@media (max-width: 680px) {
+  .reports-toolbar {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(116px, 42vw) !important;
+    grid-template-areas:
+      "reports-title reports-mode"
+      "period-title period-title"
+      "report-controls report-controls" !important;
+    align-items: start !important;
+    gap: 7px 12px !important;
+    padding: 16px !important;
+  }
+  .reports-toolbar > div:first-child {
+    display: contents !important;
+  }
+  .reports-toolbar > div:first-child .eyebrow {
+    grid-area: reports-title !important;
+    margin: 0 !important;
+    align-self: center !important;
+    color: var(--muted);
+    font-size: .72rem;
+    line-height: 1.1;
+  }
+  .reports-toolbar > div:first-child h3 {
+    grid-area: period-title !important;
+    margin: 0 !important;
+    align-self: start !important;
+    font-size: 1.18rem;
+    line-height: 1.15;
+  }
+  .reports-toolbar .report-controls {
+    display: grid !important;
+    grid-area: report-controls !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    gap: 10px !important;
+    width: 100% !important;
+    margin-top: 5px !important;
+  }
+  .reports-toolbar .report-mode-control {
+    grid-area: reports-mode !important;
+    grid-column: auto !important;
+    grid-row: auto !important;
+    width: 100% !important;
+    justify-self: end !important;
+    align-self: start !important;
+  }
+  .reports-toolbar #report-month-field,
+  .reports-toolbar #report-year-field {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    min-width: 0 !important;
+  }
+  .reports-toolbar #report-compare-field {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    min-width: 0 !important;
+  }
+  .reports-toolbar .compact-field span {
+    font-size: .62rem !important;
+  }
+  .reports-toolbar .compact-field input,
+  .reports-toolbar .compact-field select {
+    min-height: 39px !important;
+    padding: 8px 10px !important;
+    font-size: .78rem !important;
+  }
+  .reports-toolbar .report-mode-control .segment-button {
+    min-height: 36px !important;
+    padding-inline: 8px !important;
+    font-size: .7rem !important;
+    white-space: nowrap !important;
+  }
+}
+
+/* v20: desktop-only sync troubleshooting redesign */
+@media (min-width: 761px) {
+  .sync-choice-row {
+    grid-template-columns: minmax(330px, 1fr) minmax(540px, auto) !important;
+    gap: 24px !important;
+    align-items: center !important;
+    padding-block: 16px !important;
+  }
+  .sync-choice-row > div:first-child {
+    max-width: 560px;
+  }
+  .sync-choice-row > div:first-child strong {
+    display: block;
+    margin-bottom: 4px;
+  }
+  .sync-choice-row > div:first-child small {
+    display: block;
+    max-width: 520px;
+    line-height: 1.45;
+  }
+  .sync-choice-row .sync-choice-actions {
+    display: grid !important;
+    grid-template-columns: repeat(4, max-content);
+    justify-content: end !important;
+    align-items: center;
+    gap: 9px !important;
+    flex-wrap: nowrap !important;
+    white-space: nowrap;
+  }
+  .sync-choice-row .sync-choice-actions > button {
+    min-width: auto;
+    white-space: nowrap;
+    padding-inline: 13px;
+  }
+}

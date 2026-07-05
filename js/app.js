@@ -251,11 +251,18 @@ function selectedCurrency() {
   return (state.settings.primaryCurrency || "EUR").toUpperCase();
 }
 
-function accountDisplayCurrency() {
-  return (state.settings.accountDisplayCurrency || state.settings.primaryCurrency || "EUR").toUpperCase();
+function accountDisplayCurrency(account = null) {
+  return (account?.displayCurrency || state.settings.primaryCurrency || "EUR").toUpperCase();
 }
 
-function convertPrimaryToAccountDisplay(value, targetCurrency = accountDisplayCurrency()) {
+function accountCurrencyOptions(selected = "", nativeCurrency = "") {
+  const chosen = (selected || "").toUpperCase();
+  const native = (nativeCurrency || selectedCurrency()).toUpperCase();
+  const currencies = [...new Set([selectedCurrency(), native, ...VALID_CURRENCIES])];
+  return `<option value="" ${chosen ? "" : "selected"}>Main (${escapeHtml(selectedCurrency())})</option>${currencies.map(code => `<option value="${escapeHtml(code)}" ${code === chosen ? "selected" : ""}>${escapeHtml(code)}${code === native ? " · native" : ""}</option>`).join("")}`;
+}
+
+function convertPrimaryToAccountDisplay(value, targetCurrency = selectedCurrency()) {
   const amount = Number(value || 0);
   const primary = selectedCurrency();
   const target = (targetCurrency || primary).toUpperCase();
@@ -267,7 +274,7 @@ function convertPrimaryToAccountDisplay(value, targetCurrency = accountDisplayCu
   return amount * primaryRate / targetRate;
 }
 
-function accountRowsForDisplay(rows = [], targetCurrency = accountDisplayCurrency()) {
+function accountRowsForDisplay(rows = [], targetCurrency = selectedCurrency()) {
   return rows.map(row => ({
     ...row,
     balance: {
@@ -780,11 +787,6 @@ function fillFilters() {
   const accountType = $("#account-type");
   const ruleCategory = $("#rule-category");
   const assetAccount = $("#asset-account");
-  const accountsDisplayCurrency = $("#accounts-display-currency");
-  if (accountsDisplayCurrency) {
-    const current = state.settings.accountDisplayCurrency || "";
-    accountsDisplayCurrency.innerHTML = `<option value="" ${current ? "" : "selected"}>Main currency (${escapeHtml(selectedCurrency())})</option>${VALID_CURRENCIES.map(code => `<option value="${escapeHtml(code)}" ${code === current ? "selected" : ""}>${escapeHtml(code)}</option>`).join("")}`;
-  }
   if (txAccountFilter) txAccountFilter.innerHTML = `<option value="all">All accounts</option>${accountOptions(txAccountFilter.value)}`;
   if (txCategoryFilter) txCategoryFilter.innerHTML = `<option value="all">All categories</option>${categoryOptions(txCategoryFilter.value)}`;
   if (txCurrencyFilter) {
@@ -916,7 +918,7 @@ function accountStat(label, value, previous, { currency = selectedCurrency(), em
 }
 
 function buildAccountCard(account, row, previousRow, { hidden = false } = {}) {
-  const currency = accountDisplayCurrency();
+  const currency = accountDisplayCurrency(account);
   const isBroker = ["broker", "asset"].includes(account.type);
   const cashCurrent = convertPrimaryToAccountDisplay(row.balance?.converted || 0, currency);
   const cashPrevious = previousRow?.balance?.converted == null ? cashCurrent : convertPrimaryToAccountDisplay(previousRow.balance.converted, currency);
@@ -931,11 +933,17 @@ function buildAccountCard(account, row, previousRow, { hidden = false } = {}) {
     <div class="item-card-header account-card-header">
       <div class="account-title-block">
         <h3 title="${escapeHtml(account.name)}">${escapeHtml(account.name)}</h3>
-        <small class="account-meta-line">${escapeHtml(account.institution || "Manual")} · ${escapeHtml(account.type)} · ${escapeHtml(account.currency || currency)}</small>
+        <small class="account-meta-line">${escapeHtml(account.institution || "Manual")} · ${escapeHtml(account.type)} · Native ${escapeHtml(account.currency || selectedCurrency())}${currency !== (account.currency || selectedCurrency()).toUpperCase() ? ` · shown in ${escapeHtml(currency)}` : ""}</small>
         <small class="account-identifier">${escapeHtml(identifier)}</small>
       </div>
       <div class="account-card-controls">
         ${hidden ? `<span class="category-pill hidden-pill">Hidden</span>` : ""}
+        <label class="account-card-currency-field" title="Display currency">
+          <span>Show</span>
+          <select data-account-display-currency="${escapeHtml(account.id)}">
+            ${accountCurrencyOptions(account.displayCurrency || "", account.currency || currency)}
+          </select>
+        </label>
         <div class="account-menu-wrap">
           <button class="icon-button account-menu-button" type="button" data-account-menu-toggle aria-haspopup="menu" aria-label="Account options">⚙</button>
           <div class="account-menu" role="menu">
@@ -1025,6 +1033,17 @@ function renderAccounts() {
 }
 
 function wireAccountCardActions(root) {
+  root.querySelectorAll("[data-account-display-currency]").forEach(select => select.addEventListener("change", async event => {
+    const id = event.currentTarget.dataset.accountDisplayCurrency;
+    const account = state.accounts.find(item => item.id === id);
+    if (!account) return;
+    try {
+      await saveAccount({ ...account, displayCurrency: event.currentTarget.value || "" });
+      toast("Display currency saved", `${account.name} now shows ${event.currentTarget.value || selectedCurrency()}.`);
+    } catch (error) {
+      toast("Display currency failed", error.message, "error");
+    }
+  }));
   root.querySelectorAll("[data-edit-account]").forEach(btn => btn.addEventListener("click", () => openAccountModal(btn.dataset.editAccount)));
   root.querySelectorAll("[data-view-positions]").forEach(btn => btn.addEventListener("click", () => openPositionsModal(btn.dataset.viewPositions)));
   root.querySelectorAll("[data-account-transactions]").forEach(btn => btn.addEventListener("click", () => openAccountTransactionsModal(btn.dataset.accountTransactions)));
@@ -1262,6 +1281,8 @@ function openAccountModal(id = "") {
   $("#account-institution").value = account?.institution || "";
   $("#account-type").value = account?.type || "checking";
   $("#account-currency").value = account?.currency || selectedCurrency();
+  const accountDisplaySelect = $("#account-display-currency");
+  if (accountDisplaySelect) accountDisplaySelect.innerHTML = accountCurrencyOptions(account?.displayCurrency || "", account?.currency || selectedCurrency());
   $("#account-opening").value = account?.openingBalance ?? 0;
   $("#account-iban").value = account?.iban || "";
   $("#account-number").value = account?.accountNumber || "";
@@ -2032,19 +2053,15 @@ function wireEvents() {
   $("#add-position-holding")?.addEventListener("click", () => {
     if (activePositionsAccountId) openAssetModal("", activePositionsAccountId);
   });
+  $("#account-currency")?.addEventListener("input", () => {
+    const select = $("#account-display-currency");
+    if (select) select.innerHTML = accountCurrencyOptions(select.value || "", normalizedCurrencyFrom("#account-currency", selectedCurrency()));
+  });
   $("#transaction-category")?.addEventListener("change", syncTransactionReviewControl);
   $("#export-button")?.addEventListener("click", exportTransactionsCsv);
   $("#export-json-button")?.addEventListener("click", () => exportBackupJson().catch(error => toast("JSON export failed", error.message, "error")));
   $("#repair-sync-button")?.addEventListener("click", runSyncRepair);
   $$("[data-sync-choice]").forEach(button => button.addEventListener("click", () => runSyncChoice(button.dataset.syncChoice)));
-  $("#accounts-display-currency")?.addEventListener("change", async event => {
-    try {
-      await saveSettings({ accountDisplayCurrency: event.target.value || "" });
-      requestRender();
-    } catch (error) {
-      toast("Display currency failed", error.message, "error");
-    }
-  });
   $("#import-json-file")?.addEventListener("change", event => {
     importJsonBackupFile(event.target.files?.[0]);
   });
@@ -2132,6 +2149,7 @@ function wireEvents() {
         institution: $("#account-institution").value,
         type: $("#account-type").value,
         currency: normalizedCurrencyFrom("#account-currency"),
+        displayCurrency: $("#account-display-currency")?.value || "",
         openingBalance: parseMoney($("#account-opening").value) || 0,
         iban: $("#account-iban").value,
         accountNumber: $("#account-number").value,
