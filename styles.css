@@ -774,3 +774,131 @@ td .category-pill {
   .chart-card:has(#category-donut-chart) .chart-wrap,
   .chart-card:has(#report-category-chart) .chart-wrap { min-height: 218px; }
 }
+
+
+/* Net-worth emphasis and final account/chart layout fixes */
+.net-worth-heading {
+  align-items: center;
+  gap: 14px;
+}
+.net-worth-title {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 13px;
+  border: 1px solid color-mix(in srgb, var(--accent) 44%, transparent);
+  border-radius: 999px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 22%, transparent), color-mix(in srgb, var(--accent-2) 13%, transparent));
+  color: var(--bg) !important;
+  font-size: clamp(1.32rem, 2.5vw, 2.05rem) !important;
+  font-weight: 980 !important;
+  letter-spacing: -.055em !important;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--bg) 22%, transparent), 0 10px 28px rgba(0,0,0,.12);
+}
+.net-worth-title::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.net-worth-meta > div:first-child strong {
+  display: grid;
+  gap: 5px;
+}
+.net-worth-meta .delta-label {
+  display: block;
+  margin-top: 7px;
+  font-size: .68rem;
+  line-height: 1;
+}
+#net-worth-window {
+  display: block;
+  margin-bottom: 9px;
+}
+.cashflow-line {
+  display: flex !important;
+  align-items: baseline;
+  gap: 5px;
+  margin-top: 6px;
+  font-size: 1rem !important;
+}
+.cashflow-line em {
+  font-style: normal;
+  font-weight: 900;
+}
+
+@media (min-width: 921px) {
+  #accounts-grid {
+    display: grid;
+    gap: 28px;
+  }
+  .account-group {
+    gap: 14px;
+    margin-bottom: 2px;
+  }
+  .account-group-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+    gap: 18px;
+  }
+  .broker-group .account-group-grid {
+    grid-template-columns: repeat(auto-fit, minmax(560px, 1fr));
+  }
+  .hidden-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+    gap: 18px;
+  }
+  .account-card {
+    padding: 24px;
+    border-radius: var(--radius-xl);
+    gap: 16px;
+  }
+  .account-card-header {
+    align-items: flex-start;
+  }
+  .account-title-block h3 {
+    font-size: 1.2rem;
+  }
+  .account-title-block small {
+    font-size: .78rem;
+  }
+  .account-value-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .broker-value-row {
+    grid-template-columns: minmax(0, 1.28fr) minmax(0, .86fr) minmax(0, .86fr);
+    align-items: stretch;
+  }
+  .account-total-tile {
+    order: -1;
+    border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--line));
+    background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 16%, var(--surface-2)), var(--surface-2));
+  }
+  .account-total-tile span {
+    color: var(--primary);
+  }
+  .account-total-tile strong {
+    font-size: clamp(1.38rem, 2.4vw, 1.82rem) !important;
+    font-weight: 960;
+  }
+  .account-card-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 920px) {
+  .net-worth-title {
+    font-size: clamp(1.08rem, 5vw, 1.45rem) !important;
+    padding: 7px 11px;
+  }
+  .cashflow-line {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+}

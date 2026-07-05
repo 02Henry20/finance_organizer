@@ -536,18 +536,24 @@ function renderOverview() {
   const netWorthWindow = $("#net-worth-window");
   const windowIncome = $("#window-income");
   const windowExpense = $("#window-expense");
+  const windowIncomeLabel = $("#window-income-label");
+  const windowExpenseLabel = $("#window-expense-label");
   if (overviewDate) overviewDate.textContent = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date());
   if (netWorthValue) netWorthValue.textContent = formatCurrency(portfolio.netWorth, currency);
   if (netWorthDelta) netWorthDelta.innerHTML = deltaHtml(portfolio.netWorth, previousPortfolio.netWorth, { label: compareText });
   if (netWorthWindow) netWorthWindow.textContent = `Cashflow ${compareText}`;
+  const incomeClass = windowFlow.income > 0 ? "amount-pos" : "delta-flat";
+  const expenseClass = windowFlow.expense > 0 ? "amount-neg" : "delta-flat";
   if (windowIncome) {
     windowIncome.textContent = formatCurrency(windowFlow.income, currency);
-    windowIncome.className = windowFlow.income > 0 ? "amount-pos" : "delta-flat";
+    windowIncome.className = incomeClass;
   }
+  if (windowIncomeLabel) windowIncomeLabel.className = incomeClass;
   if (windowExpense) {
     windowExpense.textContent = formatCurrency(windowFlow.expense, currency);
-    windowExpense.className = windowFlow.expense > 0 ? "amount-neg" : "delta-flat";
+    windowExpense.className = expenseClass;
   }
+  if (windowExpenseLabel) windowExpenseLabel.className = expenseClass;
   $("#liquidity-value").textContent = formatCurrency(portfolio.liquidity, currency);
   $("#asset-value").textContent = formatCurrency(portfolio.assetValue, currency);
   $("#debt-value").textContent = formatCurrency(portfolio.debt, currency);
@@ -847,9 +853,10 @@ function renderAccounts() {
         </div>
         ${hidden ? `<span class="category-pill hidden-pill">Hidden</span>` : ""}
       </div>
-      <div class="account-value-row">
+      <div class="account-value-row ${isBroker ? "broker-value-row" : ""}">
+        ${isBroker ? `<div class="account-total-tile"><span>Total</span><strong class="account-main-value">${formatCurrency(totalValue, currency)}</strong>${accountChangeHtml(totalValue, previousTotalValue, compareText, { currency })}</div>` : ""}
         <div><span>Cash balance</span><strong class="account-main-value">${formatCurrency(row.balance.raw, account.currency || currency)}</strong>${accountChangeHtml(row.balance.converted, previousRow.balance.converted, compareText, { inverted: account.type === "debt", currency })}</div>
-        ${isBroker ? `<div><span>Holdings</span><strong class="account-main-value">${formatCurrency(holdingsValue, currency)}</strong>${accountChangeHtml(holdingsValue, previousHoldingsValue, compareText, { currency })}</div><div><span>Total</span><strong class="account-main-value">${formatCurrency(totalValue, currency)}</strong>${accountChangeHtml(totalValue, previousTotalValue, compareText, { currency })}</div>` : ""}
+        ${isBroker ? `<div><span>Holdings</span><strong class="account-main-value">${formatCurrency(holdingsValue, currency)}</strong>${accountChangeHtml(holdingsValue, previousHoldingsValue, compareText, { currency })}</div>` : ""}
       </div>
       ${isBroker ? `<div class="account-holding-summary"><small>${holdings.length ? `${holdings.length} positions` : "No positions yet"}</small></div>` : ""}
       <div class="item-card-actions account-card-actions">

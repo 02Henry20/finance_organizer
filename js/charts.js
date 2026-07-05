@@ -179,9 +179,9 @@ export function drawDonut(canvas, rows, currency = "EUR") {
   if (!data.length) return;
   const { ctx, width, height, colors: c } = prepare(canvas);
   const compact = width < 430;
-  const cx = compact ? width * 0.20 : width * 0.34;
+  const cx = compact ? width * 0.16 : width * 0.34;
   const cy = height * 0.5;
-  const radius = Math.min(height * (compact ? 0.25 : 0.34), width * (compact ? 0.155 : 0.23));
+  const radius = Math.min(height * (compact ? 0.235 : 0.34), width * (compact ? 0.135 : 0.23));
   const total = data.reduce((sum, row) => sum + row.value, 0);
   const palette = [c.primary, c.accent, c.yellow, c.violet, c.green, c.red, "#69d2ff", "#d19dff"];
   let angle = -Math.PI / 2;
@@ -205,7 +205,7 @@ export function drawDonut(canvas, rows, currency = "EUR") {
   ctx.font = "12px Inter, system-ui";
   ctx.fillText("spent", cx, cy + 15);
   ctx.restore();
-  const legendX = compact ? width * 0.38 : width * 0.58;
+  const legendX = compact ? width * 0.43 : width * 0.58;
   ctx.font = "12px Inter, system-ui";
   const valueFormatter = new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: 0 });
   const valueLabels = data.map(row => valueFormatter.format(row.value));
@@ -282,13 +282,14 @@ export function drawAccountBars(canvas, rows, currency = "EUR", options = {}) {
     .slice(0, 9);
   setEmpty(canvas, !data.length);
   if (!data.length) return;
+
   const { ctx, width, height, colors: c } = prepare(canvas);
-  const labelSpace = Math.min(128, Math.max(84, width * 0.24));
-  const valueSpace = Math.min(118, Math.max(76, width * 0.18));
+  const labelSpace = Math.min(width * 0.42, Math.max(132, width * 0.34));
+  const valueSpace = Math.min(96, Math.max(64, width * 0.14));
   const area = { left: labelSpace, right: width - valueSpace, top: 20, bottom: height - 20 };
-  const max = Math.max(...data.flatMap(row => [Math.abs(row.balance.converted), Math.abs(row.previousBalance || 0)]), 1) * 1.08;
+  const max = Math.max(...data.flatMap(row => [Math.abs(row.balance.converted), Math.abs(row.previousBalance || 0)]), 1) * 1.1;
   const zero = area.left + (area.right - area.left) * 0.5;
-  const half = Math.max(42, Math.min(zero - area.left, area.right - zero));
+  const half = Math.max(36, Math.min(zero - area.left, area.right - zero));
   const xFor = value => zero + (Number(value || 0) / max) * half;
   const rowH = (area.bottom - area.top) / data.length;
   const fmt = new Intl.NumberFormat(undefined, { style: "currency", currency, notation: "compact" });
@@ -306,45 +307,43 @@ export function drawAccountBars(canvas, rows, currency = "EUR", options = {}) {
     const y = area.top + i * rowH + rowH * 0.5;
     const current = Number(row.balance.converted || 0);
     const previous = Number(row.previousBalance || 0);
-    const name = fitText(ctx, row.name, labelSpace - 16);
+    const delta = current - previous;
+    const name = fitText(ctx, row.name, labelSpace - 20);
+
     ctx.save();
     ctx.font = "12px Inter, system-ui";
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
     ctx.fillStyle = c.text;
-    ctx.fillText(name, area.left - 10, y);
+    ctx.fillText(name, area.left - 12, y);
     ctx.restore();
 
-    if (options.showDelta && Math.abs(previous) > 0.005) {
-      const px = xFor(previous);
-      const start = Math.min(zero, px);
-      const w = Math.max(3, Math.abs(px - zero));
+    const drawSegment = (from, to, color, alpha = 1, heightPx = 18) => {
+      if (Math.abs(to - from) < 0.005) return;
+      const x1 = xFor(from);
+      const x2 = xFor(to);
+      const start = Math.min(x1, x2);
+      const w = Math.max(3, Math.abs(x2 - x1));
       ctx.save();
-      ctx.globalAlpha = 0.32;
-      ctx.fillStyle = previous >= 0 ? c.accent : c.red;
-      roundedRect(ctx, start, y - 10, w, 20, 8);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = color;
+      roundedRect(ctx, start, y - heightPx / 2, w, heightPx, Math.min(8, heightPx / 2));
       ctx.fill();
       ctx.restore();
-    }
+    };
 
-    const cx = xFor(current);
-    const start = Math.min(zero, cx);
-    const w = Math.max(4, Math.abs(cx - zero));
-    ctx.fillStyle = current >= 0 ? c.accent : c.red;
-    roundedRect(ctx, start, y - 7, w, 14, 7);
-    ctx.fill();
-
-    if (options.showDelta && Math.abs(current - previous) > 0.005 && Math.sign(current) === Math.sign(previous)) {
-      const a = xFor(previous);
-      const b = xFor(current);
-      const ds = Math.min(a, b);
-      const dw = Math.max(3, Math.abs(b - a));
-      ctx.save();
-      ctx.globalAlpha = 0.75;
-      ctx.fillStyle = current - previous >= 0 ? c.green : c.red;
-      roundedRect(ctx, ds, y - 12, dw, 6, 3);
-      ctx.fill();
-      ctx.restore();
+    if (options.showDelta) {
+      drawSegment(0, previous, previous >= 0 ? c.accent : c.red, 0.34, 18);
+      if (Math.abs(delta) > 0.005) {
+        if (Math.sign(current) !== Math.sign(previous) && Math.abs(previous) > 0.005 && Math.abs(current) > 0.005) {
+          drawSegment(previous, 0, delta >= 0 ? c.green : c.red, 0.72, 18);
+          drawSegment(0, current, delta >= 0 ? c.green : c.red, 0.82, 18);
+        } else {
+          drawSegment(previous, current, delta >= 0 ? c.green : c.red, 0.82, 18);
+        }
+      }
+    } else {
+      drawSegment(0, current, current >= 0 ? c.accent : c.red, 0.92, 18);
     }
 
     ctx.save();
@@ -352,7 +351,8 @@ export function drawAccountBars(canvas, rows, currency = "EUR", options = {}) {
     ctx.font = "12px Inter, system-ui";
     ctx.textBaseline = "middle";
     const valueLabel = fmt.format(current);
-    const valueX = current >= 0 ? Math.min(width - 12, cx + 8) : Math.max(10, cx - 8);
+    const cx = xFor(current);
+    const valueX = current >= 0 ? Math.min(width - 10, cx + 8) : Math.max(10, cx - 8);
     ctx.textAlign = current >= 0 ? "left" : "right";
     ctx.fillText(valueLabel, valueX, y);
     ctx.restore();
