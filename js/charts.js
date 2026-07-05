@@ -179,9 +179,9 @@ export function drawDonut(canvas, rows, currency = "EUR") {
   if (!data.length) return;
   const { ctx, width, height, colors: c } = prepare(canvas);
   const compact = width < 430;
-  const cx = compact ? width * 0.26 : width * 0.34;
+  const cx = compact ? width * 0.20 : width * 0.34;
   const cy = height * 0.5;
-  const radius = Math.min(height * (compact ? 0.28 : 0.34), width * (compact ? 0.18 : 0.23));
+  const radius = Math.min(height * (compact ? 0.25 : 0.34), width * (compact ? 0.155 : 0.23));
   const total = data.reduce((sum, row) => sum + row.value, 0);
   const palette = [c.primary, c.accent, c.yellow, c.violet, c.green, c.red, "#69d2ff", "#d19dff"];
   let angle = -Math.PI / 2;
@@ -205,7 +205,7 @@ export function drawDonut(canvas, rows, currency = "EUR") {
   ctx.font = "12px Inter, system-ui";
   ctx.fillText("spent", cx, cy + 15);
   ctx.restore();
-  const legendX = compact ? width * 0.44 : width * 0.58;
+  const legendX = compact ? width * 0.38 : width * 0.58;
   ctx.font = "12px Inter, system-ui";
   const valueFormatter = new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: 0 });
   const valueLabels = data.map(row => valueFormatter.format(row.value));
@@ -273,41 +273,90 @@ export function drawYearComparison(canvas, rows, currency = "EUR", options = {})
   ctx.restore();
 }
 
-export function drawAccountBars(canvas, rows, currency = "EUR") {
-  const data = (rows || []).filter(row => !row.hidden).slice(0, 9);
+export function drawAccountBars(canvas, rows, currency = "EUR", options = {}) {
+  const previousMap = new Map((options.previousRows || []).map(row => [row.id, row]));
+  const data = (rows || [])
+    .filter(row => !row.hidden)
+    .map(row => ({ ...row, previousBalance: previousMap.get(row.id)?.balance?.converted ?? 0 }))
+    .sort((a, b) => Math.abs(b.balance.converted) - Math.abs(a.balance.converted))
+    .slice(0, 9);
   setEmpty(canvas, !data.length);
   if (!data.length) return;
   const { ctx, width, height, colors: c } = prepare(canvas);
-  const labelSpace = Math.min(118, Math.max(86, width * 0.24));
-  const valueSpace = Math.min(104, Math.max(72, width * 0.18));
-  const area = { left: labelSpace, right: width - valueSpace, top: 18, bottom: height - 18 };
-  const max = Math.max(...data.map(row => Math.abs(row.balance.converted)), 1);
-  const zero = area.left + (area.right - area.left) * 0.28;
-  const barArea = Math.max(36, area.right - zero);
+  const labelSpace = Math.min(128, Math.max(84, width * 0.24));
+  const valueSpace = Math.min(118, Math.max(76, width * 0.18));
+  const area = { left: labelSpace, right: width - valueSpace, top: 20, bottom: height - 20 };
+  const max = Math.max(...data.flatMap(row => [Math.abs(row.balance.converted), Math.abs(row.previousBalance || 0)]), 1) * 1.08;
+  const zero = area.left + (area.right - area.left) * 0.5;
+  const half = Math.max(42, Math.min(zero - area.left, area.right - zero));
+  const xFor = value => zero + (Number(value || 0) / max) * half;
   const rowH = (area.bottom - area.top) / data.length;
-  ctx.font = "12px Inter, system-ui";
+  const fmt = new Intl.NumberFormat(undefined, { style: "currency", currency, notation: "compact" });
+
+  ctx.save();
+  ctx.strokeStyle = c.grid;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(zero, area.top - 6);
+  ctx.lineTo(zero, area.bottom + 6);
+  ctx.stroke();
+  ctx.restore();
+
   data.forEach((row, i) => {
     const y = area.top + i * rowH + rowH * 0.5;
-    const value = row.balance.converted;
-    ctx.fillStyle = c.text;
+    const current = Number(row.balance.converted || 0);
+    const previous = Number(row.previousBalance || 0);
+    const name = fitText(ctx, row.name, labelSpace - 16);
+    ctx.save();
+    ctx.font = "12px Inter, system-ui";
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
-    ctx.fillText(row.name.slice(0, 18), zero - 12, y);
-    const w = Math.max(4, Math.abs(value) / max * barArea);
-    ctx.fillStyle = value >= 0 ? c.accent : c.red;
-    roundedRect(ctx, zero, y - 9, w, 18, 8);
+    ctx.fillStyle = c.text;
+    ctx.fillText(name, area.left - 10, y);
+    ctx.restore();
+
+    if (options.showDelta && Math.abs(previous) > 0.005) {
+      const px = xFor(previous);
+      const start = Math.min(zero, px);
+      const w = Math.max(3, Math.abs(px - zero));
+      ctx.save();
+      ctx.globalAlpha = 0.32;
+      ctx.fillStyle = previous >= 0 ? c.accent : c.red;
+      roundedRect(ctx, start, y - 10, w, 20, 8);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    const cx = xFor(current);
+    const start = Math.min(zero, cx);
+    const w = Math.max(4, Math.abs(cx - zero));
+    ctx.fillStyle = current >= 0 ? c.accent : c.red;
+    roundedRect(ctx, start, y - 7, w, 14, 7);
     ctx.fill();
+
+    if (options.showDelta && Math.abs(current - previous) > 0.005 && Math.sign(current) === Math.sign(previous)) {
+      const a = xFor(previous);
+      const b = xFor(current);
+      const ds = Math.min(a, b);
+      const dw = Math.max(3, Math.abs(b - a));
+      ctx.save();
+      ctx.globalAlpha = 0.75;
+      ctx.fillStyle = current - previous >= 0 ? c.green : c.red;
+      roundedRect(ctx, ds, y - 12, dw, 6, 3);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    ctx.save();
     ctx.fillStyle = c.fg;
-    const valueLabel = new Intl.NumberFormat(undefined, { style: "currency", currency, notation: "compact" }).format(value);
-    const valueX = zero + w + 9;
-    ctx.textAlign = valueX > width - valueSpace + 18 ? "right" : "left";
-    ctx.fillText(valueLabel, ctx.textAlign === "right" ? width - 12 : valueX, y);
+    ctx.font = "12px Inter, system-ui";
+    ctx.textBaseline = "middle";
+    const valueLabel = fmt.format(current);
+    const valueX = current >= 0 ? Math.min(width - 12, cx + 8) : Math.max(10, cx - 8);
+    ctx.textAlign = current >= 0 ? "left" : "right";
+    ctx.fillText(valueLabel, valueX, y);
+    ctx.restore();
   });
-  ctx.strokeStyle = c.grid;
-  ctx.beginPath();
-  ctx.moveTo(zero, area.top - 5);
-  ctx.lineTo(zero, area.bottom + 5);
-  ctx.stroke();
 }
 
 export function clearChart(canvas) {

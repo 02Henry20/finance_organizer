@@ -192,9 +192,10 @@
       </section>
 
       <section class="view" data-view-section="accounts">
-        <div class="page-toolbar surface-card"><div><p class="eyebrow">MONEY CONTAINERS</p><h3>Accounts & broker holdings</h3></div><div class="toolbar-actions"><button id="hidden-accounts-toggle" class="ghost-button compact" type="button" hidden aria-expanded="false">Show hidden accounts</button><button class="primary-button compact" data-open-modal="account" type="button">Add account</button></div></div>
+        <div class="page-toolbar surface-card"><div><p class="eyebrow">MONEY CONTAINERS</p><h3>Accounts</h3><small id="accounts-period-note" class="toolbar-subnote">Comparison period</small></div><div class="toolbar-actions"><button id="hidden-accounts-toggle" class="ghost-button compact" type="button" hidden aria-expanded="false">Show hidden accounts</button><button class="primary-button compact" data-open-modal="account" type="button">Add account</button></div></div>
         <div id="accounts-grid" class="cards-grid"></div>
         <section id="hidden-accounts-section" class="hidden-accounts-section" hidden>
+          <div class="account-group-heading hidden-group-heading"><p class="eyebrow">Hidden</p><span id="hidden-accounts-count" class="metric-tag">0</span></div>
           <div id="hidden-accounts-grid" class="cards-grid hidden-grid"></div>
         </section>
       </section>
@@ -207,7 +208,7 @@
             <div id="categories-list" class="settings-list rules-scroll-list"></div>
           </article>
           <article id="rules-panel" class="surface-card table-card rules-panel">
-            <div class="panel-heading"><div><p class="eyebrow">AUTO CATEGORIZATION</p><h3>Rules by target category</h3></div><div class="rules-heading-actions"><button id="rules-fold-toggle" class="ghost-button compact mobile-fold-button" type="button" aria-expanded="false">Show</button><button class="primary-button compact" data-open-modal="rule" type="button">Add rule</button></div></div>
+            <div class="panel-heading"><div><p class="eyebrow">AUTO CATEGORIZATION</p><h3>Rules by target category</h3></div><div class="rules-heading-actions"><button id="rules-fold-toggle" class="ghost-button compact mobile-fold-button" type="button" aria-expanded="false">Show</button><button class="primary-button compact" data-open-modal="rule" type="button">Add</button></div></div>
             <label class="field rules-search"><span>Search rules</span><input id="rule-search" type="search" placeholder="Label, keyword, category"></label>
             <div id="rules-list" class="settings-list rules-scroll-list"></div>
           </article>
@@ -236,6 +237,7 @@
               </div>
               <label id="compare-days-field" class="field compare-field"><span>Days back</span><input id="setting-compare-days" type="number" min="1" max="3650" value="30"></label>
               <label id="compare-date-field" class="field compare-field" hidden><span>Fixed date</span><input id="setting-compare-date" type="date"></label>
+              <label class="field"><span>Balance graph trend bars</span><select id="setting-account-delta-bars"><option value="true">Show delta overlay</option><option value="false">Current balances only</option></select><small class="field-help">Uses the same comparison period and shows previous balance vs current balance in the balances chart.</small></label>
               <label class="field"><span>Default market provider</span><select id="setting-market-provider"><option value="twelvedata">Twelve Data</option><option value="stooq">Stooq CSV fallback</option><option value="manual">Manual prices only</option></select></label>
               <label class="field"><span>Twelve Data API key (stored only in this browser)</span><input id="setting-market-key" type="password" placeholder="Optional API key"></label>
               <label class="field"><span>Price and FX refresh interval</span><select id="setting-quote-interval"><option value="60">Every hour</option><option value="360">Every 6 hours</option><option value="720">Every 12 hours</option><option value="1440">Every 24 hours</option></select></label>

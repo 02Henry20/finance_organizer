@@ -726,3 +726,51 @@ td .category-pill {
   .category-cell .category-pill,
   td .category-pill { max-width: 118px; }
 }
+
+
+/* Final account/report trend refinements */
+.toolbar-subnote { display:block; margin-top: 4px; color: var(--muted); font-size: .78rem; font-weight: 760; }
+.balance-card .metric-label span:not(.metric-tag) {
+  color: var(--bg) !important;
+  font-size: clamp(1.15rem, 2vw, 1.55rem) !important;
+  font-weight: 950 !important;
+  letter-spacing: -.035em;
+  text-shadow: 0 1px 0 color-mix(in srgb, var(--text) 24%, transparent);
+}
+.net-worth-meta > div:first-child strong {
+  font-size: clamp(1.28rem, 2.6vw, 1.75rem);
+  line-height: 1.05;
+}
+.net-worth-meta .delta-label { font-size: .72rem; font-weight: 760; color: color-mix(in srgb, var(--text) 54%, transparent); }
+.net-worth-meta small { font-size: .7rem; }
+.net-worth-meta span { font-size: .95rem; }
+.net-worth-meta b { font-weight: 900; }
+.delta-up { color: var(--green) !important; }
+.delta-down { color: var(--red) !important; }
+.delta-flat { color: var(--muted) !important; }
+.field-help { display:block; margin-top: 4px; color: var(--muted); font-size: .72rem; line-height: 1.35; }
+.hidden-accounts-section { display: grid; gap: 12px; margin-top: 24px; }
+.hidden-group-heading { margin-bottom: 2px; }
+
+@media (min-width: 681px) {
+  #accounts-grid { display: grid; gap: 22px; }
+  .account-group-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 16px; }
+  .broker-group .account-group-grid { grid-template-columns: repeat(auto-fill, minmax(390px, 1fr)); }
+  .hidden-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 16px; }
+  .account-card { padding: 22px; border-radius: var(--radius-xl); gap: 14px; }
+  .account-title-block h3 { font-size: 1.12rem; }
+  .account-title-block small { font-size: .76rem; }
+  .account-value-row { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; }
+  .broker-card .account-value-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .account-value-row div { padding: 13px; border-radius: 20px; }
+  .account-value-row span { font-size: .76rem; }
+  .account-value-row strong { font-size: 1.2rem; }
+  .account-card-actions { display: flex; grid-template-columns: none; gap: 8px; flex-wrap: wrap; }
+  .account-card-actions .compact { min-height: 38px; padding: 9px 13px; font-size: inherit; }
+  .account-change { font-size: .72rem; }
+}
+
+@media (max-width: 430px) {
+  .chart-card:has(#category-donut-chart) .chart-wrap,
+  .chart-card:has(#report-category-chart) .chart-wrap { min-height: 218px; }
+}

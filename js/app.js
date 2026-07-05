@@ -398,6 +398,16 @@ function includeInSpending(cat) {
   return !(cat?.type === "transfer" && state.settings.hideInternalTransfersInSpending);
 }
 
+function rateDeltaHtml(current, previous, { inverted = false } = {}) {
+  const currentValue = Number(current || 0);
+  const previousValue = Number(previous || 0);
+  const delta = currentValue - previousValue;
+  const arrow = delta > 0 ? "↗" : delta < 0 ? "↘" : "→";
+  const sign = delta > 0 ? "+" : delta < 0 ? "-" : "±";
+  const cls = trendClass(delta, { inverted });
+  return `<span class="${cls}">${arrow} ${sign}${Math.abs(delta).toFixed(1)}pp</span>`;
+}
+
 function summarizeTransactions(rows) {
   const cats = categoryMap();
   return rows.reduce((totals, tx) => {
@@ -470,13 +480,27 @@ function comparisonLabel(compareDate) {
   return `since ${Number(state.settings.portfolioComparisonDays || 30)}d`;
 }
 
-function deltaHtml(current, previous, { inverted = false, label = "" } = {}) {
+function signedTrendParts(current, previous) {
   const delta = Number(current || 0) - Number(previous || 0);
   const pct = Math.abs(previous) > 0.0001 ? delta / Math.abs(previous) * 100 : 0;
+  const sign = delta > 0 ? "+" : delta < 0 ? "-" : "±";
   const arrow = delta > 0 ? "↗" : delta < 0 ? "↘" : "→";
+  return { delta, pct, sign, arrow };
+}
+
+function trendClass(delta, { inverted = false } = {}) {
+  if (Math.abs(delta) < 0.005) return "delta-flat";
   const good = inverted ? delta <= 0 : delta >= 0;
-  const cls = Math.abs(delta) < 0.005 ? "delta-flat" : good ? "delta-up" : "delta-down";
-  return `<span class="${cls}">${arrow} ${formatCurrency(Math.abs(delta), selectedCurrency())} · ${Math.abs(pct).toFixed(1)}%</span> ${escapeHtml(label)}`;
+  return good ? "delta-up" : "delta-down";
+}
+
+function deltaHtml(current, previous, { inverted = false, label = "", currency = selectedCurrency(), compact = false } = {}) {
+  const { delta, pct, sign, arrow } = signedTrendParts(current, previous);
+  const cls = trendClass(delta, { inverted });
+  const amount = formatCurrency(Math.abs(delta), currency);
+  const pctText = `${sign}${Math.abs(pct).toFixed(1)}%`;
+  const labelHtml = label ? ` <span class="delta-label">${escapeHtml(label)}</span>` : "";
+  return `<span class="${cls}">${arrow} ${sign}${amount} · ${pctText}</span>${compact ? "" : labelHtml}`;
 }
 
 function comparisonWindowFlow(compareDate) {
@@ -516,8 +540,14 @@ function renderOverview() {
   if (netWorthValue) netWorthValue.textContent = formatCurrency(portfolio.netWorth, currency);
   if (netWorthDelta) netWorthDelta.innerHTML = deltaHtml(portfolio.netWorth, previousPortfolio.netWorth, { label: compareText });
   if (netWorthWindow) netWorthWindow.textContent = `Cashflow ${compareText}`;
-  if (windowIncome) windowIncome.textContent = formatCurrency(windowFlow.income, currency);
-  if (windowExpense) windowExpense.textContent = formatCurrency(windowFlow.expense, currency);
+  if (windowIncome) {
+    windowIncome.textContent = formatCurrency(windowFlow.income, currency);
+    windowIncome.className = windowFlow.income > 0 ? "amount-pos" : "delta-flat";
+  }
+  if (windowExpense) {
+    windowExpense.textContent = formatCurrency(windowFlow.expense, currency);
+    windowExpense.className = windowFlow.expense > 0 ? "amount-neg" : "delta-flat";
+  }
   $("#liquidity-value").textContent = formatCurrency(portfolio.liquidity, currency);
   $("#asset-value").textContent = formatCurrency(portfolio.assetValue, currency);
   $("#debt-value").textContent = formatCurrency(portfolio.debt, currency);
@@ -560,7 +590,10 @@ function renderOverview() {
   drawIncomeExpense($("#income-expense-chart"), monthly.series, currency);
   drawNetSeries($("#net-series-chart"), monthly.series);
   drawDonut($("#category-donut-chart"), categorySpend, currency);
-  drawAccountBars($("#account-bars-chart"), portfolio.accountRows, currency);
+  drawAccountBars($("#account-bars-chart"), portfolio.accountRows, currency, {
+    previousRows: previousPortfolio.accountRows || [],
+    showDelta: state.settings.showAccountDeltaBars !== false
+  });
 }
 
 function fillReportControls() {
@@ -616,6 +649,16 @@ function renderReports() {
     current: row.expense,
     previous: compareYearRows[index]?.expense || 0
   }));
+  const compareBounds = reportsMode === "year"
+    ? { start: `${reportsCompareYear}-01-01`, end: `${reportsCompareYear}-12-31`, label: reportsCompareYear }
+    : { start: `${reportsCompareYear}-${reportsMonth.slice(5)}-01`, end: monthEnd(`${reportsCompareYear}-${reportsMonth.slice(5)}`), label: monthLabel(`${reportsCompareYear}-${reportsMonth.slice(5)}`, { short: true }) };
+  const compareRows = transactionsInRange(compareBounds.start, compareBounds.end);
+  const compareSummary = summarizeTransactions(compareRows);
+  const compareDays = daysBetween(compareBounds.start, compareBounds.end);
+  const compareSavingsRate = compareSummary.income > 0 ? compareSummary.net / compareSummary.income * 100 : 0;
+  const compareDailySpend = compareSummary.expense / compareDays;
+  const currentSavingsRate = savingsRate == null ? 0 : savingsRate;
+  const currentDailySpend = summary.expense / days;
 
   $("#report-income").textContent = formatCurrency(summary.income, currency);
   $("#report-spending").textContent = formatCurrency(summary.expense, currency);
@@ -623,11 +666,12 @@ function renderReports() {
   netEl.textContent = formatCurrency(summary.net, currency);
   netEl.className = summary.net >= 0 ? "amount-pos" : "amount-neg";
   $("#report-savings-rate").textContent = savingsRate == null ? "—" : formatPercent(savingsRate);
-  $("#report-daily-spend").textContent = formatCurrency(summary.expense / days, currency);
-  $("#report-days-count").textContent = `${days} days`;
-  $("#report-income-detail").textContent = `${periodRows.filter(tx => Number(tx.amount || 0) > 0).length} inflows`;
-  $("#report-spending-detail").textContent = `${periodRows.filter(tx => Number(tx.amount || 0) < 0).length} outflows`;
-  $("#report-net-detail").textContent = bounds.label;
+  $("#report-daily-spend").textContent = formatCurrency(currentDailySpend, currency);
+  $("#report-days-count").innerHTML = deltaHtml(currentDailySpend, compareDailySpend, { inverted: true, label: compareBounds.label, currency, compact: true });
+  $("#report-income-detail").innerHTML = deltaHtml(summary.income, compareSummary.income, { label: compareBounds.label, currency, compact: true });
+  $("#report-spending-detail").innerHTML = deltaHtml(summary.expense, compareSummary.expense, { inverted: true, label: compareBounds.label, currency, compact: true });
+  $("#report-net-detail").innerHTML = deltaHtml(summary.net, compareSummary.net, { label: compareBounds.label, currency, compact: true });
+  $("#report-savings-rate").nextElementSibling.innerHTML = rateDeltaHtml(currentSavingsRate, compareSavingsRate);
   $("#report-top-category").textContent = topCategory?.name || "—";
   $("#report-top-category-value").textContent = topCategory ? formatCurrency(topCategory.value, currency) : "No spending yet";
   $("#report-period-pill").textContent = bounds.label;
@@ -726,13 +770,10 @@ function renderTransactions() {
 }
 
 
-function accountChangeHtml(current, previous, label, { inverted = false, currency = selectedCurrency() } = {}) {
-  const delta = Number(current || 0) - Number(previous || 0);
-  const pct = Math.abs(previous) > 0.0001 ? delta / Math.abs(previous) * 100 : 0;
-  const arrow = delta > 0 ? "↗" : delta < 0 ? "↘" : "→";
-  const good = inverted ? delta <= 0 : delta >= 0;
-  const cls = Math.abs(delta) < 0.005 ? "delta-flat" : good ? "delta-up" : "delta-down";
-  return `<small class="account-change ${cls}" title="${escapeHtml(label)}">${arrow} ${formatCurrency(Math.abs(delta), currency)} · ${Math.abs(pct).toFixed(1)}% ${escapeHtml(label)}</small>`;
+function accountChangeHtml(current, previous, label = "", { inverted = false, currency = selectedCurrency() } = {}) {
+  const { delta, pct, sign, arrow } = signedTrendParts(current, previous);
+  const cls = trendClass(delta, { inverted });
+  return `<small class="account-change ${cls}" title="${escapeHtml(label)}">${arrow} ${sign}${formatCurrency(Math.abs(delta), currency)} · ${sign}${Math.abs(pct).toFixed(1)}%</small>`;
 }
 
 function accountGroupLabel(account) {
@@ -743,18 +784,22 @@ function accountGroupLabel(account) {
 function renderAccounts() {
   const container = $("#accounts-grid");
   if (!container) return;
+  const compareDate = comparisonDateFromSettings();
+  const compareText = comparisonLabel(compareDate);
   const portfolio = calculatePortfolio(state);
-  const previousPortfolio = calculatePortfolioSnapshot(state, comparisonDateFromSettings());
-  const compareText = comparisonLabel(comparisonDateFromSettings());
+  const previousPortfolio = calculatePortfolioSnapshot(state, compareDate);
   const rows = portfolio.accountRows;
   const previousRows = previousPortfolio.accountRows || [];
   const currency = selectedCurrency();
+  const periodNote = $("#accounts-period-note");
+  if (periodNote) periodNote.textContent = `Changes ${compareText}`;
   container.replaceChildren();
   const accounts = visibleAccounts();
   const hiddenAccounts = state.accounts.filter(account => account.hidden);
   const hiddenSection = $("#hidden-accounts-section");
   const hiddenGrid = $("#hidden-accounts-grid");
   const hiddenToggle = $("#hidden-accounts-toggle");
+  const hiddenCount = $("#hidden-accounts-count");
 
   if (!hiddenAccounts.length) hiddenAccountsExpanded = false;
   if (hiddenToggle) {
@@ -763,16 +808,32 @@ function renderAccounts() {
     hiddenToggle.setAttribute("aria-expanded", String(hiddenAccountsExpanded));
   }
   if (hiddenSection) hiddenSection.hidden = hiddenAccounts.length === 0 || !hiddenAccountsExpanded;
+  if (hiddenCount) hiddenCount.textContent = `${hiddenAccounts.length}`;
   if (hiddenGrid) hiddenGrid.replaceChildren();
 
+  const rowFor = account => rows.find(item => item.id === account.id) || { ...account, balance: { raw: Number(account.openingBalance || 0), converted: Number(account.openingBalance || 0) } };
+  const previousRowFor = account => previousRows.find(item => item.id === account.id) || { balance: { raw: Number(account.openingBalance || 0), converted: Number(account.openingBalance || 0) } };
+  const holdingsValueFor = account => holdingsForAccount(account.id).reduce((sum, asset) => sum + convertCurrency(assetMarketValue(asset), asset.currency || account.currency || currency, state.settings), 0);
+  const previousHoldingsValueFor = account => holdingsForAccount(account.id).reduce((sum, asset) => {
+    const currentValue = assetMarketValue(asset);
+    const costBasis = Number(asset.costBasis || 0);
+    const pct = Number(asset.lastChangePercent);
+    const estimatedPrevious = costBasis > 0
+      ? costBasis
+      : Number.isFinite(pct) && Math.abs(1 + pct / 100) > 0.0001
+        ? currentValue / (1 + pct / 100)
+        : currentValue;
+    return sum + convertCurrency(estimatedPrevious, asset.currency || account.currency || currency, state.settings);
+  }, 0);
+
   const buildCard = (account, { hidden = false } = {}) => {
-    const row = rows.find(item => item.id === account.id) || { ...account, balance: { raw: Number(account.openingBalance || 0), converted: Number(account.openingBalance || 0) } };
-    const previousRow = previousRows.find(item => item.id === account.id) || { balance: { converted: Number(account.openingBalance || 0) } };
+    const row = rowFor(account);
+    const previousRow = previousRowFor(account);
     const holdings = holdingsForAccount(account.id);
-    const holdingsValue = holdings.reduce((sum, asset) => sum + convertCurrency(assetMarketValue(asset), asset.currency || account.currency || currency, state.settings), 0);
+    const holdingsValue = holdingsValueFor(account);
+    const previousHoldingsValue = previousHoldingsValueFor(account);
     const totalValue = row.balance.converted + holdingsValue;
-    const previousComparable = previousRow.balance.converted + (["broker", "asset"].includes(account.type) ? holdingsValue : 0);
-    const currentComparable = ["broker", "asset"].includes(account.type) ? totalValue : row.balance.converted;
+    const previousTotalValue = previousRow.balance.converted + previousHoldingsValue;
     const isBroker = ["broker", "asset"].includes(account.type);
     const identifier = maskIban(account.iban || account.accountNumber || account.bic);
     const card = document.createElement("article");
@@ -781,20 +842,20 @@ function renderAccounts() {
       <div class="item-card-header account-card-header">
         <div class="account-title-block">
           <h3 title="${escapeHtml(account.name)}">${escapeHtml(account.name)}</h3>
-          <small class="account-meta" title="${escapeHtml(`${account.institution || "Manual"} · ${account.type} · ${account.currency}`)}">${escapeHtml(account.institution || "Manual")} · ${escapeHtml(account.type)} · ${escapeHtml(account.currency)}</small>
           <small class="account-identifier" title="${escapeHtml(identifier)}">${escapeHtml(identifier)}</small>
+          <small class="account-meta" title="${escapeHtml(`${account.institution || "Manual"} · ${account.type} · ${account.currency}`)}">${escapeHtml(account.institution || "Manual")} · ${escapeHtml(account.type)} · ${escapeHtml(account.currency)}</small>
         </div>
         ${hidden ? `<span class="category-pill hidden-pill">Hidden</span>` : ""}
       </div>
       <div class="account-value-row">
-        <div><span>Cash balance</span><strong class="account-main-value">${formatCurrency(row.balance.raw, account.currency || currency)}</strong>${accountChangeHtml(currentComparable, previousComparable, compareText, { inverted: account.type === "debt", currency })}</div>
-        ${isBroker ? `<div><span>Holdings</span><strong class="account-main-value">${formatCurrency(holdingsValue, currency)}</strong></div><div><span>Total</span><strong class="account-main-value">${formatCurrency(totalValue, currency)}</strong></div>` : ""}
+        <div><span>Cash balance</span><strong class="account-main-value">${formatCurrency(row.balance.raw, account.currency || currency)}</strong>${accountChangeHtml(row.balance.converted, previousRow.balance.converted, compareText, { inverted: account.type === "debt", currency })}</div>
+        ${isBroker ? `<div><span>Holdings</span><strong class="account-main-value">${formatCurrency(holdingsValue, currency)}</strong>${accountChangeHtml(holdingsValue, previousHoldingsValue, compareText, { currency })}</div><div><span>Total</span><strong class="account-main-value">${formatCurrency(totalValue, currency)}</strong>${accountChangeHtml(totalValue, previousTotalValue, compareText, { currency })}</div>` : ""}
       </div>
       ${isBroker ? `<div class="account-holding-summary"><small>${holdings.length ? `${holdings.length} positions` : "No positions yet"}</small></div>` : ""}
       <div class="item-card-actions account-card-actions">
-        ${isBroker ? `<button class="secondary-button compact" data-view-positions="${escapeHtml(account.id)}" type="button">Positions</button><button class="secondary-button compact" data-add-asset-for="${escapeHtml(account.id)}" type="button">+ Holding</button>` : ""}
         <button class="ghost-button compact" data-account-transactions="${escapeHtml(account.id)}" type="button">Txns</button>
         <button class="ghost-button compact" data-edit-account="${escapeHtml(account.id)}" type="button">Edit</button>
+        ${isBroker ? `<button class="secondary-button compact" data-view-positions="${escapeHtml(account.id)}" type="button">Positions</button><button class="secondary-button compact" data-add-asset-for="${escapeHtml(account.id)}" type="button">+ Holding</button>` : ""}
       </div>`;
     return card;
   };
@@ -816,20 +877,14 @@ function renderAccounts() {
     appendGroup("Broker", accounts.filter(account => accountGroupLabel(account) === "broker"), "broker-group");
   }
 
-  if (hiddenGrid) {
-    const hiddenNormal = hiddenAccounts.filter(account => accountGroupLabel(account) === "cashbank");
-    const hiddenBroker = hiddenAccounts.filter(account => accountGroupLabel(account) === "broker");
-    [...hiddenNormal, ...hiddenBroker].forEach(account => hiddenGrid.append(buildCard(account, { hidden: true })));
-  }
+  if (hiddenGrid) hiddenAccounts.forEach(account => hiddenGrid.append(buildCard(account, { hidden: true })));
 
-  container.querySelectorAll("[data-edit-account]").forEach(btn => btn.addEventListener("click", () => openAccountModal(btn.dataset.editAccount)));
-  container.querySelectorAll("[data-add-asset-for]").forEach(btn => btn.addEventListener("click", () => openAssetModal("", btn.dataset.addAssetFor)));
-  container.querySelectorAll("[data-view-positions]").forEach(btn => btn.addEventListener("click", () => openPositionsModal(btn.dataset.viewPositions)));
-  container.querySelectorAll("[data-account-transactions]").forEach(btn => btn.addEventListener("click", () => openAccountTransactionsModal(btn.dataset.accountTransactions)));
-  hiddenGrid?.querySelectorAll("[data-edit-account]").forEach(btn => btn.addEventListener("click", () => openAccountModal(btn.dataset.editAccount)));
-  hiddenGrid?.querySelectorAll("[data-add-asset-for]").forEach(btn => btn.addEventListener("click", () => openAssetModal("", btn.dataset.addAssetFor)));
-  hiddenGrid?.querySelectorAll("[data-view-positions]").forEach(btn => btn.addEventListener("click", () => openPositionsModal(btn.dataset.viewPositions)));
-  hiddenGrid?.querySelectorAll("[data-account-transactions]").forEach(btn => btn.addEventListener("click", () => openAccountTransactionsModal(btn.dataset.accountTransactions)));
+  [container, hiddenGrid].filter(Boolean).forEach(root => {
+    root.querySelectorAll("[data-edit-account]").forEach(btn => btn.addEventListener("click", () => openAccountModal(btn.dataset.editAccount)));
+    root.querySelectorAll("[data-add-asset-for]").forEach(btn => btn.addEventListener("click", () => openAssetModal("", btn.dataset.addAssetFor)));
+    root.querySelectorAll("[data-view-positions]").forEach(btn => btn.addEventListener("click", () => openPositionsModal(btn.dataset.viewPositions)));
+    root.querySelectorAll("[data-account-transactions]").forEach(btn => btn.addEventListener("click", () => openAccountTransactionsModal(btn.dataset.accountTransactions)));
+  });
 }
 
 function renderAssets() {
@@ -906,6 +961,8 @@ function renderSettings() {
   setCompareMode(compareMode);
   $("#setting-compare-days").value = Number(state.settings.portfolioComparisonDays || 30);
   $("#setting-compare-date").value = state.settings.portfolioComparisonDate || "";
+  const accountDeltaSelect = $("#setting-account-delta-bars");
+  if (accountDeltaSelect) accountDeltaSelect.value = String(state.settings.showAccountDeltaBars !== false);
 }
 
 function setCompareMode(mode) {
@@ -1086,11 +1143,12 @@ function renderPositionsModal() {
     const delta = positionDelta(asset);
     const deltaValue = positionsUnit === "percent" ? delta.percent : delta.amount;
     const deltaClass = !Number.isFinite(deltaValue) || Math.abs(deltaValue) < 0.005 ? "delta-flat" : deltaValue >= 0 ? "delta-up" : "delta-down";
+    const deltaSign = Number(deltaValue) > 0 ? "+" : Number(deltaValue) < 0 ? "-" : "±";
     const deltaText = !Number.isFinite(deltaValue)
       ? "—"
       : positionsUnit === "percent"
-        ? formatPercent(deltaValue)
-        : formatCurrency(deltaValue, currency);
+        ? `${deltaSign}${Math.abs(deltaValue).toFixed(1)}%`
+        : `${deltaSign}${formatCurrency(Math.abs(deltaValue), currency)}`;
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td><strong>${escapeHtml(asset.symbol || asset.name)}</strong><small class="muted table-ellipsis">${escapeHtml(asset.name || asset.type || "")}</small></td>
@@ -1831,6 +1889,7 @@ function wireEvents() {
         portfolioComparisonMode: comparisonMode,
         portfolioComparisonDays: comparisonMode === "rolling" ? Number($("#setting-compare-days").value || 30) : Number(state.settings.portfolioComparisonDays || 30),
         portfolioComparisonDate: comparisonMode === "date" ? $("#setting-compare-date").value || "" : "",
+        showAccountDeltaBars: $("#setting-account-delta-bars")?.value !== "false",
         hideInternalTransfersInSpending: $("#setting-hide-transfers").value === "true"
       });
       settingsDirty = false;
