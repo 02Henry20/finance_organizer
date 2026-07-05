@@ -1267,3 +1267,207 @@ td .category-pill .category-pill-text,
     padding-bottom: 15px;
   }
 }
+
+/* ---- tutorial system ---- */
+html.tutorial-active,
+body.tutorial-active {
+  overflow: hidden !important;
+}
+.tutorial-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2400;
+}
+.tutorial-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(4, 10, 18, 0.72);
+  backdrop-filter: blur(8px);
+}
+.tutorial-hole {
+  position: fixed;
+  box-shadow: 0 0 0 9999px rgba(4, 10, 18, 0.74);
+  border: 1px solid rgba(170, 244, 165, 0.45);
+  background: transparent;
+  pointer-events: none;
+  z-index: 2402;
+  transition: left .22s ease, top .22s ease, width .22s ease, height .22s ease, border-radius .22s ease;
+}
+.tutorial-target-active {
+  position: relative !important;
+  z-index: 2403 !important;
+  isolation: isolate;
+}
+.tutorial-card {
+  position: fixed;
+  right: max(18px, env(safe-area-inset-right));
+  bottom: max(18px, env(safe-area-inset-bottom));
+  width: min(420px, calc(100vw - 28px));
+  z-index: 2404;
+  padding: 18px 18px 16px;
+  background: linear-gradient(180deg, rgba(17,24,39,.96), rgba(10,15,25,.97));
+  border: 1px solid rgba(125, 211, 176, 0.22);
+  box-shadow: 0 22px 70px rgba(0,0,0,.38);
+}
+.tutorial-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 12px;
+  background: rgba(255,255,255,.08);
+  color: var(--text);
+  font-size: 1.35rem;
+  cursor: pointer;
+}
+.tutorial-meta {
+  display: grid;
+  gap: 8px;
+  margin-right: 38px;
+}
+.tutorial-meta strong {
+  font-size: 1.08rem;
+  line-height: 1.25;
+}
+.tutorial-text {
+  margin: 12px 0 18px;
+  color: var(--muted);
+  line-height: 1.56;
+}
+.tutorial-controls {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+.tutorial-progress {
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.08);
+  overflow: hidden;
+}
+.tutorial-progress > span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #65d98d, #90f0b5);
+  transition: width .22s ease;
+}
+
+/* ---- home hero box polish ---- */
+.balance-card {
+  background:
+    radial-gradient(circle at top left, rgba(119, 214, 157, 0.12), transparent 38%),
+    linear-gradient(180deg, color-mix(in srgb, var(--panel) 90%, #0f172a 10%), color-mix(in srgb, var(--panel) 94%, transparent)) !important;
+}
+.net-worth-heading {
+  width: 100%;
+  justify-content: center !important;
+}
+.balance-card .hero-date,
+.balance-card .net-worth-title {
+  background: color-mix(in srgb, var(--panel) 78%, rgba(255,255,255,.05)) !important;
+  border-color: color-mix(in srgb, var(--text) 12%, transparent) !important;
+}
+.balance-card .net-worth-title {
+  text-align: center;
+  justify-content: center !important;
+}
+.hero-value {
+  text-align: center;
+}
+.net-worth-meta {
+  align-items: stretch;
+}
+#net-worth-window {
+  display: inline-block;
+  margin-top: 12px;
+}
+.cashflow-line {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding-top: 12px;
+}
+
+/* reports mobile fix */
+@media (max-width: 680px) {
+  .reports-toolbar {
+    grid-template-columns: 1fr auto !important;
+    grid-template-areas:
+      "title mode"
+      "subtitle mode"
+      "controls controls" !important;
+    gap: 8px 14px !important;
+  }
+  .report-controls {
+    grid-template-columns: 1fr 1fr !important;
+    align-items: end;
+    gap: 12px 14px !important;
+  }
+  #report-month-field,
+  #report-year-field {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+  }
+  #report-compare-field {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+  }
+  .report-mode-control {
+    width: min(160px, 44vw) !important;
+    justify-self: end !important;
+  }
+  .metric-strip .metric-card {
+    min-height: 104px;
+    padding: 12px 13px;
+  }
+  .metric-strip .metric-card span {
+    font-size: .88rem;
+  }
+}
+
+/* settings tutorial row */
+#start-guided-tutorial.secondary-button {
+  min-width: 180px;
+}
+
+/* rules search spacing */
+.rules-search {
+  margin-top: 14px;
+}
+
+/* custom scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--accent) 72%, #6ee7b7) color-mix(in srgb, var(--panel) 84%, transparent);
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--panel) 84%, transparent);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 88%, #93c5fd), color-mix(in srgb, var(--accent) 65%, #6ee7b7));
+  border-radius: 999px;
+  border: 2px solid color-mix(in srgb, var(--panel) 84%, transparent);
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 96%, #bfdbfe), color-mix(in srgb, var(--accent) 74%, #86efac));
+}
+
+@media (max-width: 680px) {
+  .tutorial-card {
+    left: 14px;
+    right: 14px;
+    width: auto;
+    bottom: calc(84px + env(safe-area-inset-bottom));
+  }
+}

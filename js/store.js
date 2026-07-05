@@ -33,13 +33,16 @@ export const state = {
   transactions: [],
   assets: [],
   settings: { ...DEFAULT_SETTINGS },
-  sync: { status: "idle", detail: "Not signed in", pending: false, lastChangeAt: null }
+  sync: { status: "idle", detail: "Not signed in", pending: false, lastChangeAt: null },
+  tutorial: { active: false }
 };
 
 const listeners = new Set();
 let unsubscribers = [];
 let hasSeeded = false;
 let snapshotsReady = new Set();
+let tutorialSnapshot = null;
+let tutorialUser = null;
 
 export function subscribe(listener) {
   listeners.add(listener);
@@ -99,14 +102,106 @@ function normalizeDoc(snapshot) {
   return { id: snapshot.id, ...data, pending: snapshot.metadata?.hasPendingWrites || false };
 }
 
+function sortCollectionItems(name, items) {
+  const list = [...items];
+  if (name === "transactions") return sortByDateDesc(list);
+  if (name === "accounts") return list.sort((a, b) => Number(a.sort || 0) - Number(b.sort || 0) || String(a.name).localeCompare(String(b.name)));
+  if (name === "categories") return list.sort((a, b) => String(a.group).localeCompare(String(b.group)) || String(a.name).localeCompare(String(b.name)));
+  if (name === "rules") return list.sort((a, b) => String(a.categoryId || "").localeCompare(String(b.categoryId || "")) || String(a.label || "").localeCompare(String(b.label || "")));
+  if (name === "assets") return list.sort((a, b) => String(a.name || a.symbol).localeCompare(String(b.name || b.symbol)));
+  return list;
+}
+
 function normalizeArray(name, docs) {
-  const items = docs.map(normalizeDoc);
-  if (name === "transactions") return sortByDateDesc(items);
-  if (name === "accounts") return items.sort((a, b) => Number(a.sort || 0) - Number(b.sort || 0) || String(a.name).localeCompare(String(b.name)));
-  if (name === "categories") return items.sort((a, b) => String(a.group).localeCompare(String(b.group)) || String(a.name).localeCompare(String(b.name)));
-  if (name === "rules") return items.sort((a, b) => String(a.categoryId || "").localeCompare(String(b.categoryId || "")) || String(a.label || "").localeCompare(String(b.label || "")));
-  if (name === "assets") return items.sort((a, b) => String(a.name || a.symbol).localeCompare(String(b.name || b.symbol)));
-  return items;
+  return sortCollectionItems(name, docs.map(normalizeDoc));
+}
+
+function setTutorialSync(detail = "Tutorial mode") {
+  state.sync = { status: "tutorial", detail, pending: false, lastChangeAt: new Date().toISOString() };
+}
+
+function cloneStateSnapshot() {
+  return JSON.parse(JSON.stringify({
+    accounts: state.accounts,
+    categories: state.categories,
+    rules: state.rules,
+    transactions: state.transactions,
+    assets: state.assets,
+    settings: state.settings,
+    sync: state.sync
+  }));
+}
+
+function applyLocalDataset(data = {}) {
+  state.accounts = sortCollectionItems("accounts", Array.isArray(data.accounts) ? data.accounts : []);
+  state.categories = sortCollectionItems("categories", Array.isArray(data.categories) && data.categories.length ? data.categories : [...DEFAULT_CATEGORIES]);
+  if (!state.categories.some(item => item.id === "misc")) {
+    const misc = DEFAULT_CATEGORIES.find(item => item.id === "misc");
+    if (misc) state.categories.push(misc);
+    state.categories = sortCollectionItems("categories", state.categories);
+  }
+  state.rules = sortCollectionItems("rules", Array.isArray(data.rules) ? data.rules : [...DEFAULT_RULES]);
+  state.transactions = sortCollectionItems("transactions", Array.isArray(data.transactions) ? data.transactions : []);
+  state.assets = sortCollectionItems("assets", Array.isArray(data.assets) ? data.assets : []);
+  state.settings = mergeSettings(data.settings || {});
+  state.tutorial = { active: true };
+  setTutorialSync("Tutorial mode | local test data");
+  notify();
+}
+
+function localUpsert(collectionName, item) {
+  state[collectionName] = sortCollectionItems(collectionName, [...state[collectionName].filter(entry => entry.id !== item.id), item]);
+  setTutorialSync("Tutorial mode | changes stay local");
+  notify();
+}
+
+function localDelete(collectionName, id) {
+  state[collectionName] = sortCollectionItems(collectionName, state[collectionName].filter(entry => entry.id !== id));
+  setTutorialSync("Tutorial mode | changes stay local");
+  notify();
+}
+
+export function isTutorialMode() {
+  return Boolean(state.tutorial?.active);
+}
+
+export async function enterTutorialMode(dataset = {}) {
+  if (state.tutorial?.active) {
+    applyLocalDataset(dataset);
+    return { started: true, restarted: true };
+  }
+  tutorialSnapshot = cloneStateSnapshot();
+  tutorialUser = state.user || null;
+  unsubscribers.forEach(unsubscribe => unsubscribe());
+  unsubscribers = [];
+  hasSeeded = false;
+  snapshotsReady = new Set();
+  applyLocalDataset(dataset);
+  return { started: true };
+}
+
+export async function exitTutorialMode() {
+  if (!state.tutorial?.active) return { restored: false };
+  const backup = tutorialSnapshot ? JSON.parse(JSON.stringify(tutorialSnapshot)) : null;
+  state.tutorial = { active: false };
+  tutorialSnapshot = null;
+  if (backup) {
+    state.accounts = backup.accounts || [];
+    state.categories = backup.categories || [...DEFAULT_CATEGORIES];
+    state.rules = backup.rules || [...DEFAULT_RULES];
+    state.transactions = backup.transactions || [];
+    state.assets = backup.assets || [];
+    state.settings = mergeSettings(backup.settings || {});
+    state.sync = backup.sync || { status: "idle", detail: "Not signed in", pending: false, lastChangeAt: null };
+    notify();
+  }
+  const user = tutorialUser;
+  tutorialUser = null;
+  if (user) {
+    await connectUser(user);
+    return { restored: true, reconnected: true };
+  }
+  return { restored: true, reconnected: false };
 }
 
 function readLocalSettings() {
@@ -264,7 +359,7 @@ async function saveDoc(collectionName, id, data) {
 
 export async function saveAccount(input) {
   const id = input.id || uid();
-  await saveDoc("accounts", id, {
+  const payload = {
     id,
     name: input.name?.trim() || "Unnamed account",
     institution: input.institution?.trim() || "Manual",
@@ -272,25 +367,39 @@ export async function saveAccount(input) {
     currency: (input.currency || state.settings.primaryCurrency || "EUR").toUpperCase(),
     openingBalance: Number(input.openingBalance || 0),
     hidden: Boolean(input.hidden),
-    iban: String(input.iban || "").replace(/\s+/g, "").toUpperCase(),
+    iban: String(input.iban || "").replace(/s+/g, "").toUpperCase(),
     accountNumber: String(input.accountNumber || "").trim(),
-    bic: String(input.bic || "").replace(/\s+/g, "").toUpperCase(),
+    bic: String(input.bic || "").replace(/s+/g, "").toUpperCase(),
     transferAliases: Array.isArray(input.transferAliases)
       ? input.transferAliases.map(String).map(item => item.trim()).filter(Boolean)
       : String(input.transferAliases || "").split(",").map(item => item.trim()).filter(Boolean),
     sort: Number(input.sort || Date.now())
-  });
+  };
+  if (state.tutorial?.active) {
+    localUpsert("accounts", payload);
+    return id;
+  }
+  await saveDoc("accounts", id, payload);
   return id;
 }
 
 export async function deleteAccount(id, { hideOnly = true } = {}) {
+  if (state.tutorial?.active) {
+    if (hideOnly) {
+      const current = state.accounts.find(item => item.id === id);
+      if (current) localUpsert("accounts", { ...current, hidden: true });
+      return;
+    }
+    localDelete("accounts", id);
+    return;
+  }
   if (hideOnly) return updateDoc(userDoc("accounts", id), { hidden: true, updatedAt: serverTimestamp() });
   await deleteDoc(userDoc("accounts", id));
 }
 
 export async function saveCategory(input) {
   const id = input.id || `cat_${uid().slice(0, 8)}`;
-  await saveDoc("categories", id, {
+  const payload = {
     id,
     name: input.name?.trim() || "New category",
     group: input.group?.trim() || "Custom",
@@ -298,7 +407,12 @@ export async function saveCategory(input) {
     icon: input.icon || "•",
     color: /^#[0-9a-f]{6}$/i.test(String(input.color || "")) ? String(input.color).toUpperCase() : "#3B82F6",
     isDefault: Boolean(input.isDefault)
-  });
+  };
+  if (state.tutorial?.active) {
+    localUpsert("categories", payload);
+    return id;
+  }
+  await saveDoc("categories", id, payload);
   return id;
 }
 
@@ -307,23 +421,32 @@ export async function saveRule(input) {
   const keywords = Array.isArray(input.keywords)
     ? input.keywords.map(String).map(s => s.trim()).filter(Boolean)
     : String(input.keywords || "").split(",").map(s => s.trim()).filter(Boolean);
-  await saveDoc("rules", id, {
+  const payload = {
     id,
     label: input.label?.trim() || keywords.join(" + ") || "New rule",
     categoryId: input.categoryId || "misc",
     keywords,
     caseSensitive: Boolean(input.caseSensitive)
-  });
+  };
+  if (state.tutorial?.active) {
+    localUpsert("rules", payload);
+    return id;
+  }
+  await saveDoc("rules", id, payload);
   return id;
 }
 
 export async function deleteRule(id) {
+  if (state.tutorial?.active) {
+    localDelete("rules", id);
+    return;
+  }
   await deleteDoc(userDoc("rules", id));
 }
 
 export async function saveTransaction(input) {
   const id = input.id || uid();
-  await saveDoc("transactions", id, {
+  const payload = {
     id,
     accountId: input.accountId,
     date: input.date,
@@ -343,12 +466,29 @@ export async function saveTransaction(input) {
     rawText: input.rawText || "",
     raw: input.raw || null,
     createdAtMs: input.createdAtMs || Date.now()
-  });
+  };
+  if (state.tutorial?.active) {
+    localUpsert("transactions", payload);
+    return id;
+  }
+  await saveDoc("transactions", id, payload);
   return id;
 }
 
 export async function saveTransactionsBatch(transactions) {
   if (!transactions.length) return { imported: 0 };
+  if (state.tutorial?.active) {
+    const mapped = transactions.map(tx => ({
+      ...tx,
+      id: tx.id || uid(),
+      amount: Number(tx.amount || 0),
+      currency: (tx.currency || state.settings.primaryCurrency || "EUR").toUpperCase()
+    }));
+    state.transactions = sortCollectionItems("transactions", [...state.transactions.filter(tx => !mapped.some(next => next.id === tx.id)), ...mapped]);
+    setTutorialSync("Tutorial mode | changes stay local");
+    notify();
+    return { imported: mapped.length };
+  }
   let imported = 0;
   for (let index = 0; index < transactions.length; index += 400) {
     const batch = writeBatch(db);
@@ -370,13 +510,17 @@ export async function saveTransactionsBatch(transactions) {
 }
 
 export async function deleteTransaction(id) {
+  if (state.tutorial?.active) {
+    localDelete("transactions", id);
+    return;
+  }
   await deleteDoc(userDoc("transactions", id));
 }
 
 export async function saveAsset(input) {
   const id = input.id || uid();
   const existing = state.assets.find(asset => asset.id === id);
-  await saveDoc("assets", id, {
+  const payload = {
     id,
     symbol: String(input.symbol || "").trim().toUpperCase(),
     name: input.name?.trim() || String(input.symbol || "Asset").toUpperCase(),
@@ -395,15 +539,36 @@ export async function saveAsset(input) {
     lastPrice: input.lastPrice == null ? null : Number(input.lastPrice),
     lastPriceAt: input.lastPriceAt || "",
     lastChangePercent: input.lastChangePercent == null ? null : Number(input.lastChangePercent)
-  });
+  };
+  if (state.tutorial?.active) {
+    localUpsert("assets", payload);
+    return id;
+  }
+  await saveDoc("assets", id, payload);
   return id;
 }
 
 export async function deleteAsset(id) {
+  if (state.tutorial?.active) {
+    localDelete("assets", id);
+    return;
+  }
   await deleteDoc(userDoc("assets", id));
 }
 
 export async function updateAssetQuote(id, quote) {
+  if (state.tutorial?.active) {
+    const current = state.assets.find(asset => asset.id === id) || { id };
+    localUpsert("assets", {
+      ...current,
+      lastPrice: Number(quote.price),
+      lastPriceAt: quote.time || new Date().toISOString(),
+      lastChangePercent: Number.isFinite(Number(quote.changePercent)) ? Number(quote.changePercent) : null,
+      currency: quote.currency || current.currency || state.settings.primaryCurrency,
+      provider: quote.provider || current.provider || state.settings.marketProvider
+    });
+    return;
+  }
   await saveDoc("assets", id, {
     lastPrice: Number(quote.price),
     lastPriceAt: quote.time || new Date().toISOString(),
@@ -414,9 +579,15 @@ export async function updateAssetQuote(id, quote) {
 }
 
 export async function saveSettings(patch) {
+  if (patch.marketApiKeyLocalOnly != null) setLocalMarketApiKey(patch.marketApiKeyLocalOnly);
+  if (state.tutorial?.active) {
+    state.settings = mergeSettings({ ...state.settings, ...patch, marketApiKeyLocalOnly: getLocalMarketApiKey() });
+    setTutorialSync("Tutorial mode | settings stay local");
+    notify();
+    return;
+  }
   const cloudPatch = { ...patch };
   delete cloudPatch.marketApiKeyLocalOnly;
-  if (patch.marketApiKeyLocalOnly != null) setLocalMarketApiKey(patch.marketApiKeyLocalOnly);
   await saveDoc("settings", "preferences", {
     ...state.settings,
     ...cloudPatch,
@@ -424,13 +595,23 @@ export async function saveSettings(patch) {
   });
 }
 
-
 export async function refreshFxRates({ silent = false } = {}) {
   const currencies = new Set([state.settings.primaryCurrency || "EUR"]);
   state.accounts.forEach(account => currencies.add(account.currency || "EUR"));
   state.assets.forEach(asset => currencies.add(asset.currency || "EUR"));
-  if (!silent) setSync("loading", "Refreshing exchange rates");
+  if (!silent && !state.tutorial?.active) setSync("loading", "Refreshing exchange rates");
   const result = await fetchLatestFxRates([...currencies]);
+  if (state.tutorial?.active) {
+    state.settings = mergeSettings({
+      ...state.settings,
+      fxRates: { ...(state.settings.fxRates || {}), ...result.rates },
+      fxLastUpdatedAt: result.time,
+      fxSource: result.source
+    });
+    setTutorialSync("Tutorial mode | exchange rates refreshed locally");
+    notify();
+    return result;
+  }
   await saveSettings({
     fxRates: { ...(state.settings.fxRates || {}), ...result.rates },
     fxLastUpdatedAt: result.time,
@@ -440,8 +621,7 @@ export async function refreshFxRates({ silent = false } = {}) {
 }
 
 
-
-function sanitizeForFirestore(value) {
+function sanitizeForFirestorefunction sanitizeForFirestore(value) {
   if (Array.isArray(value)) return value.map(sanitizeForFirestore);
   if (value && typeof value === "object") {
     const out = {};
@@ -490,6 +670,16 @@ export async function importStateBackup(backup, { replace = false } = {}) {
   const hasAny = collections.some(name => Array.isArray(backup[name]));
   if (!hasAny) throw new Error("JSON backup is missing accounts, transactions, categories, rules and assets arrays.");
 
+  if (state.tutorial?.active) {
+    const rowsByCollection = Object.fromEntries(collections.map(name => [name, Array.isArray(backup[name]) ? [...backup[name]] : []]));
+    if (!rowsByCollection.categories.some(category => category.id === "misc")) {
+      const misc = DEFAULT_CATEGORIES.find(category => category.id === "misc");
+      if (misc) rowsByCollection.categories.push(misc);
+    }
+    applyLocalDataset({ ...rowsByCollection, settings: backup.settings || state.settings });
+    return Object.fromEntries(collections.map(name => [name, rowsByCollection[name].length]).concat([["settings", backup.settings ? 1 : 0]]));
+  }
+
   setSync("loading", replace ? "Replacing data from JSON" : "Importing JSON backup", true);
   if (replace) {
     for (const name of collections) await deleteCollectionDocs(name);
@@ -520,6 +710,17 @@ export async function importStateBackup(backup, { replace = false } = {}) {
 }
 
 export async function deleteAllData() {
+  if (state.tutorial?.active) {
+    state.accounts = [];
+    state.categories = [...DEFAULT_CATEGORIES];
+    state.rules = [...DEFAULT_RULES];
+    state.transactions = [];
+    state.assets = [];
+    state.settings = { ...DEFAULT_SETTINGS, marketApiKeyLocalOnly: getLocalMarketApiKey() };
+    setTutorialSync("Tutorial mode | local data cleared");
+    notify();
+    return { deleted: true };
+  }
   const collections = ["transactions", "assets", "rules", "categories", "accounts"];
   setSync("loading", "Deleting all data", true);
   for (const name of collections) await deleteCollectionDocs(name);
