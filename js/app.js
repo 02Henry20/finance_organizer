@@ -338,6 +338,24 @@ function assetMarketValue(asset) {
   return price * Number(asset.quantity || 0);
 }
 
+function isoDateFromMs(ms) {
+  const time = Number(ms);
+  if (!Number.isFinite(time) || time <= 0) return "";
+  return new Date(time).toISOString().slice(0, 10);
+}
+
+function assetBaselineValue(asset) {
+  const quantity = Number(asset.quantity || 0);
+  const current = assetMarketValue(asset);
+  const explicit = Number(asset.startingValue || 0);
+  const costBasis = Number(asset.costBasis || 0);
+  const buyPriceValue = Number(asset.buyPrice || 0) * quantity;
+  if (Number.isFinite(explicit) && explicit > 0) return explicit;
+  if (Number.isFinite(costBasis) && costBasis > 0) return costBasis;
+  if (Number.isFinite(buyPriceValue) && buyPriceValue > 0) return buyPriceValue;
+  return Number.isFinite(current) ? current : 0;
+}
+
 function formatPercent(value, digits = 1) {
   if (!Number.isFinite(Number(value))) return "—";
   return `${Number(value).toFixed(digits)}%`;
@@ -894,10 +912,13 @@ function sortAccountsByValue(accounts, rows) {
 
 function previousHoldingValueFor(account, currentValue, currency = selectedCurrency()) {
   const holdings = holdingsForAccount(account.id);
+  const compareDate = comparisonDateFromSettings();
   let total = 0;
   for (const asset of holdings) {
     const current = convertCurrency(assetMarketValue(asset), asset.currency || account.currency || selectedCurrency(), state.settings);
-    const costBasis = convertCurrency(Number(asset.costBasis || 0), asset.currency || account.currency || selectedCurrency(), state.settings);
+    const startingDate = String(asset.startingAt || isoDateFromMs(asset.createdAtMs) || TODAY()).slice(0, 10);
+    const baseline = asset.startingPosition && compareDate < startingDate ? assetBaselineValue(asset) : Number(asset.costBasis || 0);
+    const costBasis = convertCurrency(baseline || 0, asset.currency || account.currency || selectedCurrency(), state.settings);
     const pct = Number(asset.lastChangePercent);
     if (Number.isFinite(costBasis) && costBasis > 0) total += costBasis;
     else if (Number.isFinite(pct) && pct !== -100) total += current / (1 + pct / 100);
@@ -1294,6 +1315,29 @@ function openAccountModal(id = "") {
   openModal("account");
 }
 
+
+function syncAssetPricingFields() {
+  const provider = $("#asset-provider")?.value || "manual";
+  const quantity = parseMoney($("#asset-quantity")?.value) || 0;
+  const buyPrice = parseMoney($("#asset-buy-price")?.value) || 0;
+  const costBasisInput = $("#asset-cost-basis");
+  if (costBasisInput && quantity > 0 && buyPrice > 0) costBasisInput.value = (quantity * buyPrice).toFixed(2);
+
+  const manualField = $("#asset-manual-price-field");
+  const manualInput = $("#asset-manual-price");
+  const manualMode = provider === "manual";
+  if (manualInput) manualInput.disabled = !manualMode;
+  if (manualField) manualField.classList.toggle("is-disabled-field", !manualMode);
+
+  const startingBox = $("#asset-starting-position");
+  const startingDate = $("#asset-starting-at");
+  if (startingDate) {
+    startingDate.disabled = !startingBox?.checked;
+    if (startingBox?.checked && !startingDate.value) startingDate.value = TODAY();
+  }
+}
+
+
 function openAssetModal(id = "", accountId = "") {
   const asset = id ? state.assets.find(item => item.id === id) : null;
   const defaultBroker = accountId || asset?.accountId || state.accounts.find(item => !item.hidden && item.type === "broker")?.id || visibleAccounts()[0]?.id || "";
@@ -1309,7 +1353,12 @@ function openAssetModal(id = "", accountId = "") {
   $("#asset-currency").value = asset?.currency || selectedCurrency();
   $("#asset-manual-price").value = asset?.manualPrice ?? asset?.lastPrice ?? 0;
   $("#asset-buy-price").value = asset?.buyPrice ?? 0;
-  $("#asset-cost-basis").value = asset?.costBasis ?? 0;
+  $("#asset-cost-basis").value = asset?.costBasis ?? (Number(asset?.quantity || 0) * Number(asset?.buyPrice || 0));
+  const startingInput = $("#asset-starting-position");
+  if (startingInput) startingInput.checked = Boolean(asset?.startingPosition);
+  const startingAtInput = $("#asset-starting-at");
+  if (startingAtInput) startingAtInput.value = asset?.startingAt || TODAY();
+  syncAssetPricingFields();
   const hiddenInput = $("#asset-hidden");
   if (hiddenInput) hiddenInput.checked = Boolean(asset?.hidden);
   $("#delete-asset-button").hidden = !asset;
@@ -1324,7 +1373,7 @@ function positionDelta(asset) {
     const previousValue = currentValue / (1 + pct / 100);
     return { amount: currentValue - previousValue, percent: pct };
   }
-  const basis = Number(asset.costBasis || 0);
+  const basis = asset.startingPosition ? assetBaselineValue(asset) : Number(asset.costBasis || 0);
   if (!Number.isFinite(basis) || basis <= 0) return { amount: null, percent: null };
   const amount = currentValue - basis;
   return { amount, percent: amount / basis * 100 };
@@ -1366,12 +1415,12 @@ function renderPositionsModal() {
     const deltaText = !Number.isFinite(deltaValue)
       ? "—"
       : positionsUnit === "percent"
-        ? formatPercent(deltaValue)
-        : formatCurrency(deltaValue, currency);
+        ? signedPercent(deltaValue)
+        : signedCurrency(deltaValue, currency);
     const buyPrice = Number(asset.buyPrice || 0) || (Number(asset.quantity || 0) ? Number(asset.costBasis || 0) / Number(asset.quantity || 1) : 0);
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td><strong>${escapeHtml(asset.symbol || asset.name)}</strong><small class="muted table-ellipsis">${escapeHtml(asset.name || asset.type || "")}</small></td>
+      <td><strong>${escapeHtml(asset.symbol || asset.name)}</strong><small class="muted table-ellipsis">${escapeHtml(asset.name || asset.type || "")}${asset.startingPosition ? " · given" : ""}</small></td>
       <td>${Number(asset.quantity || 0).toLocaleString()}</td>
       <td>${formatCurrency(price, currency)}</td>
       <td>${buyPrice ? formatCurrency(buyPrice, currency) : "—"}</td>
@@ -2057,6 +2106,9 @@ function wireEvents() {
     const select = $("#account-display-currency");
     if (select) select.innerHTML = accountCurrencyOptions(select.value || "", normalizedCurrencyFrom("#account-currency", selectedCurrency()));
   });
+  ["#asset-provider", "#asset-quantity", "#asset-buy-price", "#asset-starting-position"].forEach(selector => {
+    $(selector)?.addEventListener(selector === "#asset-quantity" || selector === "#asset-buy-price" ? "input" : "change", syncAssetPricingFields);
+  });
   $("#transaction-category")?.addEventListener("change", syncTransactionReviewControl);
   $("#export-button")?.addEventListener("click", exportTransactionsCsv);
   $("#export-json-button")?.addEventListener("click", () => exportBackupJson().catch(error => toast("JSON export failed", error.message, "error")));
@@ -2190,6 +2242,9 @@ function wireEvents() {
     const form = event.currentTarget;
     setBusy(form, true);
     try {
+      const quantity = parseMoney($("#asset-quantity").value) || 0;
+      const buyPrice = parseMoney($("#asset-buy-price")?.value) || 0;
+      const costBasis = quantity > 0 && buyPrice > 0 ? quantity * buyPrice : parseMoney($("#asset-cost-basis").value) || 0;
       await saveAsset({
         id: $("#asset-id").value || undefined,
         accountId: $("#asset-account").value,
@@ -2199,11 +2254,14 @@ function wireEvents() {
         provider: $("#asset-provider").value,
         wkn: $("#asset-wkn")?.value || "",
         isin: $("#asset-isin")?.value || "",
-        quantity: parseMoney($("#asset-quantity").value) || 0,
+        quantity,
         currency: normalizedCurrencyFrom("#asset-currency"),
         manualPrice: parseMoney($("#asset-manual-price").value) || 0,
-        buyPrice: parseMoney($("#asset-buy-price")?.value) || 0,
-        costBasis: parseMoney($("#asset-cost-basis").value) || 0,
+        buyPrice,
+        costBasis,
+        startingPosition: Boolean($("#asset-starting-position")?.checked),
+        startingAt: $("#asset-starting-position")?.checked ? $("#asset-starting-at")?.value || TODAY() : "",
+        startingValue: Boolean($("#asset-starting-position")?.checked) ? costBasis || (quantity * (parseMoney($("#asset-manual-price").value) || 0)) : 0,
         hidden: Boolean($("#asset-hidden")?.checked)
       });
       toast("Holding saved");

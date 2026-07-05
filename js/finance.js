@@ -406,6 +406,45 @@ export function calculatePortfolio(state) {
 
 
 
+
+function isoDateFromMs(ms) {
+  const time = Number(ms);
+  if (!Number.isFinite(time) || time <= 0) return "";
+  return new Date(time).toISOString().slice(0, 10);
+}
+
+function assetBaselineValue(asset) {
+  const quantity = Number(asset.quantity || 0);
+  const currentPrice = Number(asset.lastPrice ?? asset.manualPrice ?? 0);
+  const currentValue = currentPrice * quantity;
+  const explicit = Number(asset.startingValue || 0);
+  const costBasis = Number(asset.costBasis || 0);
+  const buyPriceValue = Number(asset.buyPrice || 0) * quantity;
+  if (Number.isFinite(explicit) && explicit > 0) return explicit;
+  if (Number.isFinite(costBasis) && costBasis > 0) return costBasis;
+  if (Number.isFinite(buyPriceValue) && buyPriceValue > 0) return buyPriceValue;
+  return Number.isFinite(currentValue) ? currentValue : 0;
+}
+
+function assetSnapshotValue(asset, settings, asOfDate = "") {
+  const price = Number(asset.lastPrice ?? asset.manualPrice ?? 0);
+  const quantity = Number(asset.quantity || 0);
+  const currentValue = price * quantity;
+  if (!asOfDate) return convertCurrency(currentValue, asset.currency, settings);
+
+  if (asset.startingPosition) {
+    const givenDate = String(asset.startingAt || isoDateFromMs(asset.createdAtMs) || TODAY()).slice(0, 10);
+    const value = asOfDate < givenDate ? assetBaselineValue(asset) : currentValue;
+    return convertCurrency(value, asset.currency, settings);
+  }
+
+  if (asset.createdAtMs) {
+    const created = isoDateFromMs(asset.createdAtMs);
+    if (created && created > asOfDate) return 0;
+  }
+  return convertCurrency(currentValue, asset.currency, settings);
+}
+
 export function calculatePortfolioSnapshot(state, asOfDate = "") {
   const settings = state.settings || DEFAULT_SETTINGS;
   const visibleAccounts = state.accounts.filter(account => !account.hidden);
@@ -424,16 +463,7 @@ export function calculatePortfolioSnapshot(state, asOfDate = "") {
     .reduce((sum, account) => sum + account.balance.converted, 0);
   const assetValue = state.assets
     .filter(asset => !asset.hidden)
-    .filter(asset => {
-      if (!asOfDate || !asset.createdAtMs) return true;
-      const created = new Date(asset.createdAtMs).toISOString().slice(0, 10);
-      return created <= asOfDate;
-    })
-    .reduce((sum, asset) => {
-      const price = Number(asset.lastPrice ?? asset.manualPrice ?? 0);
-      const quantity = Number(asset.quantity || 0);
-      return sum + convertCurrency(price * quantity, asset.currency, settings);
-    }, 0);
+    .reduce((sum, asset) => sum + assetSnapshotValue(asset, settings, asOfDate), 0);
   const netWorth = liquidity + assetValue + receivables - debt;
   return { liquidity, debt, receivables, assetValue, netWorth, accountRows, asOfDate };
 }

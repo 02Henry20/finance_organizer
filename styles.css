@@ -2025,3 +2025,19 @@ td .category-pill .category-pill-text,
     0 2px 8px rgba(0,0,0,.72),
     0 0 1px rgba(0,0,0,.88) !important;
 }
+
+
+/* v27: holding baseline and automatic pricing fields */
+.is-disabled-field {
+  opacity: .55;
+}
+.is-disabled-field input,
+#asset-cost-basis[readonly],
+#asset-starting-at:disabled {
+  background: var(--surface-2) !important;
+  color: var(--muted) !important;
+  cursor: not-allowed;
+}
+#asset-cost-basis[readonly] {
+  border-style: dashed;
+}

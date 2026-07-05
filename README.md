@@ -81,3 +81,13 @@ If a browser keeps old behavior, open `/cache-reset.html`, reset cache once, the
 ## v26 update
 
 - Net worth number uses the light-mode design treatment in both light and dark mode.
+
+
+## v27 update
+
+- Added Given / starting position option with a given date for holdings.
+- Given holdings are treated as baseline positions in comparison snapshots.
+- Positive position changes now show a plus sign.
+- Cost basis total is calculated automatically from quantity × buy price.
+- Current/manual price is disabled unless the provider is Manual.
+- Broker position imports create starting/given holdings by default.

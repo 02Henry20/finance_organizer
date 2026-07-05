@@ -546,6 +546,9 @@ export async function parseBrokerPositionsFile(file) {
         wkn: "",
         isin: symbol,
         hidden: false,
+        startingPosition: true,
+        startingAt: date || new Date().toISOString().slice(0, 10),
+        startingValue: price ? Number(price || 0) * Number(quantity || 0) : 0,
         note: [row[ti.type], row[ti.description]].filter(Boolean).join(" · "),
         raw: row,
         date
@@ -585,6 +588,9 @@ export async function parseBrokerPositionsFile(file) {
       wkn,
       isin,
       hidden: false,
+      startingPosition: true,
+      startingAt: excelSerialToIso(row[i.date]) || new Date().toISOString().slice(0, 10),
+      startingValue: (parseMoney(row[i.marketValue]) || 0) || (parseMoney(row[i.costBasis]) || 0),
       note: row[i.exchange] ? `Exchange: ${row[i.exchange]}` : "",
       raw: row
     });
@@ -605,6 +611,9 @@ export function buildBrokerPositionsPreview(parsed, context, existingAssets = []
     return {
       ...draft,
       id: existing?.id || undefined,
+      startingPosition: existing ? Boolean(existing.startingPosition) : Boolean(draft.startingPosition),
+      startingAt: existing?.startingAt || draft.startingAt || "",
+      startingValue: existing?.startingValue ?? draft.startingValue ?? 0,
       action: existing ? "Update" : "New"
     };
   });

@@ -1,7 +1,12 @@
-Capito v26 verified build
-Build ID: capito-v26-networth-light-treatment
-Created: 2026-07-05T13:32:12
+Capito v27 verified build
+Build ID: capito-v27-starting-values-baselines
+Created: 2026-07-05T13:54:03
 
-Change:
-- The Net worth number on the Home page now uses the light-mode text treatment in both light and dark mode.
-- No other UI/functionality changes.
+Changes:
+- Starting/given holdings can be marked with a given date.
+- Given holdings use their baseline value in comparison snapshots so the initial imported position is not counted as a new gain.
+- Broker position overview shows + for positive changes.
+- Cost basis total is calculated from quantity × buy price.
+- Current/manual price field is disabled/greyed out unless provider is Manual.
+- Broker position imports default to given/starting positions while preserving existing baseline settings on updates.
+- Account opening balances remain treated as baseline values and are not booked as income/spending transactions.
