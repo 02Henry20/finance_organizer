@@ -26,6 +26,7 @@ import {
   saveTransaction,
   saveTransactionsBatch,
   refreshFxRates,
+  repairSync,
   setLocalMarketApiKey,
   state,
   subscribe,
@@ -1677,6 +1678,24 @@ function renderBrokerPositionsPreview() {
   }
 }
 
+async function runSyncRepair() {
+  const button = $("#repair-sync-button");
+  if (button) button.disabled = true;
+  setMessage($("#repair-sync-message"), "Checking Firebase and local cache...");
+  try {
+    const result = await repairSync();
+    const counts = result.counts || {};
+    const summary = `Source: ${result.source}. Accounts ${counts.accounts ?? 0}, transactions ${counts.transactions ?? 0}, holdings ${counts.holdings ?? 0}, categories ${counts.categories ?? 0}, rules ${counts.rules ?? 0}.`;
+    setMessage($("#repair-sync-message"), summary);
+    toast("Sync check complete", summary);
+  } catch (error) {
+    setMessage($("#repair-sync-message"), firebaseErrorMessage(error), true);
+    toast("Sync check failed", firebaseErrorMessage(error), "error");
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
 async function exportTransactionsCsv() {
   const csv = serializeTransactionsCsv(state.transactions, state.categories, state.accounts);
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
@@ -1894,6 +1913,7 @@ function wireEvents() {
   $("#transaction-category")?.addEventListener("change", syncTransactionReviewControl);
   $("#export-button")?.addEventListener("click", exportTransactionsCsv);
   $("#export-json-button")?.addEventListener("click", () => exportBackupJson().catch(error => toast("JSON export failed", error.message, "error")));
+  $("#repair-sync-button")?.addEventListener("click", runSyncRepair);
   $("#import-json-file")?.addEventListener("change", event => {
     importJsonBackupFile(event.target.files?.[0]);
   });

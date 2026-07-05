@@ -17,11 +17,13 @@ export const RECOGNIZED_BANK_FORMATS = [
   "Wise CSV: ID, Direction, Created/Finished on, Source/Target amount and currency",
   "Revolut CSV: Type, Product, Completed Date, Description, Amount, Fee, Currency, Balance",
   "Sparkasse CSV: Buchungstag, Buchungstext, Verwendungszweck, Begünstigter/Zahlungspflichtiger, Betrag, Währung",
+  "Trade Republic CSV: datetime/date, type, asset_class, name, symbol, shares, amount, fee, tax, currency, transaction_id",
   "Generic CSV/TSV: date + amount/debit/credit + description/counterparty + currency"
 ];
 
 export const RECOGNIZED_BROKER_FORMATS = [
-  "Smartbroker XLSX/CSV: ISIN, WKN, Kürzel, Name, Assetklasse, Stücke, Einstandskurs, Marktkurs, Einstandswert, Marktwert, Währung"
+  "Smartbroker XLSX/CSV: ISIN, WKN, Kürzel, Name, Assetklasse, Stücke, Einstandskurs, Marktkurs, Einstandswert, Marktwert, Währung",
+  "Trade Republic CSV: date, asset_class, name, symbol/ISIN, shares, price, amount, currency"
 ];
 
 function stripBom(text) {
@@ -132,6 +134,9 @@ function detectBankFormat(headers) {
   if (has("Auftragskonto") && has("Buchungstag") && has("Verwendungszweck") && has("Betrag") && (has("Waehrung") || has("Währung"))) {
     return { id: "sparkasse", label: "Sparkasse CSV" };
   }
+  if (has("datetime") && has("date") && has("account_type") && has("type") && has("asset_class") && has("amount") && has("transaction_id")) {
+    return { id: "trade_republic", label: "Trade Republic CSV" };
+  }
   return { id: "generic", label: "Generic CSV/TSV" };
 }
 
@@ -206,10 +211,37 @@ function normalizeSparkasse(headers, rows) {
   return { headers: outHeaders, rows: outRows };
 }
 
+function normalizeTradeRepublic(headers, rows) {
+  const idx = headerIndex(headers);
+  const i = {
+    date: idx("date"), datetime: idx("datetime"), type: idx("type"), assetClass: idx("asset_class"), name: idx("name"), symbol: idx("symbol"),
+    shares: idx("shares"), price: idx("price"), amount: idx("amount"), fee: idx("fee"), tax: idx("tax"), currency: idx("currency"),
+    originalAmount: idx("original_amount"), originalCurrency: idx("original_currency"), fxRate: idx("fx_rate"), description: idx("description"),
+    transactionId: idx("transaction_id"), counterpartyName: idx("counterparty_name"), counterpartyIban: idx("counterparty_iban"), paymentReference: idx("payment_reference"), mcc: idx("mcc_code")
+  };
+  const outHeaders = ["Date", "Amount", "Currency", "Counterparty", "Description", "Balance", "External ID"];
+  const outRows = rows.map(row => {
+    const amount = money(row[i.amount]) + money(row[i.fee]) + money(row[i.tax]);
+    const name = row[i.name] || row[i.counterpartyName] || row[i.description] || "Trade Republic";
+    const description = [
+      row[i.type],
+      row[i.name],
+      row[i.symbol] ? `ISIN ${row[i.symbol]}` : "",
+      row[i.description],
+      row[i.fee] ? `Fee ${row[i.fee]} ${row[i.currency] || ""}` : "",
+      row[i.tax] ? `Tax ${row[i.tax]} ${row[i.currency] || ""}` : "",
+      row[i.mcc] ? `MCC ${row[i.mcc]}` : ""
+    ].filter(Boolean).join(" · ");
+    return [row[i.date] || row[i.datetime], amount, row[i.currency] || "EUR", name, description, "", row[i.transactionId]];
+  });
+  return { headers: outHeaders, rows: outRows };
+}
+
 function normalizeBankRows(headers, rows, format) {
   if (format.id === "wise") return normalizeWise(headers, rows);
   if (format.id === "revolut") return normalizeRevolut(headers, rows);
   if (format.id === "sparkasse") return normalizeSparkasse(headers, rows);
+  if (format.id === "trade_republic") return normalizeTradeRepublic(headers, rows);
   return { headers, rows };
 }
 
@@ -449,6 +481,12 @@ function detectBrokerFormat(headers) {
   if (normalized.includes("isin") && normalized.includes("wkn") && normalized.includes("stucke") && normalized.includes("marktkurs pro stuck")) {
     return { id: "smartbroker", label: "Smartbroker positions" };
   }
+  if (normalized.includes("asset class") || normalized.includes("asset_class") || (normalized.includes("asset class") && normalized.includes("shares"))) {
+    return { id: "trade_republic", label: "Trade Republic positions" };
+  }
+  if (normalized.includes("asset_class") && normalized.includes("shares") && normalized.includes("symbol")) {
+    return { id: "trade_republic", label: "Trade Republic positions" };
+  }
   return { id: "generic", label: "Generic positions" };
 }
 
@@ -457,7 +495,7 @@ export async function parseBrokerPositionsFile(file) {
   if (!allRows.length) throw new Error("The file does not contain position rows.");
   const headerRowIndex = allRows.slice(0, 20).reduce((best, row, index) => {
     const text = row.map(normalizeHeader).join(" ");
-    const score = ["isin", "wkn", "stucke", "marktkurs", "marktwert", "einstandswert", "assetklasse"].reduce((sum, term) => sum + (text.includes(term) ? 1 : 0), 0);
+    const score = ["isin", "wkn", "stucke", "shares", "symbol", "marktkurs", "marktwert", "einstandswert", "assetklasse", "asset class", "name", "transaction id"].reduce((sum, term) => sum + (text.includes(term) ? 1 : 0), 0);
     return score > best.score ? { index, score } : best;
   }, { index: 0, score: -1 }).index;
   const headers = allRows[headerRowIndex].map((header, index) => header || `Column ${index + 1}`);
@@ -469,6 +507,53 @@ export async function parseBrokerPositionsFile(file) {
     assetClass: idx("ASSETKLASSE"), quantity: idx(["STÜCKE", "STUECKE", "Stücke"]), buyPrice: idx(["EINSTANDSKURS PRO STÜCK", "EINSTANDSKURS PRO STUECK"]),
     price: idx(["MARKTKURS PRO STÜCK", "MARKTKURS PRO STUECK"]), costBasis: idx("EINSTANDSWERT"), marketValue: idx("MARKTWERT"), currency: idx(["WÄHRUNG", "WAEHRUNG"]), exchange: idx("BÖRSE")
   };
+  if (format.id === "trade_republic") {
+    const ti = {
+      date: idx("date"), datetime: idx("datetime"), assetClass: idx("asset_class"), name: idx("name"), symbol: idx("symbol"), shares: idx("shares"),
+      price: idx("price"), amount: idx("amount"), currency: idx("currency"), type: idx("type"), description: idx("description")
+    };
+    const bySymbol = new Map();
+    const skipped = [];
+    for (const row of rows) {
+      const symbol = String(row[ti.symbol] || "").trim().toUpperCase();
+      const name = String(row[ti.name] || "").trim();
+      const quantity = parseMoney(row[ti.shares]);
+      if (!symbol && !name) {
+        skipped.push({ row, reason: "Missing symbol/ISIN and name" });
+        continue;
+      }
+      if (!Number.isFinite(Number(quantity)) || Number(quantity) === 0) {
+        skipped.push({ row, reason: "Missing quantity/shares" });
+        continue;
+      }
+      const date = parseDateValue(row[ti.date] || row[ti.datetime]);
+      const key = symbol || normalizeText(name);
+      const existing = bySymbol.get(key);
+      if (existing && String(existing.date || "") > String(date || "")) continue;
+      const price = parseMoney(row[ti.price]) || 0;
+      bySymbol.set(key, {
+        symbol,
+        name: name || symbol,
+        type: assetTypeFrom(row[ti.assetClass]),
+        quantity: Number(quantity || 0),
+        currency: String(row[ti.currency] || "EUR").trim().toUpperCase().slice(0, 3) || "EUR",
+        costBasis: 0,
+        buyPrice: 0,
+        manualPrice: Number(price || 0),
+        lastPrice: price ? Number(price) : null,
+        lastPriceAt: date ? `${date}T00:00:00.000Z` : new Date().toISOString(),
+        provider: "manual",
+        wkn: "",
+        isin: symbol,
+        hidden: false,
+        note: [row[ti.type], row[ti.description]].filter(Boolean).join(" · "),
+        raw: row,
+        date
+      });
+    }
+    return { filename: file.name, format: format.id, formatLabel: format.label, headers, rows, positions: [...bySymbol.values()].map(({ date, ...position }) => position), skipped };
+  }
+
   const positions = [];
   const skipped = [];
   for (const row of rows) {
@@ -492,8 +577,8 @@ export async function parseBrokerPositionsFile(file) {
       quantity: Number(quantity || 0),
       currency: String(row[i.currency] || "EUR").trim().toUpperCase().slice(0, 3) || "EUR",
       costBasis: parseMoney(row[i.costBasis]) || 0,
-      buyPrice: parseMoney(row[i.buyPrice]) || 0,
-      manualPrice: parseMoney(row[i.price]) || 0,
+      buyPrice: normalizeHeader(String(row[i.buyPrice] || "")).match(/^\d{4,}$/) ? (parseMoney(row[i.buyPrice]) || 0) / 1000 : (parseMoney(row[i.buyPrice]) || 0),
+      manualPrice: normalizeHeader(String(row[i.price] || "")).match(/^\d{4,}$/) ? (parseMoney(row[i.price]) || 0) / 1000 : (parseMoney(row[i.price]) || 0),
       lastPrice: parseMoney(row[i.price]) || null,
       lastPriceAt: excelSerialToIso(row[i.date]) ? `${excelSerialToIso(row[i.date])}T00:00:00.000Z` : new Date().toISOString(),
       provider: "manual",

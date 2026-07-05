@@ -4,7 +4,9 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocFromServer,
   getDocs,
+  getDocsFromServer,
   onSnapshot,
   query,
   serverTimestamp,
@@ -149,55 +151,16 @@ async function ensureDefaults() {
   if (!state.user?.uid || hasSeeded) return;
   hasSeeded = true;
 
-  const [accountsSnap, categoriesSnap, rulesSnap, settingsSnap] = await Promise.all([
-    getDocs(query(userCollection("accounts"))),
-    getDocs(query(userCollection("categories"))),
-    getDocs(query(userCollection("rules"))),
-    getDoc(userDoc("settings", "preferences"))
-  ]);
-
-  const existingAccounts = new Set(accountsSnap.docs.map(item => item.id));
-  const existingCategories = new Set(categoriesSnap.docs.map(item => item.id));
-  const existingRules = new Set(rulesSnap.docs.map(item => item.id));
-  const currentSettings = settingsSnap.exists() ? settingsSnap.data() : {};
-
-  const batch = writeBatch(db);
-  DEFAULT_ACCOUNTS.forEach((account, index) => {
-    if (!existingAccounts.has(account.id)) {
-      batch.set(userDoc("accounts", account.id), {
-        ...account,
-        sort: index,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-    }
-  });
-  DEFAULT_CATEGORIES.forEach(category => {
-    const payload = {
-      ...category,
-      isDefault: true,
+  const settingsSnap = await getDoc(userDoc("settings", "preferences"));
+  if (!settingsSnap.exists()) {
+    await setDoc(userDoc("settings", "preferences"), {
+      ...DEFAULT_SETTINGS,
+      marketApiKeyLocalOnly: "",
+      fxRates: { ...DEFAULT_SETTINGS.fxRates },
+      createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
-    };
-    if (!existingCategories.has(category.id)) payload.createdAt = serverTimestamp();
-    batch.set(userDoc("categories", category.id), payload, { merge: true });
-  });
-  DEFAULT_RULES.forEach(rule => {
-    const payload = {
-      ...rule,
-      updatedAt: serverTimestamp()
-    };
-    if (!existingRules.has(rule.id)) payload.createdAt = serverTimestamp();
-    batch.set(userDoc("rules", rule.id), payload, { merge: true });
-  });
-  batch.set(userDoc("settings", "preferences"), {
-    ...DEFAULT_SETTINGS,
-    ...currentSettings,
-    fxRates: { ...DEFAULT_SETTINGS.fxRates, ...(currentSettings.fxRates || {}) },
-    marketApiKeyLocalOnly: "",
-    updatedAt: serverTimestamp()
-  }, { merge: true });
-  batch.set(userDoc("meta", "seed"), { version: 2, updatedAt: serverTimestamp(), createdAt: currentSettings.seededAt || serverTimestamp() }, { merge: true });
-  await batch.commit();
+    }, { merge: true });
+  }
 }
 
 export async function connectUser(user) {
@@ -224,9 +187,9 @@ export async function connectUser(user) {
     unsubscribers.push(unsubscribe);
   };
 
-  attachCollection("accounts", value => { state.accounts = value.length ? value : [...DEFAULT_ACCOUNTS]; });
-  attachCollection("categories", value => { state.categories = value.length ? value : [...DEFAULT_CATEGORIES]; });
-  attachCollection("rules", value => { state.rules = value.length ? value : [...DEFAULT_RULES]; });
+  attachCollection("accounts", value => { state.accounts = value; });
+  attachCollection("categories", value => { state.categories = value; });
+  attachCollection("rules", value => { state.rules = value; });
   attachCollection("transactions", value => { state.transactions = value; });
   attachCollection("assets", value => { state.assets = value; });
 
@@ -497,10 +460,6 @@ export async function importStateBackup(backup, { replace = false } = {}) {
 
   const counts = {};
   const rowsByCollection = Object.fromEntries(collections.map(name => [name, Array.isArray(backup[name]) ? [...backup[name]] : []]));
-  if (!rowsByCollection.categories.some(category => category.id === "misc")) {
-    const misc = DEFAULT_CATEGORIES.find(category => category.id === "misc");
-    if (misc) rowsByCollection.categories.push(misc);
-  }
   for (const name of collections) counts[name] = await writeCollectionDocs(name, rowsByCollection[name]);
 
   if (backup.settings && typeof backup.settings === "object") {
@@ -519,6 +478,62 @@ export async function importStateBackup(backup, { replace = false } = {}) {
   return counts;
 }
 
+async function readCollectionForRepair(name) {
+  try {
+    const snapshot = await getDocsFromServer(query(userCollection(name)));
+    return { items: normalizeArray(name, snapshot.docs), source: "server" };
+  } catch (error) {
+    const snapshot = await getDocs(query(userCollection(name)));
+    return { items: normalizeArray(name, snapshot.docs), source: browserOnline() ? `cache fallback (${error.message || "server unavailable"})` : "offline cache" };
+  }
+}
+
+async function readSettingsForRepair() {
+  try {
+    const snapshot = await getDocFromServer(userDoc("settings", "preferences"));
+    return { data: snapshot.exists() ? snapshot.data() : {}, source: "server" };
+  } catch (error) {
+    const snapshot = await getDoc(userDoc("settings", "preferences"));
+    return { data: snapshot.exists() ? snapshot.data() : {}, source: browserOnline() ? `cache fallback (${error.message || "server unavailable"})` : "offline cache" };
+  }
+}
+
+export async function repairSync() {
+  if (!state.user?.uid) throw new Error("Sign in first before checking sync.");
+  setSync("loading", "Checking Firebase and local cache", true);
+  try {
+    const [accounts, categories, rules, transactions, assets, settings] = await Promise.all([
+      readCollectionForRepair("accounts"),
+      readCollectionForRepair("categories"),
+      readCollectionForRepair("rules"),
+      readCollectionForRepair("transactions"),
+      readCollectionForRepair("assets"),
+      readSettingsForRepair()
+    ]);
+    state.accounts = accounts.items;
+    state.categories = categories.items;
+    state.rules = rules.items;
+    state.transactions = transactions.items;
+    state.assets = assets.items;
+    state.settings = mergeSettings(settings.data);
+    const sources = [accounts, categories, rules, transactions, assets, settings].map(item => item.source);
+    const fromServer = sources.every(source => source === "server");
+    const counts = {
+      accounts: state.accounts.length,
+      categories: state.categories.length,
+      rules: state.rules.length,
+      transactions: state.transactions.length,
+      holdings: state.assets.length
+    };
+    setSync(fromServer ? "synced" : "offline", fromServer ? "Sync check complete" : "Used offline cache / server fallback");
+    notify();
+    return { source: fromServer ? "server" : [...new Set(sources)].join(" | "), counts };
+  } catch (error) {
+    setSync("error", error.message || "Sync check failed");
+    throw error;
+  }
+}
+
 export async function deleteAllData() {
   const collections = ["transactions", "assets", "rules", "categories", "accounts"];
   setSync("loading", "Deleting all data", true);
@@ -526,8 +541,8 @@ export async function deleteAllData() {
   await deleteDoc(userDoc("settings", "preferences")).catch(() => undefined);
   await deleteDoc(userDoc("meta", "seed")).catch(() => undefined);
   state.accounts = [];
-  state.categories = [...DEFAULT_CATEGORIES];
-  state.rules = [...DEFAULT_RULES];
+  state.categories = [];
+  state.rules = [];
   state.transactions = [];
   state.assets = [];
   state.settings = { ...DEFAULT_SETTINGS, marketApiKeyLocalOnly: getLocalMarketApiKey() };
