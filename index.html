@@ -175,41 +175,37 @@
 
       <section class="view" data-view-section="import">
         <div class="import-layout import-flow-layout">
-          <article class="surface-card import-card main-import">
-            <div class="panel-heading"><div><p class="eyebrow">BANK EXPORTS</p><h3>Import bank CSV | TSV</h3></div></div>
-            <p class="muted">Recognized bank structures: Wise CSV, Revolut CSV, Sparkasse CSV, Trade Republic CSV and generic CSV/TSV with date, amount, description and currency columns. Exact duplicate transactions are skipped automatically.</p>
+          <article class="surface-card import-card main-import unified-import-card">
+            <div class="panel-heading"><div><p class="eyebrow">AUTO IMPORT</p><h3>Import bank transactions or broker holdings</h3></div></div>
+            <p class="muted">Drop one file here. Capito recognizes Wise, Revolut, Sparkasse and Trade Republic bank transactions, plus Smartbroker and Trade Republic broker holdings. Exact duplicate transactions are skipped automatically; matching holdings are updated instead of duplicated.</p>
             <div class="form-stack">
-              <label class="field"><span>Target account</span><select id="import-account"></select></label>
-              <label id="import-file-label" class="file-drop"><input id="import-file" type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values"><strong id="import-file-title">Choose a bank export</strong><small id="import-file-detail">Recognized: Wise · Revolut · Sparkasse · Trade Republic · generic CSV/TSV</small></label>
-              <div class="button-row"><button id="commit-import-button" class="primary-button" type="button" disabled>Import transactions</button><button id="reset-import-button" class="secondary-button" type="button" disabled>Reset</button></div>
+              <div class="form-grid two">
+                <label class="field"><span>Target account for transactions</span><select id="import-account"></select></label>
+                <label class="field"><span>Broker account for holdings</span><select id="positions-import-account"></select></label>
+              </div>
+              <label id="import-file-label" class="file-drop"><input id="import-file" type="file" accept=".xlsx,.xls,.csv,.tsv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,text/tab-separated-values"><strong id="import-file-title">Choose bank or broker export</strong><small id="import-file-detail">Recognized: Wise · Revolut · Sparkasse · Trade Republic · Smartbroker · generic CSV/TSV</small></label>
+              <input id="positions-import-file" class="hidden-file-input" type="file" accept=".xlsx,.xls,.csv,.tsv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,text/tab-separated-values">
+              <label id="positions-file-label" class="visually-hidden"><strong id="positions-file-title"></strong><small id="positions-file-detail"></small></label>
+              <div class="button-row"><button id="commit-import-button" class="primary-button" type="button" disabled>Import file</button><button id="reset-import-button" class="secondary-button" type="button" disabled>Reset</button><button id="commit-positions-import-button" class="primary-button compact visually-hidden" type="button" disabled>Import positions</button><button id="reset-positions-import-button" class="secondary-button compact visually-hidden" type="button" disabled>Reset positions</button></div>
               <p id="import-message" class="form-message"></p>
-            </div>
-          </article>
-          <article class="surface-card import-card broker-import-card">
-            <div class="panel-heading"><div><p class="eyebrow">BROKER POSITIONS</p><h3>Import holdings</h3></div></div>
-            <p class="muted">Recognized broker structures: Smartbroker XLSX/CSV and Trade Republic CSV. Existing holdings with the same ISIN/WKN/symbol in the selected broker account are updated instead of duplicated.</p>
-            <div class="form-stack">
-              <label class="field"><span>Broker account</span><select id="positions-import-account"></select></label>
-              <label id="positions-file-label" class="file-drop"><input id="positions-import-file" type="file" accept=".xlsx,.xls,.csv,.tsv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"><strong id="positions-file-title">Choose broker position export</strong><small id="positions-file-detail">Recognized: Smartbroker XLSX/CSV · Trade Republic CSV</small></label>
-              <div class="button-row"><button id="commit-positions-import-button" class="primary-button" type="button" disabled>Import positions</button><button id="reset-positions-import-button" class="secondary-button" type="button" disabled>Reset</button></div>
               <p id="positions-import-message" class="form-message"></p>
             </div>
           </article>
         </div>
         <article class="surface-card table-card">
-          <div class="panel-heading import-preview-heading"><div><p class="eyebrow">PREVIEW</p><h3>Parsed transactions</h3></div><span id="preview-count" class="metric-tag">No file</span></div>
+          <div class="panel-heading import-preview-heading"><div><p class="eyebrow">TRANSACTION PREVIEW</p><h3>Parsed transactions</h3></div><span id="preview-count" class="metric-tag">No file</span></div>
           <div class="table-scroll"><table class="import-preview-table"><thead><tr><th><button class="sort-button" data-sort-table="import" data-sort-key="date" type="button">Date <span class="sort-indicator"></span></button></th><th><button class="sort-button" data-sort-table="import" data-sort-key="description" type="button">Description <span class="sort-indicator"></span></button></th><th><button class="sort-button" data-sort-table="import" data-sort-key="amount" type="button">Amount <span class="sort-indicator"></span></button></th><th><button class="sort-button" data-sort-table="import" data-sort-key="category" type="button">Category <span class="sort-indicator"></span></button></th><th><button class="sort-button" data-sort-table="import" data-sort-key="status" type="button">Status <span class="sort-indicator"></span></button></th></tr></thead><tbody id="import-preview-body"></tbody></table></div>
           <div id="import-preview-pagination" class="pagination-bar"></div>
         </article>
         <article class="surface-card table-card broker-preview-card">
-          <div class="panel-heading import-preview-heading"><div><p class="eyebrow">BROKER PREVIEW</p><h3>Parsed positions</h3></div><span id="positions-preview-count" class="metric-tag">No file</span></div>
+          <div class="panel-heading import-preview-heading"><div><p class="eyebrow">POSITION PREVIEW</p><h3>Parsed holdings</h3></div><span id="positions-preview-count" class="metric-tag">No file</span></div>
           <div class="table-scroll"><table class="positions-preview-table"><thead><tr><th>Holding</th><th>ISIN</th><th>WKN</th><th>Quantity</th><th>Price</th><th>Value</th><th>Status</th></tr></thead><tbody id="positions-preview-body"></tbody></table></div>
           <div id="positions-preview-pagination" class="pagination-bar"></div>
         </article>
       </section>
 
       <section class="view" data-view-section="accounts">
-        <div class="page-toolbar surface-card"><div><p class="eyebrow">MONEY CONTAINERS</p><h3>Accounts</h3><small id="accounts-period-note" class="toolbar-subnote">Comparison period</small></div><div class="toolbar-actions"><button id="hidden-accounts-toggle" class="ghost-button compact" type="button" hidden aria-expanded="false">Show hidden accounts</button><button class="primary-button compact" data-open-modal="account" type="button">Add account</button></div></div>
+        <div class="page-toolbar surface-card"><div><p class="eyebrow">MONEY CONTAINERS</p><h3>Accounts</h3><small id="accounts-period-note" class="toolbar-subnote">Comparison period</small></div><div class="toolbar-actions accounts-toolbar-actions"><label class="field compact-field accounts-currency-field"><span>Display currency</span><select id="accounts-display-currency"></select></label><button id="hidden-accounts-toggle" class="ghost-button compact" type="button" hidden aria-expanded="false">Show hidden accounts</button><button class="primary-button compact" data-open-modal="account" type="button">Add account</button></div></div>
         <div id="accounts-grid" class="cards-grid"></div>
         <section id="hidden-accounts-section" class="hidden-accounts-section" hidden>
           <div class="account-group-heading hidden-group-heading"><p class="eyebrow">Hidden</p><span id="hidden-accounts-count" class="metric-tag">0</span></div>
@@ -267,7 +263,7 @@
             <div class="panel-heading"><div><p class="eyebrow">DATA</p><h3>Export | import</h3></div></div>
             <div class="settings-row"><div><strong>Transactions CSV</strong><small>Legacy export for spreadsheets.</small></div><button id="export-button" class="secondary-button compact" type="button">Export CSV</button></div>
             <div class="settings-row"><div><strong>Full JSON backup</strong><small>Accounts, transactions, categories, rules, settings and holdings.</small></div><button id="export-json-button" class="primary-button compact" type="button">Export JSON</button></div>
-            <div class="settings-row"><div><strong>Sync troubleshooting</strong><small>Checks Firebase server state, refreshes the local offline cache and reconnects if desktop/mobile differ.</small></div><button id="repair-sync-button" class="secondary-button compact" type="button">Check / repair sync</button></div>
+            <div class="settings-row sync-choice-row"><div><strong>Sync troubleshooting</strong><small>Resolve desktop/mobile differences manually. Local data is still available offline through the browser cache.</small></div><div class="sync-choice-actions"><button id="repair-sync-button" class="secondary-button compact" type="button">Check status</button><button class="secondary-button compact" data-sync-choice="local" type="button">Keep local</button><button class="primary-button compact" data-sync-choice="merge" type="button">Merge both</button><button class="secondary-button compact" data-sync-choice="firebase" type="button">Take Firebase</button></div></div>
             <p id="repair-sync-message" class="form-message"></p>
             <div class="settings-row"><div><strong>Session</strong><small>Sign out of this browser.</small></div><button id="sign-out-button" class="ghost-button compact" type="button">Sign out</button></div>
             <div class="form-stack import-json-box">

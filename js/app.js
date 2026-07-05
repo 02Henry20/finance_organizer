@@ -27,6 +27,7 @@ import {
   saveTransactionsBatch,
   refreshFxRates,
   repairSync,
+  resolveSyncConflict,
   setLocalMarketApiKey,
   state,
   subscribe,
@@ -248,6 +249,32 @@ function escapeHtml(value) {
 
 function selectedCurrency() {
   return (state.settings.primaryCurrency || "EUR").toUpperCase();
+}
+
+function accountDisplayCurrency() {
+  return (state.settings.accountDisplayCurrency || state.settings.primaryCurrency || "EUR").toUpperCase();
+}
+
+function convertPrimaryToAccountDisplay(value, targetCurrency = accountDisplayCurrency()) {
+  const amount = Number(value || 0);
+  const primary = selectedCurrency();
+  const target = (targetCurrency || primary).toUpperCase();
+  if (target === primary) return amount;
+  const rates = { EUR: 1, USD: 0.92, GBP: 1.17, KRW: 0.00063, JPY: 0.0058, CHF: 1.04, ...(state.settings.fxRates || {}) };
+  const primaryRate = Number(rates[primary] ?? 1);
+  const targetRate = Number(rates[target]);
+  if (!Number.isFinite(primaryRate) || primaryRate <= 0 || !Number.isFinite(targetRate) || targetRate <= 0) return amount;
+  return amount * primaryRate / targetRate;
+}
+
+function accountRowsForDisplay(rows = [], targetCurrency = accountDisplayCurrency()) {
+  return rows.map(row => ({
+    ...row,
+    balance: {
+      ...(row.balance || {}),
+      converted: convertPrimaryToAccountDisplay(row.balance?.converted || 0, targetCurrency)
+    }
+  }));
 }
 
 function categoryMap() {
@@ -633,7 +660,11 @@ function renderOverview() {
     chartWrap.style.height = `${target}px`;
     chartWrap.style.minHeight = `${target}px`;
   }
-  drawAccountBars(accountChart, portfolio.accountRows, currency, { previousRows: previousPortfolio.accountRows, showDelta: state.settings.showAccountDeltaBars !== false });
+  const accountChartCurrency = accountDisplayCurrency();
+  drawAccountBars(accountChart, accountRowsForDisplay(portfolio.accountRows, accountChartCurrency), accountChartCurrency, {
+    previousRows: accountRowsForDisplay(previousPortfolio.accountRows || [], accountChartCurrency),
+    showDelta: state.settings.showAccountDeltaBars !== false
+  });
 }
 
 function fillReportControls() {
@@ -749,6 +780,11 @@ function fillFilters() {
   const accountType = $("#account-type");
   const ruleCategory = $("#rule-category");
   const assetAccount = $("#asset-account");
+  const accountsDisplayCurrency = $("#accounts-display-currency");
+  if (accountsDisplayCurrency) {
+    const current = state.settings.accountDisplayCurrency || "";
+    accountsDisplayCurrency.innerHTML = `<option value="" ${current ? "" : "selected"}>Main currency (${escapeHtml(selectedCurrency())})</option>${VALID_CURRENCIES.map(code => `<option value="${escapeHtml(code)}" ${code === current ? "selected" : ""}>${escapeHtml(code)}</option>`).join("")}`;
+  }
   if (txAccountFilter) txAccountFilter.innerHTML = `<option value="all">All accounts</option>${accountOptions(txAccountFilter.value)}`;
   if (txCategoryFilter) txCategoryFilter.innerHTML = `<option value="all">All categories</option>${categoryOptions(txCategoryFilter.value)}`;
   if (txCurrencyFilter) {
@@ -826,9 +862,10 @@ function accountRowFor(account, rows) {
 }
 
 function holdingsValueFor(account, currency = selectedCurrency()) {
-  return holdingsForAccount(account.id).reduce((sum, asset) => {
-    return sum + convertCurrency(assetMarketValue(asset), asset.currency || account.currency || currency, state.settings);
+  const primaryValue = holdingsForAccount(account.id).reduce((sum, asset) => {
+    return sum + convertCurrency(assetMarketValue(asset), asset.currency || account.currency || selectedCurrency(), state.settings);
   }, 0);
+  return currency === selectedCurrency() ? primaryValue : convertPrimaryToAccountDisplay(primaryValue, currency);
 }
 
 function accountSortValue(account, rows) {
@@ -849,7 +886,7 @@ function sortAccountsByValue(accounts, rows) {
   });
 }
 
-function previousHoldingValueFor(account, currentValue) {
+function previousHoldingValueFor(account, currentValue, currency = selectedCurrency()) {
   const holdings = holdingsForAccount(account.id);
   let total = 0;
   for (const asset of holdings) {
@@ -860,7 +897,8 @@ function previousHoldingValueFor(account, currentValue) {
     else if (Number.isFinite(pct) && pct !== -100) total += current / (1 + pct / 100);
     else total += current;
   }
-  return Number.isFinite(total) && total > 0 ? total : currentValue;
+  const primaryPrevious = Number.isFinite(total) && total > 0 ? total : convertPrimaryToAccountDisplay(currentValue, selectedCurrency());
+  return currency === selectedCurrency() ? primaryPrevious : convertPrimaryToAccountDisplay(primaryPrevious, currency);
 }
 
 function trendInline(current, previous, { inverted = false, currency = selectedCurrency() } = {}) {
@@ -878,12 +916,12 @@ function accountStat(label, value, previous, { currency = selectedCurrency(), em
 }
 
 function buildAccountCard(account, row, previousRow, { hidden = false } = {}) {
-  const currency = selectedCurrency();
+  const currency = accountDisplayCurrency();
   const isBroker = ["broker", "asset"].includes(account.type);
-  const cashCurrent = row.balance.converted;
-  const cashPrevious = previousRow?.balance?.converted ?? cashCurrent;
+  const cashCurrent = convertPrimaryToAccountDisplay(row.balance?.converted || 0, currency);
+  const cashPrevious = previousRow?.balance?.converted == null ? cashCurrent : convertPrimaryToAccountDisplay(previousRow.balance.converted, currency);
   const holdingsCurrent = isBroker ? holdingsValueFor(account, currency) : 0;
-  const holdingsPrevious = isBroker ? previousHoldingValueFor(account, holdingsCurrent) : 0;
+  const holdingsPrevious = isBroker ? previousHoldingValueFor(account, holdingsCurrent, currency) : 0;
   const totalCurrent = cashCurrent + holdingsCurrent;
   const totalPrevious = cashPrevious + holdingsPrevious;
   const identifier = maskIban(account.iban || account.accountNumber);
@@ -1531,18 +1569,49 @@ function updateImportFileLabel() {
   const title = $("#import-file-title");
   const detail = $("#import-file-detail");
   if (!label || !title || !detail) return;
-  label.classList.toggle("has-file", Boolean(activeParsedFile));
-  if (!activeParsedFile) {
-    title.textContent = "Choose a bank export";
-    detail.textContent = `Recognized: ${RECOGNIZED_BANK_FORMATS.join(" · ")}`;
+  const hasFile = Boolean(activeParsedFile || brokerParsedFile);
+  label.classList.toggle("has-file", hasFile);
+  if (!hasFile) {
+    title.textContent = "Choose bank or broker export";
+    detail.textContent = `Recognized: ${RECOGNIZED_BANK_FORMATS.join(" · ")} · ${RECOGNIZED_BROKER_FORMATS.join(" · ")}`;
     return;
   }
-  title.textContent = activeParsedFile.filename;
-  detail.textContent = `${activeParsedFile.formatLabel || "Bank export"} recognized · ${activeParsedFile.rows.length} rows loaded; click to replace`;
+  title.textContent = activeParsedFile?.filename || brokerParsedFile?.filename || "Selected file";
+  const parts = [];
+  if (activeParsedFile) parts.push(`${activeParsedFile.formatLabel || "Bank export"} · ${activeParsedFile.rows.length} rows`);
+  if (brokerParsedFile) parts.push(`${brokerParsedFile.formatLabel || "Broker positions"} · ${brokerParsedFile.positions.length} positions`);
+  detail.textContent = `${parts.join(" · ")}; click to replace`;
+}
+
+async function parseUnifiedImportFile(file) {
+  const isSpreadsheet = /\.(xlsx|xls)$/i.test(file.name || "");
+  let bank = null;
+  let broker = null;
+  const errors = [];
+  if (!isSpreadsheet) {
+    try {
+      const parsedBank = await parseBankFile(file);
+      if (parsedBank?.rows?.length) bank = parsedBank;
+    } catch (error) {
+      errors.push(error.message || "Bank parser failed");
+    }
+  }
+  try {
+    const parsedBroker = await parseBrokerPositionsFile(file);
+    if (parsedBroker?.positions?.length) broker = parsedBroker;
+  } catch (error) {
+    errors.push(error.message || "Broker parser failed");
+  }
+  if (!bank && !broker) throw new Error(errors[0] || "No recognized bank transaction or broker position structure found.");
+  return { bank, broker };
 }
 
 function buildActiveImportPreview() {
-  if (!activeParsedFile) return;
+  if (!activeParsedFile) {
+    activePreview = null;
+    renderImportPreview();
+    return;
+  }
   const account = state.accounts.find(item => item.id === $("#import-account").value);
   activePreview = buildImportPreview(activeParsedFile, activeParsedFile.mapping, {
     accountId: $("#import-account").value,
@@ -1552,23 +1621,34 @@ function buildActiveImportPreview() {
     accounts: state.accounts
   }, state.transactions);
   importPage = 1;
-  $("#commit-import-button").disabled = !activePreview.transactions.length;
   $("#reset-import-button").disabled = false;
-  setMessage($("#import-message"), `${activeParsedFile.formatLabel || "Bank export"} recognized. ${activePreview.transactions.length} rows ready. ${activePreview.transactions.filter(tx => tx.review).length} need review. ${activePreview.skipped.length} exact duplicates/skipped.`);
   renderImportPreview();
+  updateUnifiedImportSummary();
 }
 
 function resetImportFlow(message = "") {
   activeParsedFile = null;
   activePreview = null;
+  brokerParsedFile = null;
+  brokerPreview = null;
   importPage = 1;
+  brokerPositionsPage = 1;
   const fileInput = $("#import-file");
   if (fileInput) fileInput.value = "";
+  const positionFileInput = $("#positions-import-file");
+  if (positionFileInput) positionFileInput.value = "";
   $("#commit-import-button").disabled = true;
   $("#reset-import-button").disabled = true;
+  const positionButton = $("#commit-positions-import-button");
+  if (positionButton) positionButton.disabled = true;
+  const positionResetButton = $("#reset-positions-import-button");
+  if (positionResetButton) positionResetButton.disabled = true;
   updateImportFileLabel();
+  updateBrokerPositionsFileLabel();
   setMessage($("#import-message"), message);
+  setMessage($("#positions-import-message"), "");
   renderImportPreview();
+  renderBrokerPositionsPreview();
 }
 
 function renderImportPreview() {
@@ -1620,7 +1700,11 @@ function updateBrokerPositionsFileLabel() {
 }
 
 function buildBrokerPositionsImportPreview() {
-  if (!brokerParsedFile) return;
+  if (!brokerParsedFile) {
+    brokerPreview = null;
+    renderBrokerPositionsPreview();
+    return;
+  }
   const accountId = $("#positions-import-account")?.value || state.accounts.find(account => !account.hidden && account.type === "broker")?.id || visibleAccounts()[0]?.id || "";
   brokerPreview = buildBrokerPositionsPreview(brokerParsedFile, { accountId }, state.assets);
   brokerPositionsPage = 1;
@@ -1628,8 +1712,8 @@ function buildBrokerPositionsImportPreview() {
   if (button) button.disabled = !brokerPreview.positions.length;
   const resetButton = $("#reset-positions-import-button");
   if (resetButton) resetButton.disabled = false;
-  setMessage($("#positions-import-message"), `${brokerPreview.formatLabel || "Broker export"} recognized. ${brokerPreview.positions.length} positions ready. ${brokerPreview.skipped.length} skipped.`);
   renderBrokerPositionsPreview();
+  updateUnifiedImportSummary();
 }
 
 function resetBrokerPositionsImportFlow(message = "") {
@@ -1675,6 +1759,44 @@ function renderBrokerPositionsPreview() {
       <td>${formatCurrency((asset.manualPrice || asset.lastPrice || 0) * Number(asset.quantity || 0), asset.currency || selectedCurrency())}</td>
       <td><span class="metric-tag">${escapeHtml(asset.action || "New")}</span></td>`;
     tbody.append(tr);
+  }
+}
+
+function updateUnifiedImportSummary() {
+  const txCount = activePreview?.transactions?.length || 0;
+  const txSkipped = activePreview?.skipped?.length || 0;
+  const reviewCount = activePreview?.transactions?.filter(tx => tx.review).length || 0;
+  const posCount = brokerPreview?.positions?.length || 0;
+  const posSkipped = brokerPreview?.skipped?.length || 0;
+  const hasAnything = txCount > 0 || posCount > 0;
+  const button = $("#commit-import-button");
+  if (button) {
+    button.disabled = !hasAnything;
+    button.textContent = posCount && txCount ? "Import transactions + positions" : posCount ? "Import positions" : "Import transactions";
+  }
+  const resetButton = $("#reset-import-button");
+  if (resetButton) resetButton.disabled = !(activeParsedFile || brokerParsedFile);
+  const parts = [];
+  if (activeParsedFile) parts.push(`${activeParsedFile.formatLabel || "Bank export"}: ${txCount} transactions, ${reviewCount} review, ${txSkipped} duplicates/skipped`);
+  if (brokerParsedFile) parts.push(`${brokerParsedFile.formatLabel || "Broker export"}: ${posCount} positions, ${posSkipped} skipped`);
+  if (parts.length) setMessage($("#import-message"), parts.join(" · "));
+}
+
+async function runSyncChoice(mode) {
+  const labels = { local: "Keep local", merge: "Merge both", firebase: "Take Firebase" };
+  $$("[data-sync-choice]").forEach(button => { button.disabled = true; });
+  setMessage($("#repair-sync-message"), `${labels[mode] || "Sync"} running...`);
+  try {
+    const result = await resolveSyncConflict(mode);
+    const counts = result.counts || {};
+    const summary = `${labels[mode]} complete. Accounts ${counts.accounts ?? 0}, transactions ${counts.transactions ?? 0}, holdings ${counts.holdings ?? 0}, categories ${counts.categories ?? 0}, rules ${counts.rules ?? 0}.`;
+    setMessage($("#repair-sync-message"), summary);
+    toast("Sync resolved", summary);
+  } catch (error) {
+    setMessage($("#repair-sync-message"), firebaseErrorMessage(error), true);
+    toast("Sync resolution failed", firebaseErrorMessage(error), "error");
+  } finally {
+    $$("[data-sync-choice]").forEach(button => { button.disabled = false; });
   }
 }
 
@@ -1914,6 +2036,15 @@ function wireEvents() {
   $("#export-button")?.addEventListener("click", exportTransactionsCsv);
   $("#export-json-button")?.addEventListener("click", () => exportBackupJson().catch(error => toast("JSON export failed", error.message, "error")));
   $("#repair-sync-button")?.addEventListener("click", runSyncRepair);
+  $$("[data-sync-choice]").forEach(button => button.addEventListener("click", () => runSyncChoice(button.dataset.syncChoice)));
+  $("#accounts-display-currency")?.addEventListener("change", async event => {
+    try {
+      await saveSettings({ accountDisplayCurrency: event.target.value || "" });
+      requestRender();
+    } catch (error) {
+      toast("Display currency failed", error.message, "error");
+    }
+  });
   $("#import-json-file")?.addEventListener("change", event => {
     importJsonBackupFile(event.target.files?.[0]);
   });
@@ -2126,55 +2257,64 @@ function wireEvents() {
   });
 
   $("#import-account")?.addEventListener("change", () => {
-    if (activeParsedFile) buildActiveImportPreview();
+    if (activeParsedFile) {
+      buildActiveImportPreview();
+      updateUnifiedImportSummary();
+    }
   });
 
   $("#positions-import-account")?.addEventListener("change", () => {
-    if (brokerParsedFile) buildBrokerPositionsImportPreview();
+    if (brokerParsedFile) {
+      buildBrokerPositionsImportPreview();
+      updateUnifiedImportSummary();
+    }
   });
 
   $("#positions-import-file")?.addEventListener("change", async event => {
     const file = event.target.files?.[0];
     if (!file) return;
     try {
-      brokerParsedFile = await parseBrokerPositionsFile(file);
+      const parsed = await parseUnifiedImportFile(file);
+      activeParsedFile = parsed.bank;
+      brokerParsedFile = parsed.broker;
+      activePreview = null;
       brokerPreview = null;
+      updateImportFileLabel();
       updateBrokerPositionsFileLabel();
-      setMessage($("#positions-import-message"), `${brokerParsedFile.formatLabel || "Broker positions"} recognized. Preview built for the selected broker account.`);
+      buildActiveImportPreview();
       buildBrokerPositionsImportPreview();
+      updateUnifiedImportSummary();
     } catch (error) {
-      toast("Position import failed", error.message, "error");
-      setMessage($("#positions-import-message"), error.message, true);
+      toast("Import failed", error.message, "error");
+      setMessage($("#import-message"), error.message, true);
     }
   });
 
   $("#reset-positions-import-button")?.addEventListener("click", () => {
-    resetBrokerPositionsImportFlow("Position import reset.");
+    resetImportFlow("Import reset.");
   });
 
   $("#commit-positions-import-button")?.addEventListener("click", async () => {
-    if (!brokerPreview?.positions?.length) return;
-    try {
-      for (const asset of brokerPreview.positions) await saveAsset(asset);
-      toast("Positions imported", `${brokerPreview.positions.length} positions saved or updated.`);
-      resetBrokerPositionsImportFlow("Position import complete.");
-    } catch (error) {
-      toast("Position import failed", error.message, "error");
-      setMessage($("#positions-import-message"), error.message, true);
-    }
+    $("#commit-import-button")?.click();
   });
 
   $("#import-file").addEventListener("change", async event => {
     const file = event.target.files?.[0];
     if (!file) return;
     try {
-      activeParsedFile = await parseBankFile(file);
+      const parsed = await parseUnifiedImportFile(file);
+      activeParsedFile = parsed.bank;
+      brokerParsedFile = parsed.broker;
       activePreview = null;
+      brokerPreview = null;
       updateImportFileLabel();
-      setMessage($("#import-message"), `${activeParsedFile.formatLabel || "Bank export"} recognized. Preview built in Capito format.`);
+      updateBrokerPositionsFileLabel();
       buildActiveImportPreview();
+      buildBrokerPositionsImportPreview();
+      updateUnifiedImportSummary();
     } catch (error) {
       toast("Import failed", error.message, "error");
+      setMessage($("#import-message"), error.message, true);
     }
   });
 
@@ -2183,13 +2323,23 @@ function wireEvents() {
   });
 
   $("#commit-import-button").addEventListener("click", async () => {
-    if (!activePreview?.transactions?.length) return;
+    if (!activePreview?.transactions?.length && !brokerPreview?.positions?.length) return;
     try {
-      await saveTransactionsBatch(activePreview.transactions);
-      toast("Import complete", `${activePreview.transactions.length} transactions saved. ${activePreview.skipped.length} exact duplicates/skipped.`);
+      let txCount = 0;
+      let positionCount = 0;
+      if (activePreview?.transactions?.length) {
+        await saveTransactionsBatch(activePreview.transactions);
+        txCount = activePreview.transactions.length;
+      }
+      if (brokerPreview?.positions?.length) {
+        for (const asset of brokerPreview.positions) await saveAsset(asset);
+        positionCount = brokerPreview.positions.length;
+      }
+      toast("Import complete", `${txCount} transactions and ${positionCount} positions saved.`);
       resetImportFlow("Import complete.");
     } catch (error) {
       toast("Import save failed", error.message, "error");
+      setMessage($("#import-message"), error.message, true);
     }
   });
 

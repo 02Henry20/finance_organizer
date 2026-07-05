@@ -1315,3 +1315,55 @@ td .category-pill .category-pill-text,
     max-width: 160px;
   }
 }
+
+
+/* Sync resolution and display currency controls */
+.sync-choice-row .sync-choice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.accounts-toolbar-actions {
+  align-items: end;
+}
+.accounts-currency-field {
+  min-width: 170px;
+  margin: 0;
+}
+.accounts-currency-field span {
+  font-size: .68rem;
+}
+.accounts-currency-field select {
+  min-height: 38px;
+  padding-block: 8px;
+}
+.unified-import-card {
+  grid-column: 1 / -1;
+}
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0 0 0 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+@media (max-width: 760px) {
+  .sync-choice-row {
+    grid-template-columns: 1fr !important;
+  }
+  .sync-choice-row .sync-choice-actions,
+  .accounts-toolbar-actions {
+    justify-content: stretch;
+    width: 100%;
+  }
+  .sync-choice-row .sync-choice-actions > button,
+  .accounts-toolbar-actions > button,
+  .accounts-currency-field {
+    width: 100%;
+  }
+}

@@ -14,3 +14,13 @@ Included in this build:
 - New Capito icon is used on the start screen, header, manifest and favicon.
 
 If a browser keeps old behavior, open `/cache-reset.html`, reset cache once, then open `/index.html`.
+
+
+## Update: sync resolution, display currency, unified import
+
+- Settings sync troubleshooting now has three manual resolution actions:
+  - Keep local: upload the current local/offline state to Firebase.
+  - Merge both: combine local and Firebase records, preferring newer records when IDs conflict.
+  - Take Firebase: discard the local/offline view and reload server data.
+- Accounts page has a Display currency selector. This affects account cards and the home balances chart display only; it does not change native account currencies.
+- The import page now uses one unified file input. It auto-detects bank transactions and broker holdings from the same file when possible.

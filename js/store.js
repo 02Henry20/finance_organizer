@@ -498,6 +498,141 @@ async function readSettingsForRepair() {
   }
 }
 
+
+function mergeById(localItems = [], remoteItems = []) {
+  const merged = new Map();
+  const rank = item => Number(item?.clientUpdatedAtMs || item?.createdAtMs || item?.updatedAt?.seconds * 1000 || 0);
+  for (const item of remoteItems || []) merged.set(item.id, item);
+  for (const item of localItems || []) {
+    const current = merged.get(item.id);
+    if (!current || rank(item) >= rank(current)) merged.set(item.id, item);
+  }
+  return [...merged.values()];
+}
+
+async function readServerCollectionStrict(name) {
+  const snapshot = await getDocsFromServer(query(userCollection(name)));
+  return normalizeArray(name, snapshot.docs);
+}
+
+async function readServerSettingsStrict() {
+  const snapshot = await getDocFromServer(userDoc("settings", "preferences"));
+  return snapshot.exists() ? snapshot.data() : {};
+}
+
+function localBackupSnapshot() {
+  return {
+    accounts: [...state.accounts],
+    categories: [...state.categories],
+    rules: [...state.rules],
+    transactions: [...state.transactions],
+    assets: [...state.assets],
+    settings: { ...state.settings, marketApiKeyLocalOnly: "" }
+  };
+}
+
+async function overwriteFirebaseFromSnapshot(snapshot) {
+  const collections = ["accounts", "categories", "rules", "transactions", "assets"];
+  for (const name of collections) await deleteCollectionDocs(name);
+  for (const name of collections) await writeCollectionDocs(name, snapshot[name] || []);
+  await saveDoc("settings", "preferences", {
+    ...DEFAULT_SETTINGS,
+    ...(snapshot.settings || {}),
+    fxRates: { ...DEFAULT_SETTINGS.fxRates, ...((snapshot.settings || {}).fxRates || {}) },
+    marketApiKeyLocalOnly: ""
+  });
+}
+
+function applySnapshot(snapshot, sourceDetail = "Sync state updated") {
+  state.accounts = normalizeArray("accounts", (snapshot.accounts || []).map(item => ({ id: item.id, data: () => item, metadata: {} })));
+  state.categories = normalizeArray("categories", (snapshot.categories || []).map(item => ({ id: item.id, data: () => item, metadata: {} })));
+  state.rules = normalizeArray("rules", (snapshot.rules || []).map(item => ({ id: item.id, data: () => item, metadata: {} })));
+  state.transactions = normalizeArray("transactions", (snapshot.transactions || []).map(item => ({ id: item.id, data: () => item, metadata: {} })));
+  state.assets = normalizeArray("assets", (snapshot.assets || []).map(item => ({ id: item.id, data: () => item, metadata: {} })));
+  state.settings = mergeSettings(snapshot.settings || {});
+  setSync("synced", sourceDetail);
+  notify();
+}
+
+async function readFirebaseSnapshotStrict() {
+  const [accounts, categories, rules, transactions, assets, settings] = await Promise.all([
+    readServerCollectionStrict("accounts"),
+    readServerCollectionStrict("categories"),
+    readServerCollectionStrict("rules"),
+    readServerCollectionStrict("transactions"),
+    readServerCollectionStrict("assets"),
+    readServerSettingsStrict()
+  ]);
+  return { accounts, categories, rules, transactions, assets, settings };
+}
+
+export async function resolveSyncConflict(mode) {
+  if (!state.user?.uid) throw new Error("Sign in first before resolving sync.");
+  const normalizedMode = String(mode || "").trim();
+  if (!["local", "merge", "firebase"].includes(normalizedMode)) throw new Error("Choose keep local, merge both, or take Firebase.");
+
+  setSync("loading", "Resolving sync state", true);
+
+  if (normalizedMode === "local") {
+    const local = localBackupSnapshot();
+    await overwriteFirebaseFromSnapshot(local);
+    setSync("synced", "Local data pushed to Firebase");
+    notify();
+    return {
+      mode: "local",
+      source: "local pushed to Firebase",
+      counts: {
+        accounts: local.accounts.length,
+        categories: local.categories.length,
+        rules: local.rules.length,
+        transactions: local.transactions.length,
+        holdings: local.assets.length
+      }
+    };
+  }
+
+  const remote = await readFirebaseSnapshotStrict();
+
+  if (normalizedMode === "firebase") {
+    applySnapshot(remote, "Firebase data loaded locally");
+    return {
+      mode: "firebase",
+      source: "firebase",
+      counts: {
+        accounts: remote.accounts.length,
+        categories: remote.categories.length,
+        rules: remote.rules.length,
+        transactions: remote.transactions.length,
+        holdings: remote.assets.length
+      }
+    };
+  }
+
+  const local = localBackupSnapshot();
+  const merged = {
+    accounts: mergeById(local.accounts, remote.accounts),
+    categories: mergeById(local.categories, remote.categories),
+    rules: mergeById(local.rules, remote.rules),
+    transactions: mergeById(local.transactions, remote.transactions),
+    assets: mergeById(local.assets, remote.assets),
+    settings: { ...DEFAULT_SETTINGS, ...remote.settings, ...local.settings, fxRates: { ...DEFAULT_SETTINGS.fxRates, ...(remote.settings?.fxRates || {}), ...(local.settings?.fxRates || {}) }, marketApiKeyLocalOnly: "" }
+  };
+  await overwriteFirebaseFromSnapshot(merged);
+  applySnapshot(merged, "Local and Firebase data merged");
+  return {
+    mode: "merge",
+    source: "merged local + firebase",
+    counts: {
+      accounts: merged.accounts.length,
+      categories: merged.categories.length,
+      rules: merged.rules.length,
+      transactions: merged.transactions.length,
+      holdings: merged.assets.length
+    }
+  };
+}
+
+
 export async function repairSync() {
   if (!state.user?.uid) throw new Error("Sign in first before checking sync.");
   setSync("loading", "Checking Firebase and local cache", true);

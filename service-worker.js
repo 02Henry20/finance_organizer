@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-stable-v3";
+const CACHE_NAME = "capito-v18-sync-currency-import";
 const CORE = [
   "./",
   "./index.html",

@@ -19,6 +19,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   portfolioComparisonDate: "",
   hideInternalTransfersInSpending: true,
   showAccountDeltaBars: true,
+  accountDisplayCurrency: "",
   fxLastUpdatedAt: "",
   fxSource: "static fallback",
   fxRates: {
