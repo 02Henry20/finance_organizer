@@ -595,6 +595,7 @@ td { font-size: .9rem; }
 }
 
 @media (max-width: 680px) {
+  .reports-metric-grid { grid-template-columns: 1fr; }
   .pagination-bar {
     align-items: flex-start;
     flex-direction: column;
@@ -604,301 +605,173 @@ td { font-size: .9rem; }
   .compact-segments { width: 100%; }
 }
 
-
-/* Data safety, accounts, mobile density, and custom scrollbars */
+/* Capito final responsive polish */
 * {
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--accent) 58%, var(--muted)) color-mix(in srgb, var(--surface-2) 70%, transparent);
+  scrollbar-color: color-mix(in srgb, var(--accent) 62%, var(--muted)) color-mix(in srgb, var(--surface-2) 75%, transparent);
 }
 *::-webkit-scrollbar { width: 10px; height: 10px; }
 *::-webkit-scrollbar-track { background: color-mix(in srgb, var(--surface-2) 70%, transparent); border-radius: 999px; }
-*::-webkit-scrollbar-thumb { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 72%, var(--surface-3)), color-mix(in srgb, var(--primary) 45%, var(--surface-3))); border: 2px solid color-mix(in srgb, var(--surface-2) 78%, transparent); border-radius: 999px; }
-*::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--accent) 82%, var(--primary)); }
+*::-webkit-scrollbar-thumb { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 80%, var(--surface)), color-mix(in srgb, var(--accent-2) 65%, var(--surface))); border: 2px solid color-mix(in srgb, var(--surface-2) 85%, transparent); border-radius: 999px; }
+*::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 
-.import-json-button {
-  border-color: color-mix(in srgb, var(--accent) 46%, transparent) !important;
-  background: color-mix(in srgb, var(--accent) 18%, var(--surface-2)) !important;
-  color: var(--primary) !important;
-}
-.import-json-button:hover { background: color-mix(in srgb, var(--accent) 26%, var(--surface-2)) !important; }
-.delete-all-box { margin-top: 14px; }
-.danger-zone-row { border-color: color-mix(in srgb, var(--red) 32%, var(--line)); background: color-mix(in srgb, var(--red) 8%, var(--surface-2)); }
-
-.category-cell,
-.category-pill { min-width: 0; max-width: 100%; }
-.category-cell .category-pill,
-td .category-pill {
-  max-width: min(100%, 170px);
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.category-pill { overflow: hidden; text-overflow: ellipsis; }
-.dialog-table .category-cell .category-pill { max-width: 150px; }
-
-.account-group { display: grid; gap: 12px; margin-bottom: 24px; min-width: 0; }
-.account-group:last-child { margin-bottom: 0; }
-.account-group-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.account-group-heading .eyebrow { margin: 0; }
-.account-group-grid { min-width: 0; }
-.account-card { min-width: 0; }
-.account-card-header { min-width: 0; }
-.account-title-block { min-width: 0; display: grid; gap: 4px; }
-.account-title-block h3,
-.account-title-block small {
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.account-identifier { color: var(--muted); font-size: .72rem; }
-.account-main-value { color: var(--text); }
-.account-change {
-  display: block;
-  min-width: 0;
-  max-width: 100%;
-  margin-top: 5px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: .72rem;
-}
-.account-card-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.account-card-actions button { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.hidden-account-card { opacity: .58; filter: grayscale(.45); }
-.hidden-pill { opacity: .75; }
-.account-holding-summary { padding: 10px 12px; }
-.account-holding-summary small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.rules-scroll-list { max-height: 62vh; overflow: auto; padding-right: 4px; }
-.rules-search { margin-bottom: 12px; }
-.mobile-fold-button { display: none; }
-.empty-list-note { padding: 14px; border: 1px dashed var(--line); border-radius: 18px; }
-
-@media (max-width: 920px) {
-  .report-controls {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-  }
-  .report-mode-control { grid-column: 1 / -1; }
-  .reports-metric-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-  }
-  .reports-metric-grid .metric-card {
-    min-height: 108px;
-    padding: 13px;
-    border-radius: 20px;
-  }
-  .reports-metric-grid .metric-card span { font-size: .68rem; }
-  .reports-metric-grid .metric-card strong { font-size: clamp(1.02rem, 5vw, 1.32rem); letter-spacing: -.045em; }
-  .reports-metric-grid .metric-card small { font-size: .68rem; line-height: 1.25; }
-  .rules-layout { gap: 12px; }
-  .mobile-fold-button { display: inline-flex; }
-  .rules-panel:not(.mobile-expanded) .rules-search,
-  .rules-panel:not(.mobile-expanded) .rules-scroll-list { display: none; }
-  .rules-panel.mobile-expanded .mobile-fold-button { border-color: var(--line-strong); background: var(--surface-2); }
-  .rules-scroll-list { max-height: 55vh; }
-}
-
-@media (max-width: 680px) {
-  .reports-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .reports-toolbar { padding: 15px; gap: 12px; }
-  .report-controls .field span { font-size: .68rem; }
-  .report-controls input,
-  .report-controls select { min-height: 40px; padding: 8px 10px; font-size: .82rem; }
-  #accounts-grid { display: grid; gap: 18px; }
-  .account-group-grid,
-  .hidden-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-  .account-card { padding: 12px; border-radius: 20px; gap: 10px; }
-  .account-title-block h3 { font-size: .92rem; }
-  .account-title-block small { font-size: .64rem; line-height: 1.25; }
-  .hidden-pill { display: none; }
-  .account-value-row { grid-template-columns: 1fr; gap: 8px; }
-  .account-value-row div { padding: 9px; border-radius: 15px; }
-  .account-value-row span { font-size: .62rem; }
-  .account-value-row strong { font-size: .92rem; letter-spacing: -.035em; }
-  .account-change { font-size: .6rem; }
-  .account-card-actions { grid-template-columns: 1fr; gap: 6px; }
-  .account-card-actions .compact { min-height: 34px; padding: 7px 8px; font-size: .72rem; }
-  .account-holding-summary { padding: 8px 9px; border-radius: 14px; }
-  .account-holding-summary small { font-size: .62rem; }
-  .category-cell .category-pill,
-  td .category-pill { max-width: 118px; }
-}
-
-
-/* Final account/report trend refinements */
-.toolbar-subnote { display:block; margin-top: 4px; color: var(--muted); font-size: .78rem; font-weight: 760; }
-.balance-card .metric-label span:not(.metric-tag) {
-  color: var(--bg) !important;
-  font-size: clamp(1.15rem, 2vw, 1.55rem) !important;
-  font-weight: 950 !important;
-  letter-spacing: -.035em;
-  text-shadow: 0 1px 0 color-mix(in srgb, var(--text) 24%, transparent);
-}
-.net-worth-meta > div:first-child strong {
-  font-size: clamp(1.28rem, 2.6vw, 1.75rem);
-  line-height: 1.05;
-}
-.net-worth-meta .delta-label { font-size: .72rem; font-weight: 760; color: color-mix(in srgb, var(--text) 54%, transparent); }
-.net-worth-meta small { font-size: .7rem; }
-.net-worth-meta span { font-size: .95rem; }
-.net-worth-meta b { font-weight: 900; }
-.delta-up { color: var(--green) !important; }
-.delta-down { color: var(--red) !important; }
-.delta-flat { color: var(--muted) !important; }
-.field-help { display:block; margin-top: 4px; color: var(--muted); font-size: .72rem; line-height: 1.35; }
-.hidden-accounts-section { display: grid; gap: 12px; margin-top: 24px; }
-.hidden-group-heading { margin-bottom: 2px; }
-
-@media (min-width: 681px) {
-  #accounts-grid { display: grid; gap: 22px; }
-  .account-group-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 16px; }
-  .broker-group .account-group-grid { grid-template-columns: repeat(auto-fill, minmax(390px, 1fr)); }
-  .hidden-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 16px; }
-  .account-card { padding: 22px; border-radius: var(--radius-xl); gap: 14px; }
-  .account-title-block h3 { font-size: 1.12rem; }
-  .account-title-block small { font-size: .76rem; }
-  .account-value-row { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; }
-  .broker-card .account-value-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .account-value-row div { padding: 13px; border-radius: 20px; }
-  .account-value-row span { font-size: .76rem; }
-  .account-value-row strong { font-size: 1.2rem; }
-  .account-card-actions { display: flex; grid-template-columns: none; gap: 8px; flex-wrap: wrap; }
-  .account-card-actions .compact { min-height: 38px; padding: 9px 13px; font-size: inherit; }
-  .account-change { font-size: .72rem; }
-}
-
-@media (max-width: 430px) {
-  .chart-card:has(#category-donut-chart) .chart-wrap,
-  .chart-card:has(#report-category-chart) .chart-wrap { min-height: 218px; }
-}
-
-
-/* Net-worth emphasis and final account/chart layout fixes */
-.net-worth-heading {
+.balance-card .net-worth-title {
+  display: inline-flex;
   align-items: center;
-  gap: 14px;
-}
-.net-worth-title {
-  display: inline-flex !important;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 13px;
-  border: 1px solid color-mix(in srgb, var(--accent) 44%, transparent);
+  padding: 9px 15px;
+  border: 1px solid color-mix(in srgb, var(--accent) 48%, transparent);
   border-radius: 999px;
-  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 22%, transparent), color-mix(in srgb, var(--accent-2) 13%, transparent));
-  color: var(--bg) !important;
-  font-size: clamp(1.32rem, 2.5vw, 2.05rem) !important;
-  font-weight: 980 !important;
-  letter-spacing: -.055em !important;
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--bg) 22%, transparent), 0 10px 28px rgba(0,0,0,.12);
+  color: #102016 !important;
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 62%, #fff));
+  box-shadow: 0 12px 28px rgba(159, 232, 112, .22);
+  font-size: clamp(1rem, 1.8vw, 1.38rem) !important;
+  font-weight: 950;
+  letter-spacing: -.025em !important;
+  text-transform: uppercase;
 }
-.net-worth-title::before {
-  content: "";
-  width: 9px;
-  height: 9px;
-  border-radius: 999px;
-  background: var(--accent);
-  box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 18%, transparent);
-}
-.net-worth-meta > div:first-child strong {
-  display: grid;
-  gap: 5px;
-}
-.net-worth-meta .delta-label {
+.balance-card .net-worth-title::before,
+.balance-card .net-worth-title::after { content: none !important; display: none !important; }
+.net-worth-meta strong .delta-period {
   display: block;
   margin-top: 7px;
-  font-size: .68rem;
-  line-height: 1;
+  color: color-mix(in srgb, var(--text) 54%, transparent);
+  font-style: normal;
+  font-size: .66rem;
+  font-weight: 780;
 }
 #net-worth-window {
   display: block;
   margin-bottom: 9px;
 }
 .cashflow-line {
-  display: flex !important;
-  align-items: baseline;
-  gap: 5px;
-  margin-top: 6px;
-  font-size: 1rem !important;
+  padding-top: 3px;
 }
-.cashflow-line em {
-  font-style: normal;
-  font-weight: 900;
+.cashflow-line i { color: color-mix(in srgb, var(--text) 32%, transparent); font-style: normal; }
+
+.account-strip-card .chart-wrap.short { overflow: hidden; }
+
+#import-json-button.import-json-button,
+.import-json-button {
+  color: #102016;
+  border-color: transparent;
+  background: var(--accent);
+  box-shadow: 0 12px 28px rgba(88, 159, 58, .14);
 }
+#settings-form .primary-button[type="submit"] { display: none !important; }
+
+#accounts-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 26px;
+}
+.account-group-section {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+.account-group-heading,
+.hidden-group-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 2px;
+}
+.account-group-heading .eyebrow,
+.hidden-group-heading .eyebrow { margin: 0; }
+.account-group-grid,
+.hidden-grid {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+.account-card {
+  min-width: 0;
+  gap: 12px;
+  overflow: hidden;
+}
+.account-card-header { align-items: flex-start; min-width: 0; }
+.account-title-block { min-width: 0; display: grid; gap: 3px; }
+.account-title-block h3,
+.account-meta-line,
+.account-identifier {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-identifier { color: var(--muted); font-size: .72rem; font-weight: 760; }
+.account-value-row { align-items: stretch; }
+.account-stat {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 18px;
+  background: var(--surface-2);
+}
+.account-stat span { color: var(--muted); font-size: .7rem; font-weight: 820; text-transform: uppercase; letter-spacing: .06em; }
+.account-stat strong {
+  margin: 0;
+  color: var(--text) !important;
+  font-size: clamp(1.05rem, 1.7vw, 1.32rem);
+  letter-spacing: -.045em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-stat.total-stat {
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--line));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 16%, var(--surface-2)), var(--surface-2));
+}
+.account-stat.total-stat strong { font-size: clamp(1.28rem, 2.15vw, 1.72rem); font-weight: 940; }
+.account-trend { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .72rem; line-height: 1.25; }
+.account-holding-summary { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.broker-value-row { grid-template-columns: 1.35fr 1fr 1fr; }
+.bank-value-row { grid-template-columns: 1fr; }
+.hidden-account-card { opacity: .62; filter: grayscale(.28); }
+.hidden-account-card:hover { opacity: .82; }
+.item-card-actions { align-items: center; }
+.item-card-actions .compact { min-width: 0; }
 
 @media (min-width: 921px) {
-  #accounts-grid {
-    display: grid;
-    gap: 28px;
-  }
-  .account-group {
-    gap: 14px;
-    margin-bottom: 2px;
-  }
-  .account-group-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
-    gap: 18px;
-  }
-  .broker-group .account-group-grid {
-    grid-template-columns: repeat(auto-fit, minmax(560px, 1fr));
-  }
-  .hidden-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
-    gap: 18px;
-  }
-  .account-card {
-    padding: 24px;
-    border-radius: var(--radius-xl);
-    gap: 16px;
-  }
-  .account-card-header {
-    align-items: flex-start;
-  }
-  .account-title-block h3 {
-    font-size: 1.2rem;
-  }
-  .account-title-block small {
-    font-size: .78rem;
-  }
-  .account-value-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
-  }
-  .broker-value-row {
-    grid-template-columns: minmax(0, 1.28fr) minmax(0, .86fr) minmax(0, .86fr);
-    align-items: stretch;
-  }
-  .account-total-tile {
-    order: -1;
-    border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--line));
-    background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 16%, var(--surface-2)), var(--surface-2));
-  }
-  .account-total-tile span {
-    color: var(--primary);
-  }
-  .account-total-tile strong {
-    font-size: clamp(1.38rem, 2.4vw, 1.82rem) !important;
-    font-weight: 960;
-  }
-  .account-card-actions {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
+  .account-group-grid.cash-bank-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .cash-bank-group .account-group-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .broker-group .account-group-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .hidden-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .account-card { padding: 18px; border-radius: 24px; }
+  .account-card .item-card-header { display: flex; }
+  .account-card .item-card-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+  .broker-card .item-card-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .account-card .compact { width: 100%; justify-content: center; padding-inline: 10px; }
+  .account-value-row { gap: 8px; }
 }
 
 @media (max-width: 920px) {
-  .net-worth-title {
-    font-size: clamp(1.08rem, 5vw, 1.45rem) !important;
-    padding: 7px 11px;
-  }
-  .cashflow-line {
-    flex-wrap: wrap;
-    row-gap: 2px;
-  }
+  .account-group-grid,
+  .hidden-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .account-card { padding: 13px; border-radius: 20px; }
+  .account-title-block h3 { font-size: .94rem; }
+  .account-meta-line, .account-identifier { font-size: .63rem; }
+  .broker-value-row { grid-template-columns: 1fr; }
+  .account-value-row { gap: 8px; }
+  .account-stat { padding: 9px; border-radius: 15px; }
+  .account-stat span { font-size: .6rem; }
+  .account-stat strong { font-size: .95rem; }
+  .account-stat.total-stat strong { font-size: 1.1rem; }
+  .account-trend { font-size: .62rem; }
+  .item-card-actions { display: grid; grid-template-columns: 1fr; gap: 7px; }
+  .item-card-actions .compact { min-height: 34px; padding: 7px 8px; font-size: .72rem; }
+  .account-strip-card .chart-wrap.short { height: 270px !important; min-height: 270px !important; }
+  .reports-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px; }
+  .reports-metric-grid .metric-card { min-height: 112px; padding: 13px; }
+  .reports-metric-grid .metric-card strong { font-size: clamp(1.05rem, 5vw, 1.38rem); }
+  .reports-metric-grid .metric-card span, .reports-metric-grid .metric-card small { font-size: .68rem; }
+}
+
+@media (max-width: 680px) {
+  .metric-strip { grid-template-columns: 1fr; }
+  .reports-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
 }

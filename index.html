@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f7f7f2">
-  <meta name="description" content="VaultPilot is a private finance organizer for accounts, bank exports, categories, assets and analytics.">
-  <title>VaultPilot</title>
+  <meta name="description" content="Capito is a private finance organizer for accounts, bank exports, categories, assets and analytics.">
+  <title>Capito</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/icon-192.png">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
@@ -14,11 +14,10 @@
 <body>
   <main id="auth-shell" class="auth-shell">
     <section class="auth-copy">
-      <div class="brand-lockup"><div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div><strong>Vault<span>Pilot</span></strong></div>
+      <div class="brand-lockup"><div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div><strong>Cap<span>ito</span></strong></div>
       <p class="eyebrow">PRIVATE FINANCE ORGANIZER</p>
       <h1>Money, holdings and rules in one calm dashboard.</h1>
-      <p class="lead">A clean fintech-style workspace for bank imports, account balances, broker holdings, debt and review queues.</p>
-    </section>
+          </section>
 
     <section class="auth-card surface-card">
       <div id="boot-status" class="status-pill"><span></span><strong>Loading Firebase…</strong></div>
@@ -35,7 +34,7 @@
 
   <div id="app-shell" class="app-shell" hidden>
     <header class="app-header">
-      <div class="brand-lockup compact"><div class="brand-mark small" aria-hidden="true"><span></span><span></span><span></span></div><strong>Vault<span>Pilot</span></strong></div>
+      <div class="brand-lockup compact"><div class="brand-mark small" aria-hidden="true"><span></span><span></span><span></span></div><strong>Cap<span>ito</span></strong></div>
       <nav class="top-nav" aria-label="Main navigation">
         <button class="nav-button active" data-view="overview" type="button"><span>⌂</span>Home</button>
         <button class="nav-button" data-view="reports" type="button"><span>#</span>Reports</button>
@@ -67,7 +66,7 @@
               </div>
               <div>
                 <small id="net-worth-window">Selected window</small>
-                <span class="cashflow-line"><b id="window-income">—</b> <em id="window-income-label">in</em> <i aria-hidden="true">·</i> <b id="window-expense">—</b> <em id="window-expense-label">out</em></span>
+                <span class="cashflow-line"><b id="window-income">—</b> <em id="window-income-label">in</em> <i aria-hidden="true">|</i> <b id="window-expense">—</b> <em id="window-expense-label">out</em></span>
               </div>
             </div>
           </article>
@@ -242,8 +241,7 @@
               <label class="field"><span>Twelve Data API key (stored only in this browser)</span><input id="setting-market-key" type="password" placeholder="Optional API key"></label>
               <label class="field"><span>Price and FX refresh interval</span><select id="setting-quote-interval"><option value="60">Every hour</option><option value="360">Every 6 hours</option><option value="720">Every 12 hours</option><option value="1440">Every 24 hours</option></select></label>
               <label class="field"><span>Hide internal transfers from spending</span><select id="setting-hide-transfers"><option value="true">Yes</option><option value="false">No</option></select></label>
-              <button class="primary-button" type="submit">Save settings</button>
-              <p id="settings-message" class="form-message"></p>
+              <p id="settings-message" class="form-message" aria-live="polite"></p>
             </form>
           </article>
 

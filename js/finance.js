@@ -1,4 +1,4 @@
-export const APP_NAME = "VaultPilot";
+export const APP_NAME = "Capito";
 export const TODAY = () => new Date().toISOString().slice(0, 10);
 
 export const VALID_CURRENCIES = Object.freeze(["EUR", "USD", "GBP", "CHF", "JPY", "KRW", "CNY", "CAD", "AUD", "NZD", "SEK", "NOK", "DKK", "PLN", "CZK", "HUF", "SGD", "HKD", "INR", "VND", "THB", "MXN", "BRL", "ZAR"]);
@@ -17,8 +17,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   portfolioComparisonMode: "rolling",
   portfolioComparisonDays: 30,
   portfolioComparisonDate: "",
-  showAccountDeltaBars: true,
   hideInternalTransfersInSpending: true,
+  showAccountDeltaBars: true,
   fxLastUpdatedAt: "",
   fxSource: "static fallback",
   fxRates: {

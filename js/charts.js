@@ -165,25 +165,19 @@ export function drawNetSeries(canvas, rows) {
 }
 
 export function drawDonut(canvas, rows, currency = "EUR") {
-  const sorted = (rows || []).filter(row => row.value > 0).sort((a, b) => b.value - a.value);
-  const data = sorted.length <= 9
-    ? sorted
-    : [...sorted.slice(0, 8), {
-      categoryId: "rest",
-      name: "Rest",
-      group: "Rest",
-      color: css("--muted") || "#94a3b8",
-      value: sorted.slice(8).reduce((sum, row) => sum + row.value, 0)
-    }];
+  const source = (rows || []).filter(row => row.value > 0).sort((a, b) => b.value - a.value);
+  const data = source.length > 9
+    ? [...source.slice(0, 8), { name: "Rest", value: source.slice(8).reduce((sum, row) => sum + row.value, 0), color: css("--muted") || "#94a3b8" }]
+    : source.slice(0, 9);
   setEmpty(canvas, !data.length);
   if (!data.length) return;
   const { ctx, width, height, colors: c } = prepare(canvas);
-  const compact = width < 430;
-  const cx = compact ? width * 0.16 : width * 0.34;
+  const mobile = width < 430;
+  const cx = mobile ? width * 0.24 : width * 0.34;
   const cy = height * 0.5;
-  const radius = Math.min(height * (compact ? 0.235 : 0.34), width * (compact ? 0.135 : 0.23));
+  const radius = Math.min(height * 0.34, width * (mobile ? 0.18 : 0.23));
   const total = data.reduce((sum, row) => sum + row.value, 0);
-  const palette = [c.primary, c.accent, c.yellow, c.violet, c.green, c.red, "#69d2ff", "#d19dff"];
+  const palette = [c.primary, c.accent, c.yellow, c.violet, c.green, c.red, "#69d2ff", "#d19dff", c.text];
   let angle = -Math.PI / 2;
   data.forEach((row, i) => {
     const slice = row.value / total * Math.PI * 2;
@@ -197,23 +191,25 @@ export function drawDonut(canvas, rows, currency = "EUR") {
   });
   ctx.save();
   ctx.fillStyle = c.fg;
-  ctx.font = "700 20px Inter, system-ui";
+  const totalLabel = new Intl.NumberFormat(undefined, { style: "currency", currency, notation: "compact", maximumFractionDigits: 1 }).format(total);
+  const centerFont = mobile ? (totalLabel.length > 6 ? 12 : 14) : (totalLabel.length > 7 ? 16 : 20);
+  ctx.font = `800 ${centerFont}px Inter, system-ui`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(new Intl.NumberFormat(undefined, { style: "currency", currency, notation: "compact" }).format(total), cx, cy - 6);
+  ctx.fillText(totalLabel, cx, cy - 5);
   ctx.fillStyle = c.text;
-  ctx.font = "12px Inter, system-ui";
-  ctx.fillText("spent", cx, cy + 15);
+  ctx.font = `${mobile ? 10 : 12}px Inter, system-ui`;
+  ctx.fillText("spent", cx, cy + (mobile ? 12 : 15));
   ctx.restore();
-  const legendX = compact ? width * 0.43 : width * 0.58;
-  ctx.font = "12px Inter, system-ui";
+  const legendX = mobile ? width * 0.45 : width * 0.58;
+  ctx.font = `${mobile ? 11 : 12}px Inter, system-ui`;
   const valueFormatter = new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: 0 });
   const valueLabels = data.map(row => valueFormatter.format(row.value));
-  const valueWidth = Math.max(...valueLabels.map(label => ctx.measureText(label).width), 44);
+  const valueWidth = Math.max(...valueLabels.map(label => ctx.measureText(label).width), mobile ? 36 : 44);
   const valueX = width - 12;
   const labelX = legendX + 18;
-  const labelMax = Math.max(48, valueX - valueWidth - 14 - labelX);
-  let legendY = Math.max(24, cy - data.length * (compact ? 11 : 13));
+  const labelMax = Math.max(42, valueX - valueWidth - 14 - labelX);
+  let legendY = Math.max(24, cy - data.length * (mobile ? 12 : 13));
   data.forEach((row, i) => {
     ctx.fillStyle = row.color || palette[i % palette.length];
     roundedRect(ctx, legendX, legendY - 8, 10, 10, 3);
@@ -225,7 +221,7 @@ export function drawDonut(canvas, rows, currency = "EUR") {
     ctx.textAlign = "right";
     ctx.fillText(valueLabels[i], valueX, legendY);
     ctx.textAlign = "left";
-    legendY += compact ? 22 : 26;
+    legendY += mobile ? 23 : 26;
   });
 }
 
@@ -277,90 +273,78 @@ export function drawAccountBars(canvas, rows, currency = "EUR", options = {}) {
   const previousMap = new Map((options.previousRows || []).map(row => [row.id, row]));
   const data = (rows || [])
     .filter(row => !row.hidden)
-    .map(row => ({ ...row, previousBalance: previousMap.get(row.id)?.balance?.converted ?? 0 }))
-    .sort((a, b) => Math.abs(b.balance.converted) - Math.abs(a.balance.converted))
+    .sort((a, b) => Number(b.balance?.converted || 0) - Number(a.balance?.converted || 0))
     .slice(0, 9);
   setEmpty(canvas, !data.length);
   if (!data.length) return;
-
   const { ctx, width, height, colors: c } = prepare(canvas);
-  const labelSpace = Math.min(width * 0.42, Math.max(132, width * 0.34));
-  const valueSpace = Math.min(96, Math.max(64, width * 0.14));
-  const area = { left: labelSpace, right: width - valueSpace, top: 20, bottom: height - 20 };
-  const max = Math.max(...data.flatMap(row => [Math.abs(row.balance.converted), Math.abs(row.previousBalance || 0)]), 1) * 1.1;
-  const zero = area.left + (area.right - area.left) * 0.5;
-  const half = Math.max(36, Math.min(zero - area.left, area.right - zero));
-  const xFor = value => zero + (Number(value || 0) / max) * half;
+  const mobile = width < 520;
+  const labelSpace = mobile ? Math.min(142, Math.max(124, width * 0.38)) : Math.min(168, Math.max(128, width * 0.22));
+  const valueSpace = mobile ? Math.min(78, Math.max(58, width * 0.18)) : Math.min(104, Math.max(76, width * 0.14));
+  const area = { left: labelSpace, right: width - valueSpace, top: 18, bottom: height - 18 };
+  const values = data.flatMap(row => {
+    const current = Number(row.balance?.converted || 0);
+    const previous = Number(previousMap.get(row.id)?.balance?.converted ?? current);
+    return [current, previous];
+  });
+  const maxAbs = Math.max(...values.map(value => Math.abs(value)), 1);
+  const zero = area.left + (area.right - area.left) * (mobile ? 0.46 : 0.44);
+  const negScale = (zero - area.left - 8) / maxAbs;
+  const posScale = (area.right - zero - 8) / maxAbs;
   const rowH = (area.bottom - area.top) / data.length;
-  const fmt = new Intl.NumberFormat(undefined, { style: "currency", currency, notation: "compact" });
+  const labelMax = Math.max(48, area.left - 18);
+  ctx.font = `${mobile ? 11 : 12}px Inter, system-ui`;
 
-  ctx.save();
-  ctx.strokeStyle = c.grid;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(zero, area.top - 6);
-  ctx.lineTo(zero, area.bottom + 6);
-  ctx.stroke();
-  ctx.restore();
+  const drawSegment = (fromValue, toValue, y, color, heightPx = 18) => {
+    if (Math.abs(toValue - fromValue) < 0.005) return;
+    const xFor = value => value >= 0 ? zero + value * posScale : zero + value * negScale;
+    const drawOne = (a, b) => {
+      const x1 = xFor(a);
+      const x2 = xFor(b);
+      const x = Math.min(x1, x2);
+      const w = Math.max(3, Math.abs(x2 - x1));
+      ctx.fillStyle = color;
+      roundedRect(ctx, x, y - heightPx / 2, w, heightPx, 7);
+      ctx.fill();
+    };
+    if ((fromValue < 0 && toValue > 0) || (fromValue > 0 && toValue < 0)) {
+      drawOne(fromValue, 0);
+      drawOne(0, toValue);
+    } else {
+      drawOne(fromValue, toValue);
+    }
+  };
 
   data.forEach((row, i) => {
     const y = area.top + i * rowH + rowH * 0.5;
-    const current = Number(row.balance.converted || 0);
-    const previous = Number(row.previousBalance || 0);
+    const current = Number(row.balance?.converted || 0);
+    const previous = Number(previousMap.get(row.id)?.balance?.converted ?? current);
     const delta = current - previous;
-    const name = fitText(ctx, row.name, labelSpace - 20);
 
-    ctx.save();
-    ctx.font = "12px Inter, system-ui";
+    ctx.fillStyle = c.text;
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
-    ctx.fillStyle = c.text;
-    ctx.fillText(name, area.left - 12, y);
-    ctx.restore();
+    ctx.fillText(fitText(ctx, row.name, labelMax), area.left - 12, y);
 
-    const drawSegment = (from, to, color, alpha = 1, heightPx = 18) => {
-      if (Math.abs(to - from) < 0.005) return;
-      const x1 = xFor(from);
-      const x2 = xFor(to);
-      const start = Math.min(x1, x2);
-      const w = Math.max(3, Math.abs(x2 - x1));
-      ctx.save();
-      ctx.globalAlpha = alpha;
-      ctx.fillStyle = color;
-      roundedRect(ctx, start, y - heightPx / 2, w, heightPx, Math.min(8, heightPx / 2));
-      ctx.fill();
-      ctx.restore();
-    };
-
-    if (options.showDelta) {
-      drawSegment(0, previous, previous >= 0 ? c.accent : c.red, 0.34, 18);
-      if (Math.abs(delta) > 0.005) {
-        if (Math.sign(current) !== Math.sign(previous) && Math.abs(previous) > 0.005 && Math.abs(current) > 0.005) {
-          drawSegment(previous, 0, delta >= 0 ? c.green : c.red, 0.72, 18);
-          drawSegment(0, current, delta >= 0 ? c.green : c.red, 0.82, 18);
-        } else {
-          drawSegment(previous, current, delta >= 0 ? c.green : c.red, 0.82, 18);
-        }
-      }
+    if (options.showDelta && Math.abs(delta) > 0.005) {
+      drawSegment(0, previous, y, "rgba(148,163,184,.34)", 18);
+      drawSegment(previous, current, y, delta >= 0 ? c.accent : c.red, 18);
     } else {
-      drawSegment(0, current, current >= 0 ? c.accent : c.red, 0.92, 18);
+      drawSegment(0, current, y, current >= 0 ? c.accent : c.red, 18);
     }
 
-    ctx.save();
+    const valueLabel = new Intl.NumberFormat(undefined, { style: "currency", currency, notation: "compact" }).format(current);
+    const endX = current >= 0 ? zero + current * posScale : zero + current * negScale;
     ctx.fillStyle = c.fg;
-    ctx.font = "12px Inter, system-ui";
-    ctx.textBaseline = "middle";
-    const valueLabel = fmt.format(current);
-    const cx = xFor(current);
-    const valueX = current >= 0 ? Math.min(width - 10, cx + 8) : Math.max(10, cx - 8);
     ctx.textAlign = current >= 0 ? "left" : "right";
+    let valueX = current >= 0 ? endX + 8 : endX - 8;
+    if (current >= 0 && valueX > width - 12) { valueX = width - 12; ctx.textAlign = "right"; }
+    if (current < 0 && valueX < area.left + 8) { valueX = area.left + 8; ctx.textAlign = "left"; }
     ctx.fillText(valueLabel, valueX, y);
-    ctx.restore();
   });
-}
-
-export function clearChart(canvas) {
-  if (!canvas) return;
-  const { ctx, width, height } = prepare(canvas);
-  ctx.clearRect(0, 0, width, height);
+  ctx.strokeStyle = c.grid;
+  ctx.beginPath();
+  ctx.moveTo(zero, area.top - 5);
+  ctx.lineTo(zero, area.bottom + 5);
+  ctx.stroke();
 }

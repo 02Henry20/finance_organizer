@@ -23,7 +23,7 @@ import {
 } from "./finance.js";
 
 const APP_PATH = ["apps", "finance-organizer", "users"];
-const LOCAL_SETTINGS_KEY = "vaultpilot-local-settings-v1";
+const LOCAL_SETTINGS_KEY = "capito-local-settings-v1";
 
 export const state = {
   user: null,
@@ -380,13 +380,13 @@ export async function saveAsset(input) {
     id,
     symbol: String(input.symbol || "").trim().toUpperCase(),
     name: input.name?.trim() || String(input.symbol || "Asset").toUpperCase(),
-    wkn: String(input.wkn || "").trim().toUpperCase(),
-    isin: String(input.isin || "").trim().toUpperCase(),
     type: input.type || "stock",
     quantity: Number(input.quantity || 0),
     currency: (input.currency || state.settings.primaryCurrency || "EUR").toUpperCase(),
     costBasis: Number(input.costBasis || 0),
     buyPrice: Number(input.buyPrice || 0),
+    wkn: String(input.wkn || "").trim().toUpperCase(),
+    isin: String(input.isin || "").trim().toUpperCase(),
     manualPrice: Number(input.manualPrice || 0),
     provider: input.provider || state.settings.marketProvider || "manual",
     accountId: input.accountId || "",
@@ -484,27 +484,8 @@ async function writeCollectionDocs(name, rows = []) {
   return count;
 }
 
-
-export async function deleteAllUserData() {
-  if (!state.user?.uid) throw new Error("No signed-in user.");
-  setSync("loading", "Deleting all data", true);
-  for (const name of ["transactions", "assets", "accounts", "categories", "rules", "settings", "meta"]) {
-    await deleteCollectionDocs(name);
-  }
-  writeLocalSettings({ marketApiKeyLocalOnly: "" });
-  state.accounts = [];
-  state.categories = [...DEFAULT_CATEGORIES];
-  state.rules = [...DEFAULT_RULES];
-  state.transactions = [];
-  state.assets = [];
-  state.settings = { ...DEFAULT_SETTINGS, marketApiKeyLocalOnly: "" };
-  setSync("synced", "All data deleted");
-  notify();
-  return { deleted: true };
-}
-
 export async function importStateBackup(backup, { replace = false } = {}) {
-  if (!backup || typeof backup !== "object") throw new Error("The selected file is not a VaultPilot JSON backup.");
+  if (!backup || typeof backup !== "object") throw new Error("The selected file is not a Capito JSON backup.");
   const collections = ["accounts", "categories", "rules", "transactions", "assets"];
   const hasAny = collections.some(name => Array.isArray(backup[name]));
   if (!hasAny) throw new Error("JSON backup is missing accounts, transactions, categories, rules and assets arrays.");
@@ -538,9 +519,26 @@ export async function importStateBackup(backup, { replace = false } = {}) {
   return counts;
 }
 
+export async function deleteAllData() {
+  const collections = ["transactions", "assets", "rules", "categories", "accounts"];
+  setSync("loading", "Deleting all data", true);
+  for (const name of collections) await deleteCollectionDocs(name);
+  await deleteDoc(userDoc("settings", "preferences")).catch(() => undefined);
+  await deleteDoc(userDoc("meta", "seed")).catch(() => undefined);
+  state.accounts = [];
+  state.categories = [...DEFAULT_CATEGORIES];
+  state.rules = [...DEFAULT_RULES];
+  state.transactions = [];
+  state.assets = [];
+  state.settings = { ...DEFAULT_SETTINGS, marketApiKeyLocalOnly: getLocalMarketApiKey() };
+  setSync("synced", "All data deleted");
+  notify();
+  return { deleted: true };
+}
+
 export async function exportState() {
   return {
-    format: "vaultpilot-export-v1",
+    format: "capito-export-v1",
     exportedAt: new Date().toISOString(),
     user: state.user ? { uid: state.user.uid, email: state.user.email || "" } : null,
     settings: { ...state.settings, marketApiKeyLocalOnly: "" },

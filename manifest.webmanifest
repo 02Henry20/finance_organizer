@@ -1,7 +1,7 @@
 {
-  "name": "VaultPilot",
-  "short_name": "VaultPilot",
-  "description": "Private finance organizer for accounts, imports, broker holdings and analytics.",
+  "name": "Capito",
+  "short_name": "Capito",
+  "description": "Capito finance organizer for accounts, imports, broker holdings and analytics.",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#f5f5ef",
