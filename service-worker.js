@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v31-stooq-display-fallback";
+const CACHE_NAME = "capito-v32-desktop-transaction-account-tools";
 const CORE = [
   "./",
   "./index.html",

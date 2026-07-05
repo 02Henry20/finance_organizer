@@ -2041,3 +2041,60 @@ td .category-pill .category-pill-text,
 #asset-cost-basis[readonly] {
   border-style: dashed;
 }
+
+
+/* v32: desktop-only bulk transaction/account tools */
+.bulk-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface-2);
+}
+.select-col {
+  width: 42px;
+  text-align: center;
+}
+.select-col input {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--accent);
+}
+.is-selected-row {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.account-note-preview {
+  color: var(--muted);
+  font-size: .72rem;
+  font-weight: 760;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 920px) {
+  .desktop-only-tools {
+    display: none !important;
+  }
+  .transactions-table .select-col,
+  .import-preview-table .select-col {
+    display: none !important;
+  }
+}
+@media (min-width: 921px) {
+  .desktop-only-tools {
+    display: flex;
+  }
+  th.desktop-only-tools,
+  td.desktop-only-tools {
+    display: table-cell;
+  }
+  .field.desktop-only-tools,
+  .form-grid.desktop-only-tools {
+    display: grid;
+  }
+}

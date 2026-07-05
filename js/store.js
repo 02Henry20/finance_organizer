@@ -235,6 +235,8 @@ export async function saveAccount(input) {
     currency: (input.currency || state.settings.primaryCurrency || "EUR").toUpperCase(),
     displayCurrency: input.displayCurrency ? String(input.displayCurrency).toUpperCase() : "",
     openingBalance: Number(input.openingBalance || 0),
+    openingBalanceDate: input.openingBalanceDate || "",
+    note: String(input.note || "").trim(),
     hidden: Boolean(input.hidden),
     iban: String(input.iban || "").replace(/\s+/g, "").toUpperCase(),
     accountNumber: String(input.accountNumber || "").trim(),

@@ -118,3 +118,13 @@ If a browser keeps old behavior, open `/cache-reset.html`, reset cache once, the
 
 - Provider-based holdings show latest provider price in the editor instead of stale manual price.
 - Stooq refresh falls back to daily-history CSV when the live quote CSV has no row.
+
+
+## v32 update
+
+- Refresh interval is an hours input and allows decimals such as 0.01.
+- Money formatting now always uses two decimals.
+- Desktop transaction bulk tools added: select, delete, export, group edit.
+- Desktop import preview bulk tools added: select, delete, export, group edit before commit.
+- Transaction filters now include a date period.
+- Accounts now have note and opening-balance date fields.

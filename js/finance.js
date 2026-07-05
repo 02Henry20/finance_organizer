@@ -218,7 +218,7 @@ export function parseDateValue(value) {
 
 export function formatCurrency(value, currency = "EUR", locale = undefined) {
   if (!Number.isFinite(Number(value))) return "—";
-  return new Intl.NumberFormat(locale, { style: "currency", currency, maximumFractionDigits: Math.abs(value) >= 1000 ? 0 : 2 }).format(Number(value));
+  return new Intl.NumberFormat(locale, { style: "currency", currency, minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value));
 }
 
 export function formatNumber(value, digits = 2) {

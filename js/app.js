@@ -106,6 +106,10 @@ let settingsDirty = false;
 let hiddenAccountsExpanded = false;
 let txSort = { key: "date", dir: "desc" };
 let importSort = { key: "date", dir: "asc" };
+let txSelectionMode = false;
+let selectedTransactionIds = new Set();
+let txFilteredRows = [];
+let importSelectedIds = new Set();
 let txPage = 1;
 let importPage = 1;
 let positionsPage = 1;
@@ -837,6 +841,8 @@ function renderTransactions() {
   const currencyFilter = $("#tx-currency-filter")?.value || "all";
   const minAmount = parseMoney($("#tx-min-amount")?.value);
   const maxAmount = parseMoney($("#tx-max-amount")?.value);
+  const dateFrom = $("#tx-date-from")?.value || "";
+  const dateTo = $("#tx-date-to")?.value || "";
   let rows = state.transactions;
   if (search) rows = rows.filter(tx => [tx.description, tx.counterparty, tx.note, tx.reason].join(" ").toLowerCase().includes(search));
   if (accountFilter !== "all") rows = rows.filter(tx => tx.accountId === accountFilter);
@@ -844,6 +850,8 @@ function renderTransactions() {
   if (currencyFilter !== "all") rows = rows.filter(tx => (tx.currency || selectedCurrency()) === currencyFilter);
   if (minAmount != null) rows = rows.filter(tx => Number(tx.amount || 0) >= minAmount);
   if (maxAmount != null) rows = rows.filter(tx => Number(tx.amount || 0) <= maxAmount);
+  if (dateFrom) rows = rows.filter(tx => String(tx.date || "") >= dateFrom);
+  if (dateTo) rows = rows.filter(tx => String(tx.date || "") <= dateTo);
   if (reviewFilter === "review") rows = rows.filter(tx => tx.review);
   if (reviewFilter === "clean") rows = rows.filter(tx => !tx.review);
   rows = sortedRows(rows, txSort, {
@@ -854,6 +862,8 @@ function renderTransactions() {
     amount: tx => Number(tx.amount || 0),
     note: tx => tx.note || ""
   });
+  txFilteredRows = rows;
+  selectedTransactionIds = new Set([...selectedTransactionIds].filter(id => state.transactions.some(tx => tx.id === id)));
   $("#tx-count").textContent = `${rows.length} entries`;
   txPage = renderPagination($("#transactions-pagination"), rows.length, txPage, PAGE_SIZES.transactions, page => {
     txPage = page;
@@ -865,7 +875,10 @@ function renderTransactions() {
     const cat = cats.get(tx.categoryId) || cats.get("misc");
     const account = accounts.get(tx.accountId);
     const tr = document.createElement("tr");
+    const selected = selectedTransactionIds.has(tx.id);
+    tr.classList.toggle("is-selected-row", selected);
     tr.innerHTML = `
+      <td class="select-col desktop-only-tools"><input class="tx-select-checkbox" data-select-tx="${escapeHtml(tx.id)}" type="checkbox" ${selected ? "checked" : ""} aria-label="Select transaction"></td>
       <td>${escapeHtml(tx.date)}</td>
       <td class="description-cell"><strong>${escapeHtml(tx.description)}</strong><small class="muted table-ellipsis">${escapeHtml(tx.counterparty || tx.reason || "")}</small></td>
       <td>${escapeHtml(account?.name || tx.accountId || "—")}</td>
@@ -876,6 +889,13 @@ function renderTransactions() {
     tbody.append(tr);
   }
   tbody.querySelectorAll("[data-edit-tx]").forEach(btn => btn.addEventListener("click", () => openTransactionModal(btn.dataset.editTx)));
+  tbody.querySelectorAll("[data-select-tx]").forEach(box => box.addEventListener("change", event => {
+    const id = event.currentTarget.dataset.selectTx;
+    if (event.currentTarget.checked) selectedTransactionIds.add(id);
+    else selectedTransactionIds.delete(id);
+    renderTransactions();
+  }));
+  updateTransactionSelectionUi();
 }
 
 function accountRowFor(account, rows) {
@@ -960,6 +980,7 @@ function buildAccountCard(account, row, previousRow, { hidden = false } = {}) {
         <h3 title="${escapeHtml(account.name)}">${escapeHtml(account.name)}</h3>
         <small class="account-meta-line">${escapeHtml(account.institution || "Manual")} · ${escapeHtml(account.type)} · Native ${escapeHtml(account.currency || selectedCurrency())}${currency !== (account.currency || selectedCurrency()).toUpperCase() ? ` · shown in ${escapeHtml(currency)}` : ""}</small>
         <small class="account-identifier">${escapeHtml(identifier)}</small>
+        ${account.note ? `<small class="account-note-preview">${escapeHtml(account.note)}</small>` : ""}
       </div>
       <div class="account-card-controls">
         ${hidden ? `<span class="category-pill hidden-pill">Hidden</span>` : ""}
@@ -1162,7 +1183,7 @@ function renderSettings() {
   $("#setting-market-provider").value = state.settings.marketProvider || "twelvedata";
   $("#setting-market-key").value = getLocalMarketApiKey();
   $("#setting-hide-transfers").value = String(state.settings.hideInternalTransfersInSpending !== false);
-  $("#setting-quote-interval").value = String(state.settings.quoteRefreshIntervalMinutes ?? 720);
+  $("#setting-quote-interval").value = String(Number(state.settings.quoteRefreshIntervalMinutes ?? 720) / 60);
   const deltaBars = $("#setting-account-delta-bars");
   if (deltaBars) deltaBars.value = String(state.settings.showAccountDeltaBars !== false);
   setCompareMode(compareMode);
@@ -1207,7 +1228,7 @@ async function saveSettingsFromForm({ silent = true } = {}) {
     theme: $("#setting-theme").value,
     motion: $("#setting-motion").value,
     marketProvider: $("#setting-market-provider").value,
-    quoteRefreshIntervalMinutes: Number($("#setting-quote-interval").value || 720),
+    quoteRefreshIntervalMinutes: Math.max(0.6, Number($("#setting-quote-interval").value || 12) * 60),
     portfolioComparisonMode: comparisonMode,
     portfolioComparisonDays: comparisonMode === "rolling" ? Number($("#setting-compare-days").value || 30) : Number(state.settings.portfolioComparisonDays || 30),
     portfolioComparisonDate: comparisonMode === "date" ? $("#setting-compare-date").value || "" : "",
@@ -1306,6 +1327,8 @@ function openAccountModal(id = "") {
   const accountDisplaySelect = $("#account-display-currency");
   if (accountDisplaySelect) accountDisplaySelect.innerHTML = accountCurrencyOptions(account?.displayCurrency || "", account?.currency || selectedCurrency());
   $("#account-opening").value = account?.openingBalance ?? 0;
+  $("#account-opening-date").value = account?.openingBalanceDate || "";
+  $("#account-note").value = account?.note || "";
   $("#account-iban").value = account?.iban || "";
   $("#account-number").value = account?.accountNumber || "";
   $("#account-bic").value = account?.bic || "";
@@ -1730,8 +1753,10 @@ function renderImportPreview() {
   tbody.replaceChildren();
   if (!activePreview) {
     $("#preview-count").textContent = "No file";
+    importSelectedIds.clear();
     renderPagination($("#import-preview-pagination"), 0, 1, PAGE_SIZES.importPreview, () => {});
     updateSortButtons("import", importSort);
+    updateImportSelectionUi();
     return;
   }
   const cats = categoryMap();
@@ -1742,6 +1767,7 @@ function renderImportPreview() {
     category: tx => cats.get(tx.categoryId)?.name || tx.categoryId || "",
     status: tx => tx.review ? "Needs review" : "Prepared"
   });
+  importSelectedIds = new Set([...importSelectedIds].filter(id => activePreview.transactions.some(tx => (tx.id || tx.externalId) === id)));
   $("#preview-count").textContent = `${activePreview.transactions.length} accepted · ${activePreview.skipped.length} skipped`;
   importPage = renderPagination($("#import-preview-pagination"), rows.length, importPage, PAGE_SIZES.importPreview, page => {
     importPage = page;
@@ -1750,10 +1776,20 @@ function renderImportPreview() {
   updateSortButtons("import", importSort);
   for (const tx of pagedRows(rows, importPage, PAGE_SIZES.importPreview)) {
     const cat = cats.get(tx.categoryId) || cats.get("misc");
+    const id = tx.id || tx.externalId;
+    const selected = importSelectedIds.has(id);
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${escapeHtml(tx.date)}</td><td class="description-cell"><strong>${escapeHtml(tx.description)}</strong><small class="muted table-ellipsis">${escapeHtml(tx.reason || "")}</small></td><td class="${tx.amount >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(tx.amount, tx.currency)}</td><td>${categoryPill(cat, { review: tx.review })}</td><td>${tx.review ? "Needs review" : "Prepared"}</td>`;
+    tr.classList.toggle("is-selected-row", selected);
+    tr.innerHTML = `<td class="select-col desktop-only-tools"><input class="import-select-checkbox" data-select-import-tx="${escapeHtml(id)}" type="checkbox" ${selected ? "checked" : ""} aria-label="Select import row"></td><td>${escapeHtml(tx.date)}</td><td class="description-cell"><strong>${escapeHtml(tx.description)}</strong><small class="muted table-ellipsis">${escapeHtml(tx.reason || "")}</small></td><td class="${tx.amount >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(tx.amount, tx.currency)}</td><td>${categoryPill(cat, { review: tx.review })}</td><td>${tx.review ? "Needs review" : "Prepared"}</td>`;
     tbody.append(tr);
   }
+  tbody.querySelectorAll("[data-select-import-tx]").forEach(box => box.addEventListener("change", event => {
+    const id = event.currentTarget.dataset.selectImportTx;
+    if (event.currentTarget.checked) importSelectedIds.add(id);
+    else importSelectedIds.delete(id);
+    renderImportPreview();
+  }));
+  updateImportSelectionUi();
 }
 
 
@@ -1893,13 +1929,7 @@ async function runSyncRepair() {
 
 async function exportTransactionsCsv() {
   const csv = serializeTransactionsCsv(state.transactions, state.categories, state.accounts);
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `capito-transactions-${TODAY()}.csv`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1200);
+  downloadTextFile(`capito-transactions-${TODAY()}.csv`, csv);
 }
 
 
@@ -1912,6 +1942,154 @@ async function exportBackupJson() {
   a.download = `capito-full-backup-${TODAY()}.json`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1200);
+}
+
+
+function downloadTextFile(filename, content, type = "text/csv;charset=utf-8") {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1200);
+}
+
+function selectedTransactions() {
+  const ids = selectedTransactionIds;
+  return state.transactions.filter(tx => ids.has(tx.id));
+}
+
+function updateTransactionSelectionUi() {
+  const count = selectedTransactionIds.size;
+  const toolbar = $("#tx-selection-toolbar");
+  const counter = $("#tx-selected-count");
+  const toggle = $("#tx-selection-toggle");
+  const pageSelect = $("#tx-page-select-all");
+  if (toolbar) toolbar.hidden = !txSelectionMode;
+  if (counter) counter.textContent = `${count} selected`;
+  if (toggle) toggle.textContent = txSelectionMode ? "Done" : "Select";
+  const visibleIds = pagedRows(txFilteredRows, txPage, PAGE_SIZES.transactions).map(tx => tx.id);
+  if (pageSelect) {
+    pageSelect.checked = visibleIds.length > 0 && visibleIds.every(id => selectedTransactionIds.has(id));
+    pageSelect.indeterminate = visibleIds.some(id => selectedTransactionIds.has(id)) && !pageSelect.checked;
+  }
+}
+
+function importPreviewSelectedRows() {
+  if (!activePreview?.transactions) return [];
+  return activePreview.transactions.filter(tx => importSelectedIds.has(tx.id || tx.externalId));
+}
+
+function updateImportSelectionUi() {
+  const count = importSelectedIds.size;
+  const toolbar = $("#import-selection-toolbar");
+  const counter = $("#import-selected-count");
+  const pageSelect = $("#import-page-select-all");
+  if (toolbar) toolbar.hidden = !activePreview?.transactions?.length;
+  if (counter) counter.textContent = `${count} selected`;
+  const rows = activePreview?.transactions || [];
+  const pageRows = pagedRows(sortedRows(rows, importSort, {
+    date: tx => tx.date || "",
+    description: tx => tx.description || "",
+    amount: tx => Number(tx.amount || 0),
+    category: tx => categoryMap().get(tx.categoryId)?.name || tx.categoryId || "",
+    status: tx => tx.review ? "Needs review" : "Prepared"
+  }), importPage, PAGE_SIZES.importPreview);
+  const visibleIds = pageRows.map(tx => tx.id || tx.externalId);
+  if (pageSelect) {
+    pageSelect.checked = visibleIds.length > 0 && visibleIds.every(id => importSelectedIds.has(id));
+    pageSelect.indeterminate = visibleIds.some(id => importSelectedIds.has(id)) && !pageSelect.checked;
+  }
+}
+
+function promptBulkTransactionPatch(count) {
+  const categoryText = prompt(`Group edit ${count} selected transactions.\nCategory: enter category name or ID. Leave empty to keep existing categories.`);
+  if (categoryText === null) return null;
+  let categoryId = "";
+  const wanted = normalizeText(categoryText);
+  if (wanted) {
+    const cat = state.categories.find(item => normalizeText(item.id) === wanted || normalizeText(item.name) === wanted);
+    if (!cat) {
+      toast("Category not found", "Use a category name or ID exactly as shown in Capito.", "error");
+      return null;
+    }
+    categoryId = cat.id;
+  }
+  const noteText = prompt("Note: enter new note. Leave empty to keep existing notes. Type __CLEAR__ to clear notes.");
+  if (noteText === null) return null;
+  const counterpartyText = prompt("Counterparty: enter new counterparty. Leave empty to keep existing counterparties. Type __CLEAR__ to clear.");
+  if (counterpartyText === null) return null;
+  const reviewText = prompt("Review status: enter yes, no, or leave empty to keep.");
+  if (reviewText === null) return null;
+  const patch = {};
+  if (categoryId) patch.categoryId = categoryId;
+  if (noteText) patch.note = noteText === "__CLEAR__" ? "" : noteText;
+  if (counterpartyText) patch.counterparty = counterpartyText === "__CLEAR__" ? "" : counterpartyText;
+  if (/^(yes|y|true|review)$/i.test(reviewText.trim())) patch.review = true;
+  else if (/^(no|n|false|clean)$/i.test(reviewText.trim())) patch.review = false;
+  if (!Object.keys(patch).length) return {};
+  return patch;
+}
+
+async function deleteSelectedTransactions() {
+  const rows = selectedTransactions();
+  if (!rows.length) return toast("No transactions selected", "", "error");
+  if (!confirm(`Delete ${rows.length} selected transactions permanently?`)) return;
+  for (const tx of rows) await deleteTransaction(tx.id);
+  selectedTransactionIds.clear();
+  toast("Transactions deleted", `${rows.length} removed.`);
+  renderTransactions();
+}
+
+async function groupEditSelectedTransactions() {
+  const rows = selectedTransactions();
+  if (!rows.length) return toast("No transactions selected", "", "error");
+  const patch = promptBulkTransactionPatch(rows.length);
+  if (patch === null) return;
+  if (!Object.keys(patch).length) return toast("No changes", "Nothing was changed.");
+  if (!confirm(`Apply these changes to ${rows.length} selected transactions?`)) return;
+  await saveTransactionsBatch(rows.map(tx => ({ ...tx, ...patch, source: tx.source || "bulk-edit" })));
+  toast("Transactions updated", `${rows.length} changed.`);
+  renderTransactions();
+}
+
+function exportSelectedTransactions() {
+  const rows = selectedTransactions();
+  if (!rows.length) return toast("No transactions selected", "", "error");
+  downloadTextFile(`capito-selected-transactions-${TODAY()}.csv`, serializeTransactionsCsv(rows, state.categories, state.accounts));
+}
+
+function exportImportSelection() {
+  const rows = importPreviewSelectedRows();
+  if (!rows.length) return toast("No import rows selected", "", "error");
+  downloadTextFile(`capito-selected-import-rows-${TODAY()}.csv`, serializeTransactionsCsv(rows, state.categories, state.accounts));
+}
+
+function deleteSelectedImportRows() {
+  const rows = importPreviewSelectedRows();
+  if (!rows.length) return toast("No import rows selected", "", "error");
+  if (!confirm(`Delete ${rows.length} selected rows from the import preview?`)) return;
+  const ids = new Set(rows.map(tx => tx.id || tx.externalId));
+  activePreview.transactions = activePreview.transactions.filter(tx => !ids.has(tx.id || tx.externalId));
+  importSelectedIds.clear();
+  toast("Preview rows deleted", `${rows.length} removed from this import.`);
+  renderImportPreview();
+  updateUnifiedImportSummary();
+}
+
+function groupEditImportRows() {
+  const rows = importPreviewSelectedRows();
+  if (!rows.length) return toast("No import rows selected", "", "error");
+  const patch = promptBulkTransactionPatch(rows.length);
+  if (patch === null) return;
+  if (!Object.keys(patch).length) return toast("No changes", "Nothing was changed.");
+  if (!confirm(`Apply these changes to ${rows.length} selected import rows?`)) return;
+  const ids = new Set(rows.map(tx => tx.id || tx.externalId));
+  activePreview.transactions = activePreview.transactions.map(tx => ids.has(tx.id || tx.externalId) ? { ...tx, ...patch } : tx);
+  toast("Import rows updated", `${rows.length} changed.`);
+  renderImportPreview();
+  updateUnifiedImportSummary();
 }
 
 function readJsonFile(file) {
@@ -2047,7 +2225,7 @@ function wireEvents() {
     importPage = 1;
     renderImportPreview();
   });
-  ["#tx-search", "#tx-account-filter", "#tx-category-filter", "#tx-currency-filter", "#tx-min-amount", "#tx-max-amount", "#tx-review-filter"].forEach(selector => $(selector)?.addEventListener("input", () => {
+  ["#tx-search", "#tx-account-filter", "#tx-category-filter", "#tx-currency-filter", "#tx-min-amount", "#tx-max-amount", "#tx-date-from", "#tx-date-to", "#tx-review-filter"].forEach(selector => $(selector)?.addEventListener("input", () => {
     txPage = 1;
     renderTransactions();
   }));
@@ -2058,7 +2236,10 @@ function wireEvents() {
     $("#tx-currency-filter").value = "all";
     $("#tx-min-amount").value = "";
     $("#tx-max-amount").value = "";
+    $("#tx-date-from").value = "";
+    $("#tx-date-to").value = "";
     $("#tx-review-filter").value = "all";
+    selectedTransactionIds.clear();
     txPage = 1;
     renderTransactions();
   });
@@ -2113,6 +2294,56 @@ function wireEvents() {
     $(selector)?.addEventListener(selector === "#asset-quantity" || selector === "#asset-buy-price" ? "input" : "change", syncAssetPricingFields);
   });
   $("#transaction-category")?.addEventListener("change", syncTransactionReviewControl);
+
+  $("#tx-selection-toggle")?.addEventListener("click", () => {
+    txSelectionMode = !txSelectionMode;
+    if (!txSelectionMode) selectedTransactionIds.clear();
+    renderTransactions();
+  });
+  $("#tx-page-select-all")?.addEventListener("change", event => {
+    const visibleIds = pagedRows(txFilteredRows, txPage, PAGE_SIZES.transactions).map(tx => tx.id);
+    if (event.currentTarget.checked) visibleIds.forEach(id => selectedTransactionIds.add(id));
+    else visibleIds.forEach(id => selectedTransactionIds.delete(id));
+    renderTransactions();
+  });
+  $("#tx-select-all-filtered")?.addEventListener("click", () => {
+    txFilteredRows.forEach(tx => selectedTransactionIds.add(tx.id));
+    renderTransactions();
+  });
+  $("#tx-clear-selection")?.addEventListener("click", () => {
+    selectedTransactionIds.clear();
+    renderTransactions();
+  });
+  $("#tx-delete-selected")?.addEventListener("click", () => deleteSelectedTransactions().catch(error => toast("Delete failed", error.message, "error")));
+  $("#tx-export-selected")?.addEventListener("click", exportSelectedTransactions);
+  $("#tx-group-edit")?.addEventListener("click", () => groupEditSelectedTransactions().catch(error => toast("Group edit failed", error.message, "error")));
+
+  $("#import-page-select-all")?.addEventListener("change", event => {
+    if (!activePreview?.transactions) return;
+    const rows = sortedRows(activePreview.transactions, importSort, {
+      date: tx => tx.date || "",
+      description: tx => tx.description || "",
+      amount: tx => Number(tx.amount || 0),
+      category: tx => categoryMap().get(tx.categoryId)?.name || tx.categoryId || "",
+      status: tx => tx.review ? "Needs review" : "Prepared"
+    });
+    const visibleIds = pagedRows(rows, importPage, PAGE_SIZES.importPreview).map(tx => tx.id || tx.externalId);
+    if (event.currentTarget.checked) visibleIds.forEach(id => importSelectedIds.add(id));
+    else visibleIds.forEach(id => importSelectedIds.delete(id));
+    renderImportPreview();
+  });
+  $("#import-select-all")?.addEventListener("click", () => {
+    activePreview?.transactions?.forEach(tx => importSelectedIds.add(tx.id || tx.externalId));
+    renderImportPreview();
+  });
+  $("#import-clear-selection")?.addEventListener("click", () => {
+    importSelectedIds.clear();
+    renderImportPreview();
+  });
+  $("#import-delete-selected")?.addEventListener("click", deleteSelectedImportRows);
+  $("#import-export-selected")?.addEventListener("click", exportImportSelection);
+  $("#import-group-edit")?.addEventListener("click", groupEditImportRows);
+
   $("#export-button")?.addEventListener("click", exportTransactionsCsv);
   $("#export-json-button")?.addEventListener("click", () => exportBackupJson().catch(error => toast("JSON export failed", error.message, "error")));
   $("#repair-sync-button")?.addEventListener("click", runSyncRepair);
@@ -2206,6 +2437,8 @@ function wireEvents() {
         currency: normalizedCurrencyFrom("#account-currency"),
         displayCurrency: $("#account-display-currency")?.value || "",
         openingBalance: parseMoney($("#account-opening").value) || 0,
+        openingBalanceDate: $("#account-opening-date")?.value || "",
+        note: $("#account-note")?.value || "",
         iban: $("#account-iban").value,
         accountNumber: $("#account-number").value,
         bic: $("#account-bic").value,

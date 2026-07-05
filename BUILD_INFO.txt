@@ -1,9 +1,14 @@
-Capito v31 verified build
-Build ID: capito-v31-stooq-display-fallback
-Created: 2026-07-05T14:58:41
+Capito v32 verified build
+Build ID: capito-v32-desktop-transaction-account-tools
+Created: 2026-07-05T15:26:01
 
 Changes:
-- Holding editor now shows lastPrice for Stooq/TwelveData holdings instead of stale manualPrice.
-- Non-manual price field label changes to "Latest provider price".
-- Stooq quote refresh now falls back from q/l live quote CSV to q/d/l daily history CSV.
-- Previous v30 Stooq symbol/currency fixes and v29/v27 features retained.
+- Price and FX refresh interval is now an hours input, supporting values like 0.01 hours.
+- Currency values now always display exactly two decimal places.
+- Desktop transaction overview has date range filters.
+- Desktop transaction overview has selection mode, select filtered/page, export selected, group edit selected, and confirmed delete selected.
+- Desktop import transaction preview has row selection, select all, export selected, group edit selected, and confirmed delete selected before commit.
+- Account editor now includes account note and start balance date fields.
+- Account notes are shown subtly on account cards.
+- Desktop-only tools are hidden on mobile.
+- Previous v31 Stooq fallback/display fixes retained.
