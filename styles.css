@@ -2008,3 +2008,20 @@ td .category-pill .category-pill-text,
     width: min(100%, 220px) !important;
   }
 }
+
+
+/* v26: use the light-mode Net worth number treatment in both themes */
+.balance-card .hero-value,
+:root[data-theme="light"] .balance-card .hero-value,
+:root[data-theme="dark"] .balance-card .hero-value {
+  color: color-mix(in srgb, var(--accent) 84%, #ffffff) !important;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.22), rgba(255,255,255,.075)) !important;
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, rgba(255,255,255,.28)) !important;
+  box-shadow:
+    0 16px 34px rgba(0,0,0,.27),
+    inset 0 1px 0 rgba(255,255,255,.18) !important;
+  text-shadow:
+    0 2px 8px rgba(0,0,0,.72),
+    0 0 1px rgba(0,0,0,.88) !important;
+}

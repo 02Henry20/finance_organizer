@@ -1,9 +1,7 @@
-Capito v25 verified build
-Build ID: capito-v25-reports-accounts-networth
-Created: 2026-07-05T13:26:49
+Capito v26 verified build
+Build ID: capito-v26-networth-light-treatment
+Created: 2026-07-05T13:32:12
 
-Changes:
-- Net-worth number has a subtle accent color while staying readable in light/dark mode.
-- Desktop Reports selector box hides the Reports / Period analysis title block.
-- Mobile Reports keeps the title block and colors Reports green.
-- Mobile hidden account toggle sits left of Add account when visible.
+Change:
+- The Net worth number on the Home page now uses the light-mode text treatment in both light and dark mode.
+- No other UI/functionality changes.

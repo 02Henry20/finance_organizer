@@ -76,3 +76,8 @@ If a browser keeps old behavior, open `/cache-reset.html`, reset cache once, the
 - Desktop Reports toolbar shows only selectors.
 - Mobile Reports keeps the Reports heading with green supertext.
 - Mobile hidden-account toggle sits left of Add account when it appears.
+
+
+## v26 update
+
+- Net worth number uses the light-mode design treatment in both light and dark mode.
