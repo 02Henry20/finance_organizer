@@ -48,10 +48,11 @@ import {
 } from "./finance.js";
 import { buildImportPreview, parseBankFile, serializeTransactionsCsv } from "./importer.js";
 import { fetchQuote } from "./market.js";
-import { drawAccountBars, drawDonut, drawIncomeExpense, drawNetSeries } from "./charts.js";
+import { drawAccountBars, drawDonut, drawIncomeExpense, drawNetSeries, drawYearComparison } from "./charts.js";
 
 const VIEW_LABELS = {
   overview: ["COMMAND CENTER", "Overview"],
+  reports: ["REPORTS", "Reports"],
   transactions: ["TRANSACTIONS", "Transactions"],
   import: ["BANK DATA", "Import"],
   accounts: ["ACCOUNTS", "Accounts"],
@@ -88,6 +89,27 @@ let renderTimer = null;
 let quoteRefreshTimer = null;
 let settingsDirty = false;
 let hiddenAccountsExpanded = false;
+let txSort = { key: "date", dir: "desc" };
+let importSort = { key: "date", dir: "asc" };
+let txPage = 1;
+let importPage = 1;
+let positionsPage = 1;
+let accountTransactionsPage = 1;
+let activePositionsAccountId = "";
+let activeAccountTransactionsId = "";
+let positionsPeriod = "basis";
+let positionsUnit = "absolute";
+let reportsMode = "month";
+let reportsMonth = monthKey(TODAY());
+let reportsYear = String(new Date().getFullYear());
+let reportsCompareYear = String(new Date().getFullYear() - 1);
+
+const PAGE_SIZES = {
+  transactions: 25,
+  importPreview: 25,
+  positions: 8,
+  accountTransactions: 8
+};
 
 function firebaseErrorMessage(error) {
   const messages = {
@@ -262,6 +284,162 @@ function assetMarketValue(asset) {
   return price * Number(asset.quantity || 0);
 }
 
+function formatPercent(value, digits = 1) {
+  if (!Number.isFinite(Number(value))) return "—";
+  return `${Number(value).toFixed(digits)}%`;
+}
+
+function compareValues(a, b) {
+  const ax = a == null ? "" : a;
+  const bx = b == null ? "" : b;
+  if (typeof ax === "number" && typeof bx === "number") return ax - bx;
+  return String(ax).localeCompare(String(bx), undefined, { numeric: true, sensitivity: "base" });
+}
+
+function sortedRows(rows, sort, getters) {
+  const getter = getters[sort.key] || getters.date || (row => row);
+  const direction = sort.dir === "asc" ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    const primary = compareValues(getter(a), getter(b));
+    if (primary) return primary * direction;
+    return compareValues(a.date || "", b.date || "") * -1;
+  });
+}
+
+function updateSortButtons(tableName, sort) {
+  $$(`[data-sort-table="${tableName}"]`).forEach(button => {
+    const active = button.dataset.sortKey === sort.key;
+    button.classList.toggle("active", active);
+    const indicator = button.querySelector(".sort-indicator");
+    if (indicator) indicator.textContent = active ? (sort.dir === "asc" ? "^" : "v") : "";
+  });
+}
+
+function renderPagination(container, total, currentPage, pageSize, onChange) {
+  if (!container) return currentPage;
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(Math.max(1, currentPage), pages);
+  if (total <= pageSize) {
+    container.hidden = true;
+    container.replaceChildren();
+    return page;
+  }
+  container.hidden = false;
+  const start = total ? (page - 1) * pageSize + 1 : 0;
+  const end = Math.min(total, page * pageSize);
+  container.innerHTML = `
+    <span>${start}-${end} of ${total}</span>
+    <div class="pagination-actions">
+      <button class="ghost-button compact" data-page="prev" type="button" ${page <= 1 ? "disabled" : ""}>Prev</button>
+      <span class="metric-tag">${page} / ${pages}</span>
+      <button class="ghost-button compact" data-page="next" type="button" ${page >= pages ? "disabled" : ""}>Next</button>
+    </div>`;
+  container.querySelector("[data-page='prev']")?.addEventListener("click", () => onChange(page - 1));
+  container.querySelector("[data-page='next']")?.addEventListener("click", () => onChange(page + 1));
+  return page;
+}
+
+function pagedRows(rows, page, pageSize) {
+  return rows.slice((page - 1) * pageSize, page * pageSize);
+}
+
+function monthStart(month) {
+  return `${month}-01`;
+}
+
+function monthEnd(month) {
+  const [year, value] = String(month || monthKey(TODAY())).split("-").map(Number);
+  return new Date(Date.UTC(year, value, 0)).toISOString().slice(0, 10);
+}
+
+function shiftMonth(month, offset) {
+  const [year, value] = String(month || monthKey(TODAY())).split("-").map(Number);
+  const date = new Date(Date.UTC(year, value - 1 + offset, 1));
+  return date.toISOString().slice(0, 7);
+}
+
+function monthLabel(month, options = {}) {
+  const [year, value] = String(month || monthKey(TODAY())).split("-").map(Number);
+  return new Intl.DateTimeFormat(undefined, { month: options.short ? "short" : "long", year: "numeric" }).format(new Date(year, value - 1, 1));
+}
+
+function availableReportYears() {
+  const current = new Date().getFullYear();
+  const years = new Set([current, current - 1, current - 2]);
+  state.transactions.forEach(tx => {
+    const year = Number(String(tx.date || "").slice(0, 4));
+    if (Number.isFinite(year)) years.add(year);
+  });
+  return [...years].sort((a, b) => b - a).map(String);
+}
+
+function periodBoundsForReport() {
+  if (reportsMode === "year") return { start: `${reportsYear}-01-01`, end: `${reportsYear}-12-31`, label: reportsYear };
+  return { start: monthStart(reportsMonth), end: monthEnd(reportsMonth), label: monthLabel(reportsMonth) };
+}
+
+function daysBetween(start, end) {
+  const a = new Date(`${start}T00:00:00`);
+  const b = new Date(`${end}T00:00:00`);
+  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return 1;
+  return Math.max(1, Math.round((b - a) / 86400000) + 1);
+}
+
+function transactionsInRange(start, end) {
+  return state.transactions.filter(tx => {
+    const date = String(tx.date || "");
+    return date >= start && date <= end;
+  });
+}
+
+function includeInSpending(cat) {
+  return !(cat?.type === "transfer" && state.settings.hideInternalTransfersInSpending);
+}
+
+function summarizeTransactions(rows) {
+  const cats = categoryMap();
+  return rows.reduce((totals, tx) => {
+    const cat = cats.get(tx.categoryId) || cats.get("misc");
+    const amount = convertCurrency(Number(tx.amount || 0), tx.currency || selectedCurrency(), state.settings);
+    if (cat?.type === "transfer" && !includeInSpending(cat)) {
+      totals.transfer += amount;
+      return totals;
+    }
+    if (amount >= 0) totals.income += amount;
+    else totals.expense += Math.abs(amount);
+    totals.net += amount;
+    return totals;
+  }, { income: 0, expense: 0, net: 0, transfer: 0 });
+}
+
+function categorySpendForRange(start, end) {
+  const cats = categoryMap();
+  const totals = new Map();
+  for (const tx of transactionsInRange(start, end)) {
+    const cat = cats.get(tx.categoryId) || cats.get("misc");
+    if (cat?.type === "income") continue;
+    if (!includeInSpending(cat)) continue;
+    const value = Math.abs(Math.min(0, convertCurrency(tx.amount, tx.currency || selectedCurrency(), state.settings)));
+    if (value <= 0) continue;
+    const prev = totals.get(cat.id) || { categoryId: cat.id, name: cat.name, group: cat.group, color: cat.color || DEFAULT_CATEGORY_COLOR, value: 0 };
+    prev.value += value;
+    totals.set(cat.id, prev);
+  }
+  return [...totals.values()].sort((a, b) => b.value - a.value);
+}
+
+function aggregateMonths(months) {
+  return months.map(month => ({ month, ...summarizeTransactions(transactionsInRange(monthStart(month), monthEnd(month))) }));
+}
+
+function monthsEndingAt(month, count = 13) {
+  return Array.from({ length: count }, (_, index) => shiftMonth(month, index - count + 1));
+}
+
+function monthsForYear(year) {
+  return Array.from({ length: 12 }, (_, index) => `${year}-${String(index + 1).padStart(2, "0")}`);
+}
+
 function formatDateTime(value) {
   if (!value) return "never";
   const date = new Date(value);
@@ -351,6 +529,7 @@ function renderOverview() {
   const monthExpense = $("#month-expense");
   const monthNet = $("#month-net");
   const currentMonthPill = $("#current-month-pill");
+  const spendingMonthPill = $("#spending-month-pill");
   if (monthIncome) monthIncome.textContent = formatCurrency(monthly.current.income, currency);
   if (monthExpense) monthExpense.textContent = formatCurrency(monthly.current.expense, currency);
   if (monthNet) {
@@ -358,6 +537,7 @@ function renderOverview() {
     monthNet.className = monthly.current.net >= 0 ? "amount-pos" : "amount-neg";
   }
   if (currentMonthPill) currentMonthPill.textContent = monthly.currentMonth;
+  if (spendingMonthPill) spendingMonthPill.textContent = monthLabel(monthly.currentMonth, { short: true });
   const reviewPanel = $("#review-panel");
   const reviewCount = $("#review-count");
   const reviewList = $("#review-list");
@@ -370,7 +550,7 @@ function renderOverview() {
       const item = document.createElement("button");
       item.className = "mini-item link-button";
       item.type = "button";
-      item.innerHTML = `<div><strong>${escapeHtml(tx.description)}</strong><small>${escapeHtml(tx.date)} · ${escapeHtml(tx.reason || "Needs review")}</small></div><span class="amount-neg">${formatCurrency(Math.abs(tx.amount), tx.currency || currency)}</span>`;
+      item.innerHTML = `<div class="review-item-text"><strong class="review-main">${escapeHtml(tx.description)}</strong><small class="review-line">${escapeHtml(tx.date)}</small><small class="review-line">${escapeHtml(tx.reason || "Needs review")}</small></div><span class="amount-neg">${formatCurrency(Math.abs(tx.amount), tx.currency || currency)}</span>`;
       item.addEventListener("click", () => openTransactionModal(tx.id));
       reviewList.append(item);
     }
@@ -379,6 +559,85 @@ function renderOverview() {
   drawNetSeries($("#net-series-chart"), monthly.series);
   drawDonut($("#category-donut-chart"), categorySpend, currency);
   drawAccountBars($("#account-bars-chart"), portfolio.accountRows, currency);
+}
+
+function fillReportControls() {
+  const years = availableReportYears();
+  const selectedYear = reportsMode === "year" ? reportsYear : reportsMonth.slice(0, 4);
+  if (!years.includes(reportsYear)) reportsYear = years[0] || String(new Date().getFullYear());
+  if (!years.includes(reportsCompareYear)) {
+    reportsCompareYear = years.find(year => year !== selectedYear) || String(Number(selectedYear) - 1);
+  }
+  if (reportsCompareYear === selectedYear) reportsCompareYear = String(Number(selectedYear) - 1);
+  const yearOptions = [...new Set([...years, reportsYear, reportsCompareYear, String(Number(selectedYear) - 1)])]
+    .filter(Boolean)
+    .sort((a, b) => Number(b) - Number(a));
+  const reportMonth = $("#report-month");
+  const reportYear = $("#report-year");
+  const reportCompareYear = $("#report-compare-year");
+  const monthField = $("#report-month-field");
+  const yearField = $("#report-year-field");
+  if (reportMonth) reportMonth.value = reportsMonth;
+  if (reportYear) {
+    reportYear.innerHTML = yearOptions.map(year => `<option value="${year}" ${year === reportsYear ? "selected" : ""}>${year}</option>`).join("");
+  }
+  if (reportCompareYear) {
+    reportCompareYear.innerHTML = yearOptions.map(year => `<option value="${year}" ${year === reportsCompareYear ? "selected" : ""}>${year}</option>`).join("");
+  }
+  if (monthField) monthField.hidden = reportsMode !== "month";
+  if (yearField) yearField.hidden = reportsMode !== "year";
+  $$("[data-report-mode]").forEach(button => {
+    const active = button.dataset.reportMode === reportsMode;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+}
+
+function renderReports() {
+  if (!$("#report-income")) return;
+  fillReportControls();
+  const currency = selectedCurrency();
+  const bounds = periodBoundsForReport();
+  const periodRows = transactionsInRange(bounds.start, bounds.end);
+  const summary = summarizeTransactions(periodRows);
+  const categoryRows = categorySpendForRange(bounds.start, bounds.end);
+  const days = daysBetween(bounds.start, bounds.end);
+  const topCategory = categoryRows[0];
+  const savingsRate = summary.income > 0 ? summary.net / summary.income * 100 : null;
+  const selectedYear = reportsMode === "year" ? reportsYear : reportsMonth.slice(0, 4);
+  const trendMonths = reportsMode === "year" ? monthsForYear(reportsYear) : monthsEndingAt(reportsMonth, 13);
+  const trendRows = aggregateMonths(trendMonths);
+  const currentYearRows = aggregateMonths(monthsForYear(selectedYear));
+  const compareYearRows = aggregateMonths(monthsForYear(reportsCompareYear));
+  const yoyRows = currentYearRows.map((row, index) => ({
+    label: new Intl.DateTimeFormat(undefined, { month: "short" }).format(new Date(2000, index, 1)),
+    current: row.expense,
+    previous: compareYearRows[index]?.expense || 0
+  }));
+
+  $("#report-income").textContent = formatCurrency(summary.income, currency);
+  $("#report-spending").textContent = formatCurrency(summary.expense, currency);
+  const netEl = $("#report-net");
+  netEl.textContent = formatCurrency(summary.net, currency);
+  netEl.className = summary.net >= 0 ? "amount-pos" : "amount-neg";
+  $("#report-savings-rate").textContent = savingsRate == null ? "—" : formatPercent(savingsRate);
+  $("#report-daily-spend").textContent = formatCurrency(summary.expense / days, currency);
+  $("#report-days-count").textContent = `${days} days`;
+  $("#report-income-detail").textContent = `${periodRows.filter(tx => Number(tx.amount || 0) > 0).length} inflows`;
+  $("#report-spending-detail").textContent = `${periodRows.filter(tx => Number(tx.amount || 0) < 0).length} outflows`;
+  $("#report-net-detail").textContent = bounds.label;
+  $("#report-top-category").textContent = topCategory?.name || "—";
+  $("#report-top-category-value").textContent = topCategory ? formatCurrency(topCategory.value, currency) : "No spending yet";
+  $("#report-period-pill").textContent = bounds.label;
+  $("#report-cashflow-title").textContent = reportsMode === "year" ? `${reportsYear} monthly cashflow` : "13-month cashflow";
+  $("#report-net-title").textContent = reportsMode === "year" ? `${reportsYear} net flow` : "Rolling net flow";
+  $("#report-spending-title").textContent = `Category split`;
+  $("#report-yoy-title").textContent = `${selectedYear} vs ${reportsCompareYear} spending`;
+
+  drawIncomeExpense($("#report-cashflow-chart"), trendRows, currency);
+  drawNetSeries($("#report-net-chart"), trendRows);
+  drawDonut($("#report-category-chart"), categoryRows, currency);
+  drawYearComparison($("#report-yoy-chart"), yoyRows, currency, { currentLabel: selectedYear, previousLabel: reportsCompareYear });
 }
 
 function fillFilters() {
@@ -402,6 +661,7 @@ function fillFilters() {
 
 function renderTransactions() {
   const tbody = $("#transactions-body");
+  if (!tbody) return;
   const cats = categoryMap();
   const accounts = accountMap();
   const search = $("#tx-search").value.trim().toLowerCase();
@@ -414,19 +674,32 @@ function renderTransactions() {
   if (categoryFilter !== "all") rows = rows.filter(tx => tx.categoryId === categoryFilter);
   if (reviewFilter === "review") rows = rows.filter(tx => tx.review);
   if (reviewFilter === "clean") rows = rows.filter(tx => !tx.review);
+  rows = sortedRows(rows, txSort, {
+    date: tx => tx.date || "",
+    description: tx => tx.description || "",
+    account: tx => accounts.get(tx.accountId)?.name || tx.accountId || "",
+    category: tx => cats.get(tx.categoryId)?.name || tx.categoryId || "",
+    amount: tx => Number(tx.amount || 0),
+    note: tx => tx.note || ""
+  });
   $("#tx-count").textContent = `${rows.length} entries`;
+  txPage = renderPagination($("#transactions-pagination"), rows.length, txPage, PAGE_SIZES.transactions, page => {
+    txPage = page;
+    renderTransactions();
+  });
+  updateSortButtons("transactions", txSort);
   tbody.replaceChildren();
-  for (const tx of rows.slice(0, 400)) {
+  for (const tx of pagedRows(rows, txPage, PAGE_SIZES.transactions)) {
     const cat = cats.get(tx.categoryId) || cats.get("misc");
     const account = accounts.get(tx.accountId);
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${escapeHtml(tx.date)}</td>
-      <td><strong>${escapeHtml(tx.description)}</strong><br><small class="muted">${escapeHtml(tx.counterparty || tx.reason || "")}</small></td>
+      <td class="description-cell"><strong>${escapeHtml(tx.description)}</strong><small class="muted table-ellipsis">${escapeHtml(tx.counterparty || tx.reason || "")}</small></td>
       <td>${escapeHtml(account?.name || tx.accountId || "—")}</td>
       <td>${categoryPill(cat, { review: tx.review })}</td>
       <td class="${Number(tx.amount) >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(tx.amount, tx.currency || selectedCurrency())}</td>
-      <td>${escapeHtml(tx.note || "")}</td>
+      <td class="note-cell"><span class="table-ellipsis" title="${escapeHtml(tx.note || "")}">${escapeHtml(tx.note || "")}</span></td>
       <td class="action-cell"><button class="ghost-button compact" type="button" data-edit-tx="${escapeHtml(tx.id)}">Edit</button></td>`;
     tbody.append(tr);
   }
@@ -464,13 +737,6 @@ function renderAccounts() {
     const isBroker = ["broker", "asset"].includes(account.type);
     const card = document.createElement("article");
     card.className = `surface-card item-card account-card ${isBroker ? "broker-card" : ""}`;
-    const holdingsHtml = holdings.length
-      ? `<div class="holding-list">${holdings.slice(0, 6).map(asset => {
-          const price = Number(asset.lastPrice ?? asset.manualPrice ?? 0);
-          const value = assetMarketValue(asset);
-          return `<button class="holding-row" type="button" data-edit-asset="${escapeHtml(asset.id)}"><span><strong>${escapeHtml(asset.symbol || asset.name)}</strong><small>${Number(asset.quantity || 0).toLocaleString()} × ${formatCurrency(price, asset.currency || account.currency || currency)}</small></span><b>${formatCurrency(value, asset.currency || account.currency || currency)}</b></button>`;
-        }).join("")}${holdings.length > 6 ? `<small class="muted">+${holdings.length - 6} more holdings</small>` : ""}</div>`
-      : `<div class="empty-holdings"><small>${isBroker ? "No holdings in this broker account yet." : "No linked holdings."}</small></div>`;
     card.innerHTML = `
       <div class="item-card-header">
         <div>
@@ -483,9 +749,10 @@ function renderAccounts() {
         <div><span>Cash balance</span><strong class="${row.balance.converted >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(row.balance.raw, account.currency || currency)}</strong></div>
         ${isBroker ? `<div><span>Holdings</span><strong>${formatCurrency(holdingsValue, currency)}</strong></div><div><span>Total</span><strong>${formatCurrency(totalValue, currency)}</strong></div>` : ""}
       </div>
-      ${isBroker ? holdingsHtml : ""}
+      ${isBroker ? `<div class="account-holding-summary"><small>${holdings.length ? `${holdings.length} positions hidden from the card.` : "No positions yet."}</small></div>` : ""}
       <div class="item-card-actions">
-        ${isBroker ? `<button class="secondary-button compact" data-add-asset-for="${escapeHtml(account.id)}" type="button">Add holding</button>` : ""}
+        ${isBroker ? `<button class="secondary-button compact" data-view-positions="${escapeHtml(account.id)}" type="button">View positions</button><button class="secondary-button compact" data-add-asset-for="${escapeHtml(account.id)}" type="button">Add holding</button>` : ""}
+        <button class="ghost-button compact" data-account-transactions="${escapeHtml(account.id)}" type="button">Latest transactions</button>
         <button class="ghost-button compact" data-edit-account="${escapeHtml(account.id)}" type="button">Edit account</button>
       </div>`;
     container.append(card);
@@ -500,7 +767,8 @@ function renderAccounts() {
   }
   container.querySelectorAll("[data-edit-account]").forEach(btn => btn.addEventListener("click", () => openAccountModal(btn.dataset.editAccount)));
   container.querySelectorAll("[data-add-asset-for]").forEach(btn => btn.addEventListener("click", () => openAssetModal("", btn.dataset.addAssetFor)));
-  container.querySelectorAll("[data-edit-asset]").forEach(btn => btn.addEventListener("click", () => openAssetModal(btn.dataset.editAsset)));
+  container.querySelectorAll("[data-view-positions]").forEach(btn => btn.addEventListener("click", () => openPositionsModal(btn.dataset.viewPositions)));
+  container.querySelectorAll("[data-account-transactions]").forEach(btn => btn.addEventListener("click", () => openAccountTransactionsModal(btn.dataset.accountTransactions)));
   hiddenGrid?.querySelectorAll("[data-edit-account]").forEach(btn => btn.addEventListener("click", () => openAccountModal(btn.dataset.editAccount)));
 }
 
@@ -606,11 +874,13 @@ function render() {
   fillFilters();
   if (!state.user) return;
   renderOverview();
+  if (activeView === "reports") renderReports();
   renderTransactions();
   renderAccounts();
   renderAssets();
   renderRules();
   if (activeView === "settings") renderSettings();
+  renderOpenAccountDialogs();
 }
 
 function openModal(type) {
@@ -623,6 +893,17 @@ function closeModal() {
   elements.modalBackdrop.hidden = true;
   $$(`[data-modal]`).forEach(modal => modal.hidden = true);
   document.body.style.overflow = "";
+  activePositionsAccountId = "";
+  activeAccountTransactionsId = "";
+}
+
+function syncTransactionReviewControl() {
+  const category = $("#transaction-category")?.value || "misc";
+  const review = $("#transaction-review");
+  if (!review) return;
+  const locked = Boolean(category && category !== "misc" && category !== "auto");
+  if (locked) review.checked = false;
+  review.disabled = locked;
 }
 
 function openTransactionModal(id = "") {
@@ -639,6 +920,7 @@ function openTransactionModal(id = "") {
   $("#transaction-note").value = tx?.note || "";
   $("#transaction-review").checked = Boolean(tx?.review);
   $("#delete-transaction-button").hidden = !tx;
+  syncTransactionReviewControl();
   openModal("transaction");
 }
 
@@ -675,6 +957,129 @@ function openAssetModal(id = "", accountId = "") {
   $("#asset-hidden").checked = Boolean(asset?.hidden);
   $("#delete-asset-button").hidden = !asset;
   openModal("asset");
+}
+
+function positionDelta(asset) {
+  const currentValue = assetMarketValue(asset);
+  if (positionsPeriod === "today") {
+    const pct = Number(asset.lastChangePercent);
+    if (!Number.isFinite(pct)) return { amount: null, percent: null };
+    const previousValue = currentValue / (1 + pct / 100);
+    return { amount: currentValue - previousValue, percent: pct };
+  }
+  const basis = Number(asset.costBasis || 0);
+  if (!Number.isFinite(basis) || basis <= 0) return { amount: null, percent: null };
+  const amount = currentValue - basis;
+  return { amount, percent: amount / basis * 100 };
+}
+
+function renderPositionsModal() {
+  const tbody = $("#positions-body");
+  if (!tbody || !activePositionsAccountId) return;
+  const account = state.accounts.find(item => item.id === activePositionsAccountId);
+  const holdings = holdingsForAccount(activePositionsAccountId);
+  $("#positions-modal-title").textContent = account ? `${account.name} positions` : "Positions";
+  $("#positions-delta-heading").textContent = positionsPeriod === "today" ? "Today" : "Since buy";
+  $$("[data-position-period]").forEach(button => {
+    const active = button.dataset.positionPeriod === positionsPeriod;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+  $$("[data-position-unit]").forEach(button => {
+    const active = button.dataset.positionUnit === positionsUnit;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+  positionsPage = renderPagination($("#positions-pagination"), holdings.length, positionsPage, PAGE_SIZES.positions, page => {
+    positionsPage = page;
+    renderPositionsModal();
+  });
+  tbody.replaceChildren();
+  if (!holdings.length) {
+    tbody.innerHTML = `<tr><td colspan="6" class="muted">No positions in this account yet.</td></tr>`;
+    return;
+  }
+  for (const asset of pagedRows(holdings, positionsPage, PAGE_SIZES.positions)) {
+    const price = Number(asset.lastPrice ?? asset.manualPrice ?? 0);
+    const value = assetMarketValue(asset);
+    const currency = asset.currency || account?.currency || selectedCurrency();
+    const delta = positionDelta(asset);
+    const deltaValue = positionsUnit === "percent" ? delta.percent : delta.amount;
+    const deltaClass = !Number.isFinite(deltaValue) || Math.abs(deltaValue) < 0.005 ? "delta-flat" : deltaValue >= 0 ? "delta-up" : "delta-down";
+    const deltaText = !Number.isFinite(deltaValue)
+      ? "—"
+      : positionsUnit === "percent"
+        ? formatPercent(deltaValue)
+        : formatCurrency(deltaValue, currency);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><strong>${escapeHtml(asset.symbol || asset.name)}</strong><small class="muted table-ellipsis">${escapeHtml(asset.name || asset.type || "")}</small></td>
+      <td>${Number(asset.quantity || 0).toLocaleString()}</td>
+      <td>${formatCurrency(price, currency)}</td>
+      <td>${formatCurrency(value, currency)}</td>
+      <td><span class="${deltaClass}">${deltaText}</span></td>
+      <td class="action-cell"><button class="ghost-button compact" type="button" data-edit-asset="${escapeHtml(asset.id)}">Edit</button></td>`;
+    tbody.append(tr);
+  }
+  tbody.querySelectorAll("[data-edit-asset]").forEach(btn => btn.addEventListener("click", () => openAssetModal(btn.dataset.editAsset)));
+}
+
+function openPositionsModal(accountId) {
+  activePositionsAccountId = accountId || "";
+  activeAccountTransactionsId = "";
+  positionsPage = 1;
+  renderPositionsModal();
+  openModal("positions");
+}
+
+function renderAccountTransactionsModal() {
+  const tbody = $("#account-transactions-body");
+  if (!tbody || !activeAccountTransactionsId) return;
+  const account = state.accounts.find(item => item.id === activeAccountTransactionsId);
+  const cats = categoryMap();
+  const rows = sortedRows(
+    state.transactions.filter(tx => tx.accountId === activeAccountTransactionsId),
+    { key: "date", dir: "desc" },
+    { date: tx => tx.date || "" }
+  );
+  $("#account-transactions-title").textContent = account ? `${account.name} latest transactions` : "Latest transactions";
+  accountTransactionsPage = renderPagination($("#account-transactions-pagination"), rows.length, accountTransactionsPage, PAGE_SIZES.accountTransactions, page => {
+    accountTransactionsPage = page;
+    renderAccountTransactionsModal();
+  });
+  tbody.replaceChildren();
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="6" class="muted">No transactions for this account yet.</td></tr>`;
+    return;
+  }
+  for (const tx of pagedRows(rows, accountTransactionsPage, PAGE_SIZES.accountTransactions)) {
+    const cat = cats.get(tx.categoryId) || cats.get("misc");
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${escapeHtml(tx.date)}</td>
+      <td class="description-cell"><strong>${escapeHtml(tx.description)}</strong><small class="muted table-ellipsis">${escapeHtml(tx.counterparty || tx.reason || "")}</small></td>
+      <td>${categoryPill(cat, { review: tx.review })}</td>
+      <td class="${Number(tx.amount) >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(tx.amount, tx.currency || selectedCurrency())}</td>
+      <td class="note-cell"><span class="table-ellipsis" title="${escapeHtml(tx.note || "")}">${escapeHtml(tx.note || "")}</span></td>
+      <td class="action-cell"><button class="ghost-button compact" type="button" data-edit-tx="${escapeHtml(tx.id)}">Edit</button></td>`;
+    tbody.append(tr);
+  }
+  tbody.querySelectorAll("[data-edit-tx]").forEach(btn => btn.addEventListener("click", () => openTransactionModal(btn.dataset.editTx)));
+}
+
+function openAccountTransactionsModal(accountId) {
+  activeAccountTransactionsId = accountId || "";
+  activePositionsAccountId = "";
+  accountTransactionsPage = 1;
+  renderAccountTransactionsModal();
+  openModal("account-transactions");
+}
+
+function renderOpenAccountDialogs() {
+  if (!elements.modalBackdrop || elements.modalBackdrop.hidden) return;
+  const visibleModal = $("[data-modal]:not([hidden])")?.dataset.modal;
+  if (visibleModal === "positions") renderPositionsModal();
+  if (visibleModal === "account-transactions") renderAccountTransactionsModal();
 }
 
 function openCategoryModal(id = "") {
@@ -785,6 +1190,7 @@ function mappingSelect(field, label) {
 
 function renderMapping() {
   const grid = $("#mapping-grid");
+  if (!grid) return;
   grid.replaceChildren();
   if (!activeParsedFile) {
     grid.innerHTML = `<p class="muted">Upload a file to map columns.</p>`;
@@ -807,19 +1213,79 @@ function renderMapping() {
   }));
 }
 
+function updateImportFileLabel() {
+  const label = $("#import-file-label");
+  const title = $("#import-file-title");
+  const detail = $("#import-file-detail");
+  if (!label || !title || !detail) return;
+  label.classList.toggle("has-file", Boolean(activeParsedFile));
+  if (!activeParsedFile) {
+    title.textContent = "Choose a bank export";
+    detail.textContent = "CSV, semicolon CSV, tab-separated, German and English headers";
+    return;
+  }
+  title.textContent = activeParsedFile.filename;
+  detail.textContent = `${activeParsedFile.rows.length} rows loaded; click to replace`;
+}
+
+function buildActiveImportPreview() {
+  if (!activeParsedFile) return;
+  const account = state.accounts.find(item => item.id === $("#import-account").value);
+  activePreview = buildImportPreview(activeParsedFile, activeParsedFile.mapping, {
+    accountId: $("#import-account").value,
+    currency: account?.currency || selectedCurrency(),
+    rules: state.rules,
+    categories: state.categories,
+    accounts: state.accounts
+  }, state.transactions);
+  importPage = 1;
+  $("#commit-import-button").disabled = !activePreview.transactions.length;
+  $("#reset-import-button").disabled = false;
+  setMessage($("#import-message"), `${activePreview.transactions.length} rows ready. ${activePreview.transactions.filter(tx => tx.review).length} need review.`);
+  renderImportPreview();
+}
+
+function resetImportFlow(message = "") {
+  activeParsedFile = null;
+  activePreview = null;
+  importPage = 1;
+  const fileInput = $("#import-file");
+  if (fileInput) fileInput.value = "";
+  $("#commit-import-button").disabled = true;
+  $("#reset-import-button").disabled = true;
+  updateImportFileLabel();
+  setMessage($("#import-message"), message);
+  renderImportPreview();
+}
+
 function renderImportPreview() {
   const tbody = $("#import-preview-body");
+  if (!tbody) return;
   tbody.replaceChildren();
   if (!activePreview) {
     $("#preview-count").textContent = "No file";
+    renderPagination($("#import-preview-pagination"), 0, 1, PAGE_SIZES.importPreview, () => {});
+    updateSortButtons("import", importSort);
     return;
   }
   const cats = categoryMap();
+  const rows = sortedRows(activePreview.transactions, importSort, {
+    date: tx => tx.date || "",
+    description: tx => tx.description || "",
+    amount: tx => Number(tx.amount || 0),
+    category: tx => cats.get(tx.categoryId)?.name || tx.categoryId || "",
+    status: tx => tx.review ? "Needs review" : "Prepared"
+  });
   $("#preview-count").textContent = `${activePreview.transactions.length} accepted · ${activePreview.skipped.length} skipped`;
-  for (const tx of activePreview.transactions.slice(0, 100)) {
+  importPage = renderPagination($("#import-preview-pagination"), rows.length, importPage, PAGE_SIZES.importPreview, page => {
+    importPage = page;
+    renderImportPreview();
+  });
+  updateSortButtons("import", importSort);
+  for (const tx of pagedRows(rows, importPage, PAGE_SIZES.importPreview)) {
     const cat = cats.get(tx.categoryId) || cats.get("misc");
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${escapeHtml(tx.date)}</td><td><strong>${escapeHtml(tx.description)}</strong><br><small class="muted">${escapeHtml(tx.reason || "")}</small></td><td class="${tx.amount >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(tx.amount, tx.currency)}</td><td>${categoryPill(cat, { review: tx.review })}</td><td>${tx.review ? "Needs review" : "Prepared"}</td>`;
+    tr.innerHTML = `<td>${escapeHtml(tx.date)}</td><td class="description-cell"><strong>${escapeHtml(tx.description)}</strong><small class="muted table-ellipsis">${escapeHtml(tx.reason || "")}</small></td><td class="${tx.amount >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(tx.amount, tx.currency)}</td><td>${categoryPill(cat, { review: tx.review })}</td><td>${tx.review ? "Needs review" : "Prepared"}</td>`;
     tbody.append(tr);
   }
 }
@@ -958,7 +1424,66 @@ function wireEvents() {
   $$(`[data-close-modal]`).forEach(button => button.addEventListener("click", closeModal));
   elements.modalBackdrop.addEventListener("click", event => { if (event.target === elements.modalBackdrop) closeModal(); });
 
-  ["#tx-search", "#tx-account-filter", "#tx-category-filter", "#tx-review-filter"].forEach(selector => $(selector)?.addEventListener("input", renderTransactions));
+  $("[data-sort-table='transactions']")?.closest("table")?.addEventListener("click", event => {
+    const button = event.target.closest("[data-sort-table='transactions']");
+    if (!button) return;
+    const key = button.dataset.sortKey;
+    txSort = txSort.key === key ? { key, dir: txSort.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "date" ? "desc" : "asc" };
+    txPage = 1;
+    renderTransactions();
+  });
+  $("[data-sort-table='import']")?.closest("table")?.addEventListener("click", event => {
+    const button = event.target.closest("[data-sort-table='import']");
+    if (!button) return;
+    const key = button.dataset.sortKey;
+    importSort = importSort.key === key ? { key, dir: importSort.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "date" ? "asc" : "asc" };
+    importPage = 1;
+    renderImportPreview();
+  });
+  ["#tx-search", "#tx-account-filter", "#tx-category-filter", "#tx-review-filter"].forEach(selector => $(selector)?.addEventListener("input", () => {
+    txPage = 1;
+    renderTransactions();
+  }));
+  $("#reset-tx-filters")?.addEventListener("click", () => {
+    $("#tx-search").value = "";
+    $("#tx-account-filter").value = "all";
+    $("#tx-category-filter").value = "all";
+    $("#tx-review-filter").value = "all";
+    txPage = 1;
+    renderTransactions();
+  });
+  $("#tx-filter-toggle")?.addEventListener("click", () => {
+    const panel = $("#tx-filter-panel");
+    const expanded = !panel.classList.toggle("is-collapsed");
+    $("#tx-filter-toggle").setAttribute("aria-expanded", String(expanded));
+    $("#tx-filter-toggle b").textContent = expanded ? "-" : "+";
+  });
+  $$("[data-report-mode]").forEach(button => button.addEventListener("click", () => {
+    reportsMode = button.dataset.reportMode === "year" ? "year" : "month";
+    renderReports();
+  }));
+  $("#report-month")?.addEventListener("change", event => {
+    reportsMonth = event.target.value || monthKey(TODAY());
+    reportsYear = reportsMonth.slice(0, 4);
+    renderReports();
+  });
+  $("#report-year")?.addEventListener("change", event => {
+    reportsYear = event.target.value || String(new Date().getFullYear());
+    renderReports();
+  });
+  $("#report-compare-year")?.addEventListener("change", event => {
+    reportsCompareYear = event.target.value || String(Number(reportsYear) - 1);
+    renderReports();
+  });
+  $$("[data-position-period]").forEach(button => button.addEventListener("click", () => {
+    positionsPeriod = button.dataset.positionPeriod === "today" ? "today" : "basis";
+    renderPositionsModal();
+  }));
+  $$("[data-position-unit]").forEach(button => button.addEventListener("click", () => {
+    positionsUnit = button.dataset.positionUnit === "percent" ? "percent" : "absolute";
+    renderPositionsModal();
+  }));
+  $("#transaction-category")?.addEventListener("change", syncTransactionReviewControl);
   $("#export-button")?.addEventListener("click", exportTransactionsCsv);
   $("#export-json-button")?.addEventListener("click", () => exportBackupJson().catch(error => toast("JSON export failed", error.message, "error")));
   $("#import-json-file")?.addEventListener("change", event => {
@@ -994,6 +1519,7 @@ function wireEvents() {
         toast("Invalid transaction", "Account, date and amount are required.", "error");
         return;
       }
+      if (input.categoryId && input.categoryId !== "misc" && input.categoryId !== "auto") input.review = false;
       if (!input.categoryId || input.categoryId === "auto") {
         const cat = categorizeTransaction(input, state.rules, state.categories, state.accounts);
         Object.assign(input, cat);
@@ -1005,6 +1531,7 @@ function wireEvents() {
       toast("Save failed", error.message, "error");
     } finally {
       setBusy(form, false);
+      syncTransactionReviewControl();
     }
   });
 
@@ -1159,37 +1686,26 @@ function wireEvents() {
     }
   });
 
+  $("#import-account")?.addEventListener("change", () => {
+    if (activeParsedFile) buildActiveImportPreview();
+  });
+
   $("#import-file").addEventListener("change", async event => {
     const file = event.target.files?.[0];
     if (!file) return;
     try {
       activeParsedFile = await parseBankFile(file);
       activePreview = null;
-      $("#import-summary").hidden = false;
-      $("#import-summary").textContent = `${activeParsedFile.filename}: ${activeParsedFile.rows.length} rows · delimiter ${activeParsedFile.delimiter === "\t" ? "tab" : activeParsedFile.delimiter}`;
-      $("#build-preview-button").disabled = false;
-      $("#commit-import-button").disabled = true;
-      setMessage($("#import-message"), "File loaded. Check mapping, then build preview.");
-      renderMapping();
-      renderImportPreview();
+      updateImportFileLabel();
+      setMessage($("#import-message"), "File loaded. Preview built from expected column names.");
+      buildActiveImportPreview();
     } catch (error) {
       toast("Import failed", error.message, "error");
     }
   });
 
-  $("#build-preview-button").addEventListener("click", () => {
-    if (!activeParsedFile) return;
-    const account = state.accounts.find(item => item.id === $("#import-account").value);
-    activePreview = buildImportPreview(activeParsedFile, activeParsedFile.mapping, {
-      accountId: $("#import-account").value,
-      currency: account?.currency || selectedCurrency(),
-      rules: state.rules,
-      categories: state.categories,
-      accounts: state.accounts
-    }, state.transactions);
-    $("#commit-import-button").disabled = !activePreview.transactions.length;
-    setMessage($("#import-message"), `${activePreview.transactions.length} rows ready. ${activePreview.transactions.filter(tx => tx.review).length} need review.`);
-    renderImportPreview();
+  $("#reset-import-button")?.addEventListener("click", () => {
+    resetImportFlow("Import reset.");
   });
 
   $("#commit-import-button").addEventListener("click", async () => {
@@ -1197,14 +1713,7 @@ function wireEvents() {
     try {
       await saveTransactionsBatch(activePreview.transactions);
       toast("Import complete", `${activePreview.transactions.length} transactions saved.`);
-      activeParsedFile = null;
-      activePreview = null;
-      $("#import-file").value = "";
-      $("#build-preview-button").disabled = true;
-      $("#commit-import-button").disabled = true;
-      $("#import-summary").hidden = true;
-      renderMapping();
-      renderImportPreview();
+      resetImportFlow("Import complete.");
     } catch (error) {
       toast("Import save failed", error.message, "error");
     }

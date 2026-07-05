@@ -81,7 +81,8 @@ function drawLabels(ctx, labels, area, xFor, c) {
     if (i % step !== 0 && i !== labels.length - 1) return;
     const x = xFor(i);
     ctx.textAlign = i === 0 ? "left" : i === labels.length - 1 ? "right" : "center";
-    ctx.fillText(label.slice(2), x, area.bottom + 10);
+    const display = /^\d{4}-\d{2}/.test(label) ? label.slice(2) : label;
+    ctx.fillText(display, x, area.bottom + 10);
   });
   ctx.restore();
 }
@@ -90,6 +91,16 @@ function roundedRect(ctx, x, y, w, h, r) {
   const rr = Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2);
   ctx.beginPath();
   ctx.roundRect(x, y, w, h, rr);
+}
+
+function fitText(ctx, text, maxWidth) {
+  const value = String(text || "");
+  if (ctx.measureText(value).width <= maxWidth) return value;
+  let output = value;
+  while (output.length > 1 && ctx.measureText(`${output}...`).width > maxWidth) {
+    output = output.slice(0, -1);
+  }
+  return `${output.trim()}...`;
 }
 
 export function drawIncomeExpense(canvas, rows, currency = "EUR") {
@@ -184,21 +195,72 @@ export function drawDonut(canvas, rows, currency = "EUR") {
   ctx.font = "12px Inter, system-ui";
   ctx.fillText("spent", cx, cy + 15);
   ctx.restore();
-  const legendX = width * 0.58;
-  let legendY = Math.max(24, cy - data.length * 13);
+  const legendX = width < 430 ? width * 0.52 : width * 0.58;
   ctx.font = "12px Inter, system-ui";
+  const valueFormatter = new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: 0 });
+  const valueLabels = data.map(row => valueFormatter.format(row.value));
+  const valueWidth = Math.max(...valueLabels.map(label => ctx.measureText(label).width), 44);
+  const valueX = width - 12;
+  const labelX = legendX + 18;
+  const labelMax = Math.max(48, valueX - valueWidth - 14 - labelX);
+  let legendY = Math.max(24, cy - data.length * 13);
   data.forEach((row, i) => {
     ctx.fillStyle = row.color || palette[i % palette.length];
     roundedRect(ctx, legendX, legendY - 8, 10, 10, 3);
     ctx.fill();
     ctx.fillStyle = c.fg;
-    ctx.fillText(row.name, legendX + 18, legendY);
+    ctx.textAlign = "left";
+    ctx.fillText(fitText(ctx, row.name, labelMax), labelX, legendY);
     ctx.fillStyle = c.text;
     ctx.textAlign = "right";
-    ctx.fillText(new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: 0 }).format(row.value), width - 12, legendY);
+    ctx.fillText(valueLabels[i], valueX, legendY);
     ctx.textAlign = "left";
     legendY += 26;
   });
+}
+
+export function drawYearComparison(canvas, rows, currency = "EUR", options = {}) {
+  const available = rows?.some(row => Number(row.current || 0) || Number(row.previous || 0));
+  setEmpty(canvas, !available);
+  if (!available) return;
+  const { ctx, width, height, colors: c } = prepare(canvas);
+  const area = { left: 58, right: width - 18, top: 34, bottom: height - 42 };
+  const max = Math.max(...rows.map(row => Math.max(Number(row.current || 0), Number(row.previous || 0))), 1) * 1.18;
+  const y = scale(0, max, area.bottom, area.top);
+  const xStep = (area.right - area.left) / rows.length;
+  const barWidth = Math.max(4, Math.min(13, xStep * 0.25));
+  drawGrid(ctx, area, 0, max, y, c, v => new Intl.NumberFormat(undefined, { notation: "compact" }).format(v));
+  rows.forEach((row, i) => {
+    const x = area.left + i * xStep + xStep / 2;
+    const previousH = area.bottom - y(Number(row.previous || 0));
+    const currentH = area.bottom - y(Number(row.current || 0));
+    ctx.fillStyle = c.violet;
+    roundedRect(ctx, x - barWidth - 2, y(Number(row.previous || 0)), barWidth, previousH, 5);
+    ctx.fill();
+    ctx.fillStyle = c.accent;
+    roundedRect(ctx, x + 2, y(Number(row.current || 0)), barWidth, currentH, 5);
+    ctx.fill();
+  });
+  drawLabels(ctx, rows.map(row => row.label || ""), area, i => area.left + i * xStep + xStep / 2, c);
+  ctx.save();
+  ctx.font = "12px Inter, system-ui";
+  ctx.textBaseline = "middle";
+  const currentLabel = String(options.currentLabel || "Current");
+  const previousLabel = String(options.previousLabel || "Previous");
+  const legendY = 16;
+  ctx.fillStyle = c.accent;
+  roundedRect(ctx, area.left, legendY - 5, 10, 10, 3);
+  ctx.fill();
+  ctx.fillStyle = c.fg;
+  ctx.textAlign = "left";
+  ctx.fillText(currentLabel, area.left + 16, legendY);
+  const prevX = area.left + 92;
+  ctx.fillStyle = c.violet;
+  roundedRect(ctx, prevX, legendY - 5, 10, 10, 3);
+  ctx.fill();
+  ctx.fillStyle = c.fg;
+  ctx.fillText(previousLabel, prevX + 16, legendY);
+  ctx.restore();
 }
 
 export function drawAccountBars(canvas, rows, currency = "EUR") {

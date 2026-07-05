@@ -38,6 +38,7 @@
       <div class="brand-lockup compact"><div class="brand-mark small" aria-hidden="true"><span></span><span></span><span></span></div><strong>Vault<span>Pilot</span></strong></div>
       <nav class="top-nav" aria-label="Main navigation">
         <button class="nav-button active" data-view="overview" type="button"><span>⌂</span>Home</button>
+        <button class="nav-button" data-view="reports" type="button"><span>#</span>Reports</button>
         <button class="nav-button" data-view="transactions" type="button"><span>≡</span>Transactions</button>
         <button class="nav-button" data-view="import" type="button"><span>⇣</span>Import</button>
         <button class="nav-button" data-view="accounts" type="button"><span>💳</span>Accounts</button>
@@ -98,50 +99,93 @@
             <div class="chart-wrap"><canvas id="net-series-chart"></canvas><div class="chart-empty" data-empty-for="net-series-chart">No monthly cashflow yet.</div></div>
           </article>
           <article class="chart-card surface-card">
-            <div class="panel-heading"><div><p class="eyebrow">SPENDING</p><h3>Category split</h3></div></div>
+            <div class="panel-heading"><div><p class="eyebrow">SPENDING</p><h3>Category split</h3></div><span id="spending-month-pill" class="metric-tag">Current month</span></div>
             <div class="chart-wrap"><canvas id="category-donut-chart"></canvas><div class="chart-empty" data-empty-for="category-donut-chart">No expenses this month.</div></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="view" data-view-section="reports">
+        <div class="surface-card reports-toolbar">
+          <div><p class="eyebrow">REPORTS</p><h3>Period analysis</h3></div>
+          <div class="report-controls">
+            <div class="segmented-control report-mode-control" role="group" aria-label="Report period mode">
+              <button class="segment-button active" data-report-mode="month" type="button" aria-pressed="true">Month</button>
+              <button class="segment-button" data-report-mode="year" type="button" aria-pressed="false">Year</button>
+            </div>
+            <label id="report-month-field" class="field compact-field"><span>Month</span><input id="report-month" type="month"></label>
+            <label id="report-year-field" class="field compact-field" hidden><span>Year</span><select id="report-year"></select></label>
+            <label id="report-compare-field" class="field compact-field"><span>Compare year</span><select id="report-compare-year"></select></label>
+          </div>
+        </div>
+
+        <div class="reports-metric-grid">
+          <article class="metric-card surface-card"><span>Income</span><strong id="report-income">—</strong><small id="report-income-detail">Selected period</small></article>
+          <article class="metric-card surface-card danger"><span>Spending</span><strong id="report-spending">—</strong><small id="report-spending-detail">Selected period</small></article>
+          <article class="metric-card surface-card"><span>Net flow</span><strong id="report-net">—</strong><small id="report-net-detail">Income minus spending</small></article>
+          <article class="metric-card surface-card"><span>Savings rate</span><strong id="report-savings-rate">—</strong><small>Net flow / income</small></article>
+          <article class="metric-card surface-card"><span>Avg daily spend</span><strong id="report-daily-spend">—</strong><small id="report-days-count">Calendar days</small></article>
+          <article class="metric-card surface-card"><span>Top category</span><strong id="report-top-category">—</strong><small id="report-top-category-value">No spending yet</small></article>
+        </div>
+
+        <div class="insight-grid reports-grid">
+          <article class="chart-card surface-card">
+            <div class="panel-heading"><div><p class="eyebrow">CASHFLOW</p><h3 id="report-cashflow-title">Income vs spending</h3></div></div>
+            <div class="chart-wrap"><canvas id="report-cashflow-chart"></canvas><div class="chart-empty" data-empty-for="report-cashflow-chart">No cashflow in this period.</div></div>
+          </article>
+          <article class="chart-card surface-card">
+            <div class="panel-heading"><div><p class="eyebrow">NET FLOW</p><h3 id="report-net-title">Monthly balance</h3></div></div>
+            <div class="chart-wrap"><canvas id="report-net-chart"></canvas><div class="chart-empty" data-empty-for="report-net-chart">No monthly net flow yet.</div></div>
+          </article>
+          <article class="chart-card surface-card">
+            <div class="panel-heading"><div><p class="eyebrow">SPENDING</p><h3 id="report-spending-title">Category split</h3></div><span id="report-period-pill" class="metric-tag">Current month</span></div>
+            <div class="chart-wrap"><canvas id="report-category-chart"></canvas><div class="chart-empty" data-empty-for="report-category-chart">No spending in this period.</div></div>
+          </article>
+          <article class="chart-card surface-card">
+            <div class="panel-heading"><div><p class="eyebrow">YEAR OVER YEAR</p><h3 id="report-yoy-title">Monthly spending</h3></div></div>
+            <div class="chart-wrap"><canvas id="report-yoy-chart"></canvas><div class="chart-empty" data-empty-for="report-yoy-chart">No year comparison data yet.</div></div>
           </article>
         </div>
       </section>
 
       <section class="view" data-view-section="transactions">
         <div class="ledger-layout">
-          <aside class="surface-card filter-panel">
-            <p class="eyebrow">FILTERS</p>
-            <label class="field"><span>Search</span><input id="tx-search" type="search" placeholder="description, note, counterparty"></label>
-            <label class="field"><span>Account</span><select id="tx-account-filter"></select></label>
-            <label class="field"><span>Category</span><select id="tx-category-filter"></select></label>
-            <label class="field"><span>Status</span><select id="tx-review-filter"><option value="all">All</option><option value="review">Needs review</option><option value="clean">Clean</option></select></label>
-            <button class="primary-button" data-open-modal="transaction" type="button">Add transaction</button>
+          <aside id="tx-filter-panel" class="surface-card filter-panel is-collapsed">
+            <button id="tx-filter-toggle" class="filter-toggle" type="button" aria-expanded="false"><span>Filters</span><b>+</b></button>
+            <div class="filter-fields">
+              <p class="eyebrow">FILTERS</p>
+              <label class="field"><span>Search</span><input id="tx-search" type="search" placeholder="Search txns"></label>
+              <label class="field"><span>Account</span><select id="tx-account-filter"></select></label>
+              <label class="field"><span>Category</span><select id="tx-category-filter"></select></label>
+              <label class="field"><span>Status</span><select id="tx-review-filter"><option value="all">All</option><option value="review">Needs review</option><option value="clean">Clean</option></select></label>
+              <button id="reset-tx-filters" class="secondary-button" type="button">Reset filters</button>
+            </div>
           </aside>
-          <article class="surface-card table-card">
-            <div class="panel-heading"><div><p class="eyebrow">TRANSACTIONS</p><h3>Transactions</h3></div><span id="tx-count" class="metric-tag">0 entries</span></div>
-            <div class="table-scroll"><table><thead><tr><th>Date</th><th>Description</th><th>Account</th><th>Category</th><th>Amount</th><th>Note</th><th></th></tr></thead><tbody id="transactions-body"></tbody></table></div>
+          <article class="surface-card table-card transactions-card">
+            <div class="panel-heading"><div><p class="eyebrow">TRANSACTIONS</p><h3>Transactions</h3></div><div class="table-heading-actions"><span id="tx-count" class="metric-tag">0 entries</span><button class="primary-button compact add-row-button" data-open-modal="transaction" type="button" title="Add transaction" aria-label="Add transaction">+</button></div></div>
+            <div class="table-scroll"><table class="transactions-table"><thead><tr><th class="date-col"><button class="sort-button" data-sort-table="transactions" data-sort-key="date" type="button">Date <span class="sort-indicator"></span></button></th><th class="description-col"><button class="sort-button" data-sort-table="transactions" data-sort-key="description" type="button">Description <span class="sort-indicator"></span></button></th><th class="account-col"><button class="sort-button" data-sort-table="transactions" data-sort-key="account" type="button">Account <span class="sort-indicator"></span></button></th><th class="category-col"><button class="sort-button" data-sort-table="transactions" data-sort-key="category" type="button">Category <span class="sort-indicator"></span></button></th><th class="amount-col"><button class="sort-button" data-sort-table="transactions" data-sort-key="amount" type="button">Amount <span class="sort-indicator"></span></button></th><th class="note-col"><button class="sort-button" data-sort-table="transactions" data-sort-key="note" type="button">Note <span class="sort-indicator"></span></button></th><th class="actions-col"></th></tr></thead><tbody id="transactions-body"></tbody></table></div>
+            <div id="transactions-pagination" class="pagination-bar"></div>
           </article>
         </div>
       </section>
 
       <section class="view" data-view-section="import">
-        <div class="import-layout">
+        <div class="import-layout import-flow-layout">
           <article class="surface-card import-card main-import">
             <div class="panel-heading"><div><p class="eyebrow">BANK EXPORTS</p><h3>Import CSV / TSV</h3></div></div>
-            <p class="muted">Upload a bank export, choose the target account, check column mapping, then import. Ambiguous rows go into the review queue.</p>
+            <p class="muted">Upload a bank export and import rows using expected date, amount, description, counterparty and currency headers. Ambiguous rows go into the review queue.</p>
             <div class="form-stack">
               <label class="field"><span>Target account</span><select id="import-account"></select></label>
-              <label class="file-drop"><input id="import-file" type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values"><strong>Choose a bank export</strong><small>CSV, semicolon CSV, tab-separated, German and English headers</small></label>
+              <label id="import-file-label" class="file-drop"><input id="import-file" type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values"><strong id="import-file-title">Choose a bank export</strong><small id="import-file-detail">CSV, semicolon CSV, tab-separated, German and English headers</small></label>
+              <div class="button-row"><button id="commit-import-button" class="primary-button" type="button" disabled>Import</button><button id="reset-import-button" class="secondary-button" type="button" disabled>Reset</button></div>
+              <p id="import-message" class="form-message"></p>
             </div>
-            <div id="import-summary" class="import-summary" hidden></div>
-          </article>
-          <article class="surface-card import-card">
-            <div class="panel-heading"><div><p class="eyebrow">MAPPING</p><h3>Columns</h3></div></div>
-            <div id="mapping-grid" class="mapping-grid"></div>
-            <div class="button-row"><button id="build-preview-button" class="secondary-button" type="button" disabled>Build preview</button><button id="commit-import-button" class="primary-button" type="button" disabled>Import accepted rows</button></div>
-            <p id="import-message" class="form-message"></p>
           </article>
         </div>
         <article class="surface-card table-card">
-          <div class="panel-heading"><div><p class="eyebrow">PREVIEW</p><h3>Parsed rows</h3></div><span id="preview-count" class="metric-tag">No file</span></div>
-          <div class="table-scroll"><table><thead><tr><th>Date</th><th>Description</th><th>Amount</th><th>Category</th><th>Status</th></tr></thead><tbody id="import-preview-body"></tbody></table></div>
+          <div class="panel-heading import-preview-heading"><div><p class="eyebrow">PREVIEW</p><h3>Parsed rows</h3></div><span id="preview-count" class="metric-tag">No file</span></div>
+          <div class="table-scroll"><table class="import-preview-table"><thead><tr><th><button class="sort-button" data-sort-table="import" data-sort-key="date" type="button">Date <span class="sort-indicator"></span></button></th><th><button class="sort-button" data-sort-table="import" data-sort-key="description" type="button">Description <span class="sort-indicator"></span></button></th><th><button class="sort-button" data-sort-table="import" data-sort-key="amount" type="button">Amount <span class="sort-indicator"></span></button></th><th><button class="sort-button" data-sort-table="import" data-sort-key="category" type="button">Category <span class="sort-indicator"></span></button></th><th><button class="sort-button" data-sort-table="import" data-sort-key="status" type="button">Status <span class="sort-indicator"></span></button></th></tr></thead><tbody id="import-preview-body"></tbody></table></div>
+          <div id="import-preview-pagination" class="pagination-bar"></div>
         </article>
       </section>
 
@@ -168,6 +212,10 @@
 
       <section class="view" data-view-section="settings">
         <div class="settings-layout">
+          <article class="surface-card settings-card mobile-only mobile-settings-nav">
+            <div class="panel-heading"><div><p class="eyebrow">MOBILE TOOLS</p><h3>Import & rules</h3></div></div>
+            <div class="mobile-tool-actions"><button class="secondary-button" data-go-view="import" type="button">Import</button><button class="secondary-button" data-go-view="rules" type="button">Rules</button></div>
+          </article>
           <article class="surface-card settings-card">
             <div class="panel-heading"><div><p class="eyebrow">APP SETTINGS</p><h3>Preferences</h3></div></div>
             <form id="settings-form" class="form-stack">
@@ -212,7 +260,7 @@
     <nav class="mobile-nav" aria-label="Mobile navigation">
       <button class="active" data-view="overview" type="button"><span>⌂</span><small>Home</small></button>
       <button data-view="transactions" type="button"><span>≡</span><small>Txns</small></button>
-      <button data-view="import" type="button"><span>⇣</span><small>Import</small></button>
+      <button data-view="reports" type="button"><span>#</span><small>Reports</small></button>
       <button data-view="accounts" type="button"><span>💳</span><small>Accounts</small></button>
       <button data-view="settings" type="button"><span>⚙</span><small>More</small></button>
     </nav>
@@ -264,6 +312,28 @@
         <label class="check-row"><input id="asset-hidden" type="checkbox"> Hide holding</label>
         <div class="button-row"><button class="primary-button" type="submit">Save holding</button><button id="delete-asset-button" class="danger-button" type="button" hidden>Delete</button></div>
       </form>
+    </section>
+
+    <section class="modal-card surface-card wide-modal" data-modal="positions" hidden>
+      <div class="modal-heading"><h3 id="positions-modal-title">Positions</h3><button class="icon-button" data-close-modal type="button">×</button></div>
+      <div class="modal-toolbar">
+        <div class="segmented-control compact-segments" role="group" aria-label="Position change window">
+          <button class="segment-button active" data-position-period="basis" type="button" aria-pressed="true">Since buy</button>
+          <button class="segment-button" data-position-period="today" type="button" aria-pressed="false">Today</button>
+        </div>
+        <div class="segmented-control compact-segments" role="group" aria-label="Position change format">
+          <button class="segment-button active" data-position-unit="absolute" type="button" aria-pressed="true">Amount</button>
+          <button class="segment-button" data-position-unit="percent" type="button" aria-pressed="false">Percent</button>
+        </div>
+      </div>
+      <div class="modal-table-wrap"><table class="dialog-table"><thead><tr><th>Holding</th><th>Quantity</th><th>Price</th><th>Value</th><th id="positions-delta-heading">Change</th><th></th></tr></thead><tbody id="positions-body"></tbody></table></div>
+      <div id="positions-pagination" class="pagination-bar"></div>
+    </section>
+
+    <section class="modal-card surface-card wide-modal" data-modal="account-transactions" hidden>
+      <div class="modal-heading"><h3 id="account-transactions-title">Latest transactions</h3><button class="icon-button" data-close-modal type="button">×</button></div>
+      <div class="modal-table-wrap"><table class="dialog-table"><thead><tr><th>Date</th><th>Description</th><th>Category</th><th>Amount</th><th>Note</th><th></th></tr></thead><tbody id="account-transactions-body"></tbody></table></div>
+      <div id="account-transactions-pagination" class="pagination-bar"></div>
     </section>
 
     <section class="modal-card surface-card" data-modal="category" hidden>
