@@ -6,13 +6,13 @@
   <meta name="theme-color" content="#111827">
   <meta name="description" content="Capito is a private finance organizer for accounts, transactions, holdings, rules and analytics.">
   <title>Capito</title>
-  <link rel="manifest" href="./manifest.webmanifest?v=capito-v16">
-  <link rel="icon" href="./icons/favicon.ico?v=capito-v16" sizes="any">
-  <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16x16.png?v=capito-v16">
-  <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32x32.png?v=capito-v16">
-  <link rel="icon" type="image/png" sizes="48x48" href="./icons/favicon-48x48.png?v=capito-v16">
-  <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png?v=capito-v16">
-  <link rel="stylesheet" href="./styles.css?v=capito-v16">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icons/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16x16.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="48x48" href="./icons/favicon-48x48.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
   <main id="auth-shell" class="auth-shell">
@@ -252,7 +252,6 @@
             <div class="panel-heading"><div><p class="eyebrow">DATA</p><h3>Export | import</h3></div></div>
             <div class="settings-row"><div><strong>Transactions CSV</strong><small>Legacy export for spreadsheets.</small></div><button id="export-button" class="secondary-button compact" type="button">Export CSV</button></div>
             <div class="settings-row"><div><strong>Full JSON backup</strong><small>Accounts, transactions, categories, rules, settings and holdings.</small></div><button id="export-json-button" class="primary-button compact" type="button">Export JSON</button></div>
-            <div class="settings-row"><div><strong>Guided tutorial</strong><small>Load isolated demo data and walk through the app without touching your real synced data.</small></div><button id="start-guided-tutorial" class="secondary-button compact" type="button">Start guided tutorial</button></div>
             <div class="settings-row"><div><strong>Session</strong><small>Sign out of this browser.</small></div><button id="sign-out-button" class="ghost-button compact" type="button">Sign out</button></div>
             <div class="form-stack import-json-box">
               <label class="field"><span>Import mode</span><select id="import-json-mode"><option value="merge">Merge into current data</option><option value="replace">Replace current data</option></select></label>
@@ -378,7 +377,6 @@
   </div>
 
   <div id="toast-container" class="toast-container"></div>
-  <script type="module" src="./js/app.js?v=capito-v16"></script>
-  <script type="module" src="./js/tutorial.js?v=capito-v16"></script>
+  <script type="module" src="./js/app.js"></script>
 </body>
 </html>

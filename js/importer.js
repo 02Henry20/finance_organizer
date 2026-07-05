@@ -1,4 +1,4 @@
-import { categorizeTransaction, parseDateValue, parseMoney, transactionHash, uid } from "./finance.js?v=capito-v16";
+import { categorizeTransaction, parseDateValue, parseMoney, transactionHash, uid } from "./finance.js";
 
 const FIELD_ALIASES = {
   date: ["date", "datum", "buchungstag", "booking date", "transaction date", "umsatzdatum", "valutadatum", "wertstellung", "value date", "created"],
