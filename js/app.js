@@ -45,6 +45,7 @@ import {
   convertCurrency,
   formatCurrency,
   monthKey,
+  normalizeText,
   parseMoney
 } from "./finance.js";
 import { buildImportPreview, parseBankFile, serializeTransactionsCsv } from "./importer.js";
@@ -251,7 +252,8 @@ function safeColor(value, fallback = DEFAULT_CATEGORY_COLOR) {
 
 function categoryPill(cat, { review = false } = {}) {
   const color = safeColor(cat?.color);
-  return `<span class="category-pill colored ${review ? "review-pill" : ""}" style="--cat-color:${color}">${escapeHtml(cat?.icon || "?")} ${escapeHtml(cat?.name || "Misc")}</span>`;
+  const name = cat?.name || "Misc";
+  return `<span class="category-pill colored ${review ? "review-pill" : ""}" style="--cat-color:${color}" title="${escapeHtml(name)}"><span class="category-icon">${escapeHtml(cat?.icon || "?")}</span><span class="category-pill-text">${escapeHtml(name)}</span></span>`;
 }
 
 function colorOptions(selected = DEFAULT_CATEGORY_COLOR) {
@@ -332,7 +334,7 @@ function renderPagination(container, total, currentPage, pageSize, onChange) {
     <span>${start}-${end} of ${total}</span>
     <div class="pagination-actions">
       <button class="ghost-button compact" data-page="prev" type="button" ${page <= 1 ? "disabled" : ""}>Prev</button>
-      <span class="metric-tag">${page} / ${pages}</span>
+      <span class="metric-tag">${page} | ${pages}</span>
       <button class="ghost-button compact" data-page="next" type="button" ${page >= pages ? "disabled" : ""}>Next</button>
     </div>`;
   container.querySelector("[data-page='prev']")?.addEventListener("click", () => onChange(page - 1));
@@ -377,6 +379,15 @@ function availableReportYears() {
 function periodBoundsForReport() {
   if (reportsMode === "year") return { start: `${reportsYear}-01-01`, end: `${reportsYear}-12-31`, label: reportsYear };
   return { start: monthStart(reportsMonth), end: monthEnd(reportsMonth), label: monthLabel(reportsMonth) };
+}
+
+function compareBoundsForReport() {
+  if (reportsMode === "year") {
+    return { start: `${reportsCompareYear}-01-01`, end: `${reportsCompareYear}-12-31`, label: reportsCompareYear };
+  }
+  const month = String(reportsMonth || monthKey(TODAY())).slice(5, 7) || "01";
+  const compareMonth = `${reportsCompareYear}-${month}`;
+  return { start: monthStart(compareMonth), end: monthEnd(compareMonth), label: monthLabel(compareMonth, { short: true }) };
 }
 
 function daysBetween(start, end) {
@@ -487,7 +498,24 @@ function deltaHtml(current, previous, { inverted = false, label = "" } = {}) {
   const arrow = delta > 0 ? "↗" : delta < 0 ? "↘" : "→";
   const good = inverted ? delta <= 0 : delta >= 0;
   const cls = Math.abs(delta) < 0.005 ? "delta-flat" : good ? "delta-up" : "delta-down";
-  return `<span class="${cls}">${arrow} ${signedCurrency(delta)} / ${signedPercent(pct)}</span>${label ? ` <em class="delta-period">${escapeHtml(label)}</em>` : ""}`;
+  return `<span class="${cls}">${arrow} ${signedCurrency(delta)} | ${signedPercent(pct)}</span>${label ? ` <em class="delta-period">${escapeHtml(label)}</em>` : ""}`;
+}
+
+
+function metricTrendHtml(current, previous, { inverted = false, currency = selectedCurrency(), mode = "currency" } = {}) {
+  const currentValue = Number(current);
+  const previousValue = Number(previous);
+  if (!Number.isFinite(currentValue) || !Number.isFinite(previousValue)) return `<span class="metric-trend delta-flat">→ ±0</span>`;
+  const delta = currentValue - previousValue;
+  const pct = Math.abs(previousValue) > 0.0001 ? delta / Math.abs(previousValue) * 100 : 0;
+  const arrow = delta > 0 ? "↗" : delta < 0 ? "↘" : "→";
+  const good = inverted ? delta <= 0 : delta >= 0;
+  const cls = Math.abs(delta) < 0.005 ? "delta-flat" : good ? "delta-up" : "delta-down";
+  let main;
+  if (mode === "percent") main = signedPercent(delta, 1);
+  else if (mode === "points") main = `${delta > 0 ? "+" : delta < 0 ? "-" : "±"}${Math.abs(delta).toFixed(1)} pts`;
+  else main = signedCurrency(delta, currency);
+  return `<span class="metric-trend ${cls}">${arrow} ${main} | ${signedPercent(pct)}</span>`;
 }
 
 function comparisonWindowFlow(compareDate) {
@@ -582,7 +610,17 @@ function renderOverview() {
   drawIncomeExpense($("#income-expense-chart"), monthly.series, currency);
   drawNetSeries($("#net-series-chart"), monthly.series);
   drawDonut($("#category-donut-chart"), categorySpend, currency);
-  drawAccountBars($("#account-bars-chart"), portfolio.accountRows, currency, { previousRows: previousPortfolio.accountRows, showDelta: state.settings.showAccountDeltaBars !== false });
+  const accountChart = $("#account-bars-chart");
+  const visibleAccountRows = (portfolio.accountRows || []).filter(row => !row.hidden);
+  const chartWrap = accountChart?.closest(".chart-wrap");
+  if (chartWrap) {
+    const compact = window.matchMedia("(max-width: 920px)").matches;
+    const minHeight = compact ? 282 : 230;
+    const target = Math.min(460, Math.max(minHeight, visibleAccountRows.length * (compact ? 35 : 32) + 42));
+    chartWrap.style.height = `${target}px`;
+    chartWrap.style.minHeight = `${target}px`;
+  }
+  drawAccountBars(accountChart, portfolio.accountRows, currency, { previousRows: previousPortfolio.accountRows, showDelta: state.settings.showAccountDeltaBars !== false });
 }
 
 function fillReportControls() {
@@ -622,12 +660,21 @@ function renderReports() {
   fillReportControls();
   const currency = selectedCurrency();
   const bounds = periodBoundsForReport();
+  const compareBounds = compareBoundsForReport();
   const periodRows = transactionsInRange(bounds.start, bounds.end);
+  const compareRows = transactionsInRange(compareBounds.start, compareBounds.end);
   const summary = summarizeTransactions(periodRows);
+  const compareSummary = summarizeTransactions(compareRows);
   const categoryRows = categorySpendForRange(bounds.start, bounds.end);
+  const compareCategoryRows = categorySpendForRange(compareBounds.start, compareBounds.end);
   const days = daysBetween(bounds.start, bounds.end);
+  const compareDays = daysBetween(compareBounds.start, compareBounds.end);
   const topCategory = categoryRows[0];
+  const compareTopValue = topCategory ? (compareCategoryRows.find(row => row.categoryId === topCategory.categoryId)?.value || 0) : 0;
   const savingsRate = summary.income > 0 ? summary.net / summary.income * 100 : null;
+  const compareSavingsRate = compareSummary.income > 0 ? compareSummary.net / compareSummary.income * 100 : null;
+  const dailySpend = summary.expense / days;
+  const compareDailySpend = compareSummary.expense / compareDays;
   const selectedYear = reportsMode === "year" ? reportsYear : reportsMonth.slice(0, 4);
   const trendMonths = reportsMode === "year" ? monthsForYear(reportsYear) : monthsEndingAt(reportsMonth, 13);
   const trendRows = aggregateMonths(trendMonths);
@@ -639,19 +686,33 @@ function renderReports() {
     previous: compareYearRows[index]?.expense || 0
   }));
 
-  $("#report-income").textContent = formatCurrency(summary.income, currency);
-  $("#report-spending").textContent = formatCurrency(summary.expense, currency);
+  const incomeEl = $("#report-income");
+  const spendingEl = $("#report-spending");
   const netEl = $("#report-net");
+  const savingsEl = $("#report-savings-rate");
+  const dailyEl = $("#report-daily-spend");
+  const topEl = $("#report-top-category");
+  incomeEl.textContent = formatCurrency(summary.income, currency);
+  incomeEl.className = summary.income > 0 ? "amount-pos" : "delta-flat";
+  spendingEl.textContent = formatCurrency(summary.expense, currency);
+  spendingEl.className = summary.expense > 0 ? "amount-neg" : "delta-flat";
   netEl.textContent = formatCurrency(summary.net, currency);
-  netEl.className = summary.net >= 0 ? "amount-pos" : "amount-neg";
-  $("#report-savings-rate").textContent = savingsRate == null ? "—" : formatPercent(savingsRate);
-  $("#report-daily-spend").textContent = formatCurrency(summary.expense / days, currency);
-  $("#report-days-count").textContent = `${days} days`;
-  $("#report-income-detail").textContent = `${periodRows.filter(tx => Number(tx.amount || 0) > 0).length} inflows`;
-  $("#report-spending-detail").textContent = `${periodRows.filter(tx => Number(tx.amount || 0) < 0).length} outflows`;
-  $("#report-net-detail").textContent = bounds.label;
-  $("#report-top-category").textContent = topCategory?.name || "—";
-  $("#report-top-category-value").textContent = topCategory ? formatCurrency(topCategory.value, currency) : "No spending yet";
+  netEl.className = summary.net > 0 ? "amount-pos" : summary.net < 0 ? "amount-neg" : "delta-flat";
+  savingsEl.textContent = savingsRate == null ? "—" : formatPercent(savingsRate);
+  savingsEl.className = savingsRate == null ? "delta-flat" : savingsRate >= 0 ? "amount-pos" : "amount-neg";
+  dailyEl.textContent = formatCurrency(dailySpend, currency);
+  dailyEl.className = dailySpend > 0 ? "amount-neg" : "delta-flat";
+  topEl.textContent = topCategory?.name || "—";
+  topEl.title = topCategory?.name || "";
+
+  $("#report-income-detail").innerHTML = `${metricTrendHtml(summary.income, compareSummary.income, { currency })}<span>${periodRows.filter(tx => Number(tx.amount || 0) > 0).length} inflows vs ${escapeHtml(compareBounds.label)}</span>`;
+  $("#report-spending-detail").innerHTML = `${metricTrendHtml(summary.expense, compareSummary.expense, { currency, inverted: true })}<span>${periodRows.filter(tx => Number(tx.amount || 0) < 0).length} outflows vs ${escapeHtml(compareBounds.label)}</span>`;
+  $("#report-net-detail").innerHTML = `${metricTrendHtml(summary.net, compareSummary.net, { currency })}<span>${escapeHtml(bounds.label)}</span>`;
+  $("#report-savings-rate-detail").innerHTML = `${metricTrendHtml(savingsRate ?? 0, compareSavingsRate ?? 0, { mode: "points" })}<span>Net flow | income</span>`;
+  $("#report-days-count").innerHTML = `${metricTrendHtml(dailySpend, compareDailySpend, { currency, inverted: true })}<span>${days} days</span>`;
+  $("#report-top-category-value").innerHTML = topCategory
+    ? `${metricTrendHtml(topCategory.value, compareTopValue, { currency, inverted: true })}<span>${formatCurrency(topCategory.value, currency)}</span>`
+    : "No spending yet";
   $("#report-period-pill").textContent = bounds.label;
   $("#report-cashflow-title").textContent = reportsMode === "year" ? `${reportsYear} monthly cashflow` : "13-month cashflow";
   $("#report-net-title").textContent = reportsMode === "year" ? `${reportsYear} net flow` : "Rolling net flow";
@@ -755,6 +816,24 @@ function holdingsValueFor(account, currency = selectedCurrency()) {
   }, 0);
 }
 
+function accountSortValue(account, rows) {
+  const row = accountRowFor(account, rows);
+  const base = Number(row.balance?.converted || 0);
+  const total = ["broker", "asset"].includes(account.type) ? base + holdingsValueFor(account) : base;
+  return Number.isFinite(total) ? total : 0;
+}
+
+function sortAccountsByValue(accounts, rows) {
+  return [...accounts].sort((a, b) => {
+    const av = accountSortValue(a, rows);
+    const bv = accountSortValue(b, rows);
+    const aNeg = av < 0;
+    const bNeg = bv < 0;
+    if (aNeg !== bNeg) return aNeg ? 1 : -1;
+    return Math.abs(bv) - Math.abs(av) || String(a.name || "").localeCompare(String(b.name || ""));
+  });
+}
+
 function previousHoldingValueFor(account, currentValue) {
   const holdings = holdingsForAccount(account.id);
   let total = 0;
@@ -775,21 +854,21 @@ function trendInline(current, previous, { inverted = false, currency = selectedC
   const arrow = delta > 0 ? "↗" : delta < 0 ? "↘" : "→";
   const good = inverted ? delta <= 0 : delta >= 0;
   const cls = Math.abs(delta) < 0.005 ? "delta-flat" : good ? "delta-up" : "delta-down";
-  return `<small class="account-trend ${cls}">${arrow} ${signedCurrency(delta, currency)} / ${signedPercent(pct)}</small>`;
+  return `<small class="account-trend ${cls}">${arrow} ${signedCurrency(delta, currency)} | ${signedPercent(pct)}</small>`;
 }
 
 function accountStat(label, value, previous, { currency = selectedCurrency(), emphasize = false, inverted = false } = {}) {
-  return `<div class="account-stat ${emphasize ? "total-stat" : ""}"><span>${escapeHtml(label)}</span><strong>${formatCurrency(value, currency)}</strong>${trendInline(value, previous, { inverted, currency })}</div>`;
+  const signClass = Number(value || 0) < 0 ? "negative-stat" : Number(value || 0) > 0 ? "positive-stat" : "flat-stat";
+  return `<div class="account-stat ${emphasize ? "total-stat" : ""} ${signClass}"><span>${escapeHtml(label)}</span><strong>${formatCurrency(value, currency)}</strong>${trendInline(value, previous, { inverted, currency })}</div>`;
 }
 
 function buildAccountCard(account, row, previousRow, { hidden = false } = {}) {
   const currency = selectedCurrency();
-  const holdings = holdingsForAccount(account.id);
   const isBroker = ["broker", "asset"].includes(account.type);
   const cashCurrent = row.balance.converted;
   const cashPrevious = previousRow?.balance?.converted ?? cashCurrent;
-  const holdingsCurrent = holdingsValueFor(account, currency);
-  const holdingsPrevious = previousHoldingValueFor(account, holdingsCurrent);
+  const holdingsCurrent = isBroker ? holdingsValueFor(account, currency) : 0;
+  const holdingsPrevious = isBroker ? previousHoldingValueFor(account, holdingsCurrent) : 0;
   const totalCurrent = cashCurrent + holdingsCurrent;
   const totalPrevious = cashPrevious + holdingsPrevious;
   const identifier = maskIban(account.iban || account.accountNumber);
@@ -802,7 +881,17 @@ function buildAccountCard(account, row, previousRow, { hidden = false } = {}) {
         <small class="account-meta-line">${escapeHtml(account.institution || "Manual")} · ${escapeHtml(account.type)} · ${escapeHtml(account.currency || currency)}</small>
         <small class="account-identifier">${escapeHtml(identifier)}</small>
       </div>
-      ${hidden ? `<span class="category-pill">Hidden</span>` : ""}
+      <div class="account-card-controls">
+        ${hidden ? `<span class="category-pill hidden-pill">Hidden</span>` : ""}
+        <div class="account-menu-wrap">
+          <button class="icon-button account-menu-button" type="button" data-account-menu-toggle aria-haspopup="menu" aria-label="Account options">⚙</button>
+          <div class="account-menu" role="menu">
+            ${!hidden ? `<button type="button" role="menuitem" data-account-transactions="${escapeHtml(account.id)}">Txns</button>` : ""}
+            ${isBroker && !hidden ? `<button type="button" role="menuitem" data-view-positions="${escapeHtml(account.id)}">Positions</button>` : ""}
+            <button type="button" role="menuitem" data-edit-account="${escapeHtml(account.id)}">${hidden ? "Restore | edit" : "Edit"}</button>
+          </div>
+        </div>
+      </div>
     </div>`;
   const stats = isBroker
     ? `<div class="account-value-row broker-value-row">
@@ -811,14 +900,9 @@ function buildAccountCard(account, row, previousRow, { hidden = false } = {}) {
         ${accountStat("Holdings", holdingsCurrent, holdingsPrevious, { currency })}
       </div>`
     : `<div class="account-value-row bank-value-row">
-        ${accountStat("Balance", cashCurrent, cashPrevious, { currency, inverted: account.type === "debt" })}
+        ${accountStat("Balance", cashCurrent, cashPrevious, { currency, emphasize: true, inverted: account.type === "debt" })}
       </div>`;
-  const actions = hidden
-    ? `<button class="ghost-button compact" data-edit-account="${escapeHtml(account.id)}" type="button">Restore</button>`
-    : `${isBroker ? `<button class="secondary-button compact" data-view-positions="${escapeHtml(account.id)}" type="button">Positions</button><button class="secondary-button compact" data-add-asset-for="${escapeHtml(account.id)}" type="button">+ Holding</button>` : ""}
-       <button class="ghost-button compact" data-account-transactions="${escapeHtml(account.id)}" type="button">Txns</button>
-       <button class="ghost-button compact" data-edit-account="${escapeHtml(account.id)}" type="button">Edit</button>`;
-  card.innerHTML = `${header}${stats}${isBroker ? `<small class="account-holding-summary">${holdings.length ? `${holdings.length} positions` : "No positions yet"}</small>` : ""}<div class="item-card-actions">${actions}</div>`;
+  card.innerHTML = `${header}${stats}`;
   return card;
 }
 
@@ -849,16 +933,10 @@ function renderAccounts() {
   const periodNote = $("#accounts-period-note");
   if (periodNote) periodNote.textContent = `Comparison ${comparisonLabel(compareDate)}`;
 
-  const visible = visibleAccounts().sort((a, b) => {
-    const ar = accountRowFor(a, rows);
-    const br = accountRowFor(b, rows);
-    const av = ar.balance.converted + (["broker", "asset"].includes(a.type) ? holdingsValueFor(a) : 0);
-    const bv = br.balance.converted + (["broker", "asset"].includes(b.type) ? holdingsValueFor(b) : 0);
-    return bv - av || String(a.name || "").localeCompare(String(b.name || ""));
-  });
-  const normalAccounts = visible.filter(account => !["broker", "asset"].includes(account.type));
-  const brokerAccounts = visible.filter(account => ["broker", "asset"].includes(account.type));
-  const hiddenAccounts = state.accounts.filter(account => account.hidden).sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+  const visible = sortAccountsByValue(visibleAccounts(), rows);
+  const normalAccounts = sortAccountsByValue(visible.filter(account => !["broker", "asset"].includes(account.type)), rows);
+  const brokerAccounts = sortAccountsByValue(visible.filter(account => ["broker", "asset"].includes(account.type)), rows);
+  const hiddenAccounts = sortAccountsByValue(state.accounts.filter(account => account.hidden), rows);
 
   const hiddenSection = $("#hidden-accounts-section");
   const hiddenGrid = $("#hidden-accounts-grid");
@@ -889,15 +967,45 @@ function renderAccounts() {
     });
   }
 
-  container.querySelectorAll("[data-edit-account]").forEach(btn => btn.addEventListener("click", () => openAccountModal(btn.dataset.editAccount)));
-  container.querySelectorAll("[data-add-asset-for]").forEach(btn => btn.addEventListener("click", () => openAssetModal("", btn.dataset.addAssetFor)));
-  container.querySelectorAll("[data-view-positions]").forEach(btn => btn.addEventListener("click", () => openPositionsModal(btn.dataset.viewPositions)));
-  container.querySelectorAll("[data-account-transactions]").forEach(btn => btn.addEventListener("click", () => openAccountTransactionsModal(btn.dataset.accountTransactions)));
-  hiddenGrid?.querySelectorAll("[data-edit-account]").forEach(btn => btn.addEventListener("click", () => openAccountModal(btn.dataset.editAccount)));
+  wireAccountCardActions(container);
+  if (hiddenGrid) wireAccountCardActions(hiddenGrid);
+}
+
+function wireAccountCardActions(root) {
+  root.querySelectorAll("[data-edit-account]").forEach(btn => btn.addEventListener("click", () => openAccountModal(btn.dataset.editAccount)));
+  root.querySelectorAll("[data-view-positions]").forEach(btn => btn.addEventListener("click", () => openPositionsModal(btn.dataset.viewPositions)));
+  root.querySelectorAll("[data-account-transactions]").forEach(btn => btn.addEventListener("click", () => openAccountTransactionsModal(btn.dataset.accountTransactions)));
+  root.querySelectorAll("[data-account-menu-toggle]").forEach(btn => btn.addEventListener("click", event => {
+    event.stopPropagation();
+    const wrap = btn.closest(".account-menu-wrap");
+    document.querySelectorAll(".account-menu-wrap.menu-open").forEach(open => { if (open !== wrap) open.classList.remove("menu-open"); });
+    wrap?.classList.toggle("menu-open");
+  }));
 }
 
 function renderAssets() {
   // Assets are now displayed inside broker/asset accounts.
+}
+
+function updateRulesFoldState() {
+  const isMobile = window.matchMedia("(max-width: 920px)").matches;
+  const panels = [
+    { panel: $("#categories-panel"), button: $("#categories-fold-toggle"), label: "Categories" },
+    { panel: $("#rules-panel"), button: $("#rules-fold-toggle"), label: "Rules" }
+  ];
+  panels.forEach(({ panel, button, label }) => {
+    if (!panel || !button) return;
+    if (!isMobile) {
+      panel.classList.remove("is-folded");
+      button.hidden = true;
+      return;
+    }
+    button.hidden = false;
+    const folded = panel.classList.contains("is-folded");
+    button.textContent = folded ? "Show" : "Hide";
+    button.setAttribute("aria-expanded", String(!folded));
+    button.setAttribute("aria-label", `${folded ? "Show" : "Hide"} ${label}`);
+  });
 }
 
 function renderRules() {
@@ -905,19 +1013,28 @@ function renderRules() {
   const rulesList = $("#rules-list");
   if (!categoriesList || !rulesList) return;
   const cats = categoryMap();
+  const categorySearch = normalizeText($("#category-search")?.value || "");
+  const ruleSearch = normalizeText($("#rule-search")?.value || "");
   categoriesList.replaceChildren();
   rulesList.replaceChildren();
-  for (const cat of state.categories) {
+  const filteredCategories = state.categories.filter(cat => {
+    if (!categorySearch) return true;
+    return normalizeText([cat.name, cat.group, cat.type, cat.icon].join(" ")).includes(categorySearch);
+  });
+  for (const cat of filteredCategories) {
     const related = state.rules.filter(rule => rule.categoryId === cat.id);
     const row = document.createElement("div");
     row.className = "settings-row category-row";
     row.innerHTML = `<div><strong><span class="category-color-dot" style="--cat-color:${safeColor(cat.color)}"></span>${escapeHtml(cat.icon || "•")} ${escapeHtml(cat.name)}</strong><small>${escapeHtml(cat.group)} · ${escapeHtml(cat.type)} · ${related.length} keyword rules</small></div><button class="ghost-button compact" data-edit-category="${escapeHtml(cat.id)}" type="button">Edit</button>`;
     categoriesList.append(row);
   }
+  if (!filteredCategories.length) categoriesList.innerHTML = `<p class="muted empty-list-note">No categories match this search.</p>`;
 
   const grouped = new Map();
   for (const rule of state.rules) {
     const cat = cats.get(rule.categoryId) || cats.get("misc");
+    const haystack = normalizeText([rule.label, ...(rule.keywords || []), cat?.name, cat?.group].join(" "));
+    if (ruleSearch && !haystack.includes(ruleSearch)) continue;
     const key = cat?.id || "misc";
     if (!grouped.has(key)) grouped.set(key, { cat, rules: [] });
     grouped.get(key).rules.push(rule);
@@ -935,8 +1052,10 @@ function renderRules() {
     }
     rulesList.append(wrapper);
   }
+  if (!grouped.size) rulesList.innerHTML = `<p class="muted empty-list-note">No rules match this search.</p>`;
   categoriesList.querySelectorAll("[data-edit-category]").forEach(btn => btn.addEventListener("click", () => openCategoryModal(btn.dataset.editCategory)));
   rulesList.querySelectorAll("[data-edit-rule]").forEach(btn => btn.addEventListener("click", () => openRuleModal(btn.dataset.editRule)));
+  updateRulesFoldState();
 }
 
 function renderSettings() {
@@ -1159,7 +1278,7 @@ function renderPositionsModal() {
   });
   tbody.replaceChildren();
   if (!holdings.length) {
-    tbody.innerHTML = `<tr><td colspan="6" class="muted">No positions in this account yet.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="muted">No positions in this account yet.</td></tr>`;
     return;
   }
   for (const asset of pagedRows(holdings, positionsPage, PAGE_SIZES.positions)) {
@@ -1174,11 +1293,13 @@ function renderPositionsModal() {
       : positionsUnit === "percent"
         ? formatPercent(deltaValue)
         : formatCurrency(deltaValue, currency);
+    const buyPrice = Number(asset.buyPrice || 0) || (Number(asset.quantity || 0) ? Number(asset.costBasis || 0) / Number(asset.quantity || 1) : 0);
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td><strong>${escapeHtml(asset.symbol || asset.name)}</strong><small class="muted table-ellipsis">${escapeHtml(asset.name || asset.type || "")}</small></td>
       <td>${Number(asset.quantity || 0).toLocaleString()}</td>
       <td>${formatCurrency(price, currency)}</td>
+      <td>${buyPrice ? formatCurrency(buyPrice, currency) : "—"}</td>
       <td>${formatCurrency(value, currency)}</td>
       <td><span class="${deltaClass}">${deltaText}</span></td>
       <td class="action-cell"><button class="ghost-button compact" type="button" data-edit-asset="${escapeHtml(asset.id)}">Edit</button></td>`;
@@ -1376,8 +1497,8 @@ function renderMapping() {
   [
     ["date", "Date"],
     ["amount", "Amount"],
-    ["debit", "Debit / money out"],
-    ["credit", "Credit / money in"],
+    ["debit", "Debit | money out"],
+    ["credit", "Credit | money in"],
     ["description", "Description"],
     ["counterparty", "Counterparty"],
     ["currency", "Currency"],
@@ -1574,12 +1695,22 @@ function wireEvents() {
   }
 
   elements.signOut?.addEventListener("click", () => signOut(auth));
+  document.addEventListener("click", event => {
+    if (!event.target.closest(".account-menu-wrap")) {
+      document.querySelectorAll(".account-menu-wrap.menu-open").forEach(open => open.classList.remove("menu-open"));
+    }
+  });
   $$(`[data-view]`).forEach(button => button.addEventListener("click", () => navigateTo(button.dataset.view)));
   $$(`[data-go-view]`).forEach(button => button.addEventListener("click", () => navigateTo(button.dataset.goView)));
   $("#hidden-accounts-toggle")?.addEventListener("click", () => {
     hiddenAccountsExpanded = !hiddenAccountsExpanded;
     requestRender();
   });
+  if (window.matchMedia("(max-width: 920px)").matches) {
+    $("#categories-panel")?.classList.add("is-folded");
+    $("#rules-panel")?.classList.add("is-folded");
+  }
+  updateRulesFoldState();
   $("#settings-form")?.addEventListener("input", scheduleSettingsSave);
   $("#settings-form")?.addEventListener("change", scheduleSettingsSave);
   $$("[data-compare-mode]").forEach(button => button.addEventListener("click", () => {
@@ -1634,6 +1765,15 @@ function wireEvents() {
     $("#tx-filter-toggle").setAttribute("aria-expanded", String(expanded));
     $("#tx-filter-toggle b").textContent = expanded ? "-" : "+";
   });
+
+  ["#category-search", "#rule-search"].forEach(selector => $(selector)?.addEventListener("input", renderRules));
+  ["#categories-fold-toggle", "#rules-fold-toggle"].forEach(selector => $(selector)?.addEventListener("click", () => {
+    const panel = selector.includes("categories") ? $("#categories-panel") : $("#rules-panel");
+    panel?.classList.toggle("is-folded");
+    updateRulesFoldState();
+  }));
+  window.addEventListener("resize", updateRulesFoldState);
+
   $$("[data-report-mode]").forEach(button => button.addEventListener("click", () => {
     reportsMode = button.dataset.reportMode === "year" ? "year" : "month";
     renderReports();
@@ -1659,6 +1799,9 @@ function wireEvents() {
     positionsUnit = button.dataset.positionUnit === "percent" ? "percent" : "absolute";
     renderPositionsModal();
   }));
+  $("#add-position-holding")?.addEventListener("click", () => {
+    if (activePositionsAccountId) openAssetModal("", activePositionsAccountId);
+  });
   $("#transaction-category")?.addEventListener("change", syncTransactionReviewControl);
   $("#export-button")?.addEventListener("click", exportTransactionsCsv);
   $("#export-json-button")?.addEventListener("click", () => exportBackupJson().catch(error => toast("JSON export failed", error.message, "error")));

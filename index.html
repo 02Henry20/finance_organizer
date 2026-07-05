@@ -122,7 +122,7 @@
           <article class="metric-card surface-card"><span>Income</span><strong id="report-income">—</strong><small id="report-income-detail">Selected period</small></article>
           <article class="metric-card surface-card danger"><span>Spending</span><strong id="report-spending">—</strong><small id="report-spending-detail">Selected period</small></article>
           <article class="metric-card surface-card"><span>Net flow</span><strong id="report-net">—</strong><small id="report-net-detail">Income minus spending</small></article>
-          <article class="metric-card surface-card"><span>Savings rate</span><strong id="report-savings-rate">—</strong><small>Net flow / income</small></article>
+          <article class="metric-card surface-card"><span>Savings rate</span><strong id="report-savings-rate">—</strong><small id="report-savings-rate-detail">Net flow | income</small></article>
           <article class="metric-card surface-card"><span>Avg daily spend</span><strong id="report-daily-spend">—</strong><small id="report-days-count">Calendar days</small></article>
           <article class="metric-card surface-card"><span>Top category</span><strong id="report-top-category">—</strong><small id="report-top-category-value">No spending yet</small></article>
         </div>
@@ -173,7 +173,7 @@
       <section class="view" data-view-section="import">
         <div class="import-layout import-flow-layout">
           <article class="surface-card import-card main-import">
-            <div class="panel-heading"><div><p class="eyebrow">BANK EXPORTS</p><h3>Import CSV / TSV</h3></div></div>
+            <div class="panel-heading"><div><p class="eyebrow">BANK EXPORTS</p><h3>Import CSV | TSV</h3></div></div>
             <p class="muted">Upload a bank export and import rows using expected date, amount, description, counterparty and currency headers. Ambiguous rows go into the review queue.</p>
             <div class="form-stack">
               <label class="field"><span>Target account</span><select id="import-account"></select></label>
@@ -246,7 +246,7 @@
           </article>
 
           <article class="surface-card settings-card data-card">
-            <div class="panel-heading"><div><p class="eyebrow">DATA</p><h3>Export / import</h3></div></div>
+            <div class="panel-heading"><div><p class="eyebrow">DATA</p><h3>Export | import</h3></div></div>
             <div class="settings-row"><div><strong>Transactions CSV</strong><small>Legacy export for spreadsheets.</small></div><button id="export-button" class="secondary-button compact" type="button">Export CSV</button></div>
             <div class="settings-row"><div><strong>Full JSON backup</strong><small>Accounts, transactions, categories, rules, settings and holdings.</small></div><button id="export-json-button" class="primary-button compact" type="button">Export JSON</button></div>
             <div class="settings-row"><div><strong>Session</strong><small>Sign out of this browser.</small></div><button id="sign-out-button" class="ghost-button compact" type="button">Sign out</button></div>
@@ -303,7 +303,7 @@
         <label class="field"><span>Name</span><input id="account-name" required placeholder="Sparkasse Giro"></label>
         <div class="form-grid two"><label class="field"><span>Institution</span><input id="account-institution" placeholder="Bank name"></label><label class="field"><span>Type</span><select id="account-type"></select></label></div>
         <div class="form-grid two"><label class="field"><span>Currency</span><input id="account-currency" list="currency-options" maxlength="3" placeholder="EUR"></label><label class="field"><span>Opening balance</span><input id="account-opening" type="number" step="0.01" value="0"></label></div>
-        <div class="form-grid two"><label class="field"><span>IBAN</span><input id="account-iban" placeholder="Optional IBAN"></label><label class="field"><span>Account / depot number</span><input id="account-number" placeholder="Optional identifier"></label></div>
+        <div class="form-grid two"><label class="field"><span>IBAN</span><input id="account-iban" placeholder="Optional IBAN"></label><label class="field"><span>Account | depot number</span><input id="account-number" placeholder="Optional identifier"></label></div>
         <div class="form-grid two"><label class="field"><span>BIC</span><input id="account-bic" placeholder="Optional BIC"></label><label class="field"><span>Transfer aliases</span><input id="account-aliases" placeholder="broker, depot, own account"></label></div>
         <label class="check-row"><input id="account-hidden" type="checkbox"> Hide from app</label>
         <div class="button-row"><button class="primary-button" type="submit">Save account</button><button id="delete-account-button" class="danger-button" type="button" hidden>Delete account</button></div>
@@ -315,7 +315,7 @@
       <form id="asset-form" class="form-stack">
         <input id="asset-id" type="hidden">
         <label class="field"><span>Broker account</span><select id="asset-account"></select></label>
-        <div class="form-grid two"><label class="field"><span>Symbol / ticker</span><input id="asset-symbol" placeholder="AAPL or AAPL.US"></label><label class="field"><span>Name</span><input id="asset-name" placeholder="Apple"></label></div>
+        <div class="form-grid two"><label class="field"><span>Symbol | ticker</span><input id="asset-symbol" placeholder="AAPL or AAPL.US"></label><label class="field"><span>Name</span><input id="asset-name" placeholder="Apple"></label></div>
         <div class="form-grid two"><label class="field"><span>WKN</span><input id="asset-wkn" placeholder="Optional WKN"></label><label class="field"><span>ISIN</span><input id="asset-isin" placeholder="Optional ISIN"></label></div>
         <div class="form-grid two"><label class="field"><span>Type</span><select id="asset-type"><option value="stock">Stock</option><option value="etf">ETF</option><option value="bond">Bond</option><option value="crypto">Crypto</option><option value="fund">Fund</option><option value="manual">Manual asset</option></select></label><label class="field"><span>Provider</span><select id="asset-provider"><option value="twelvedata">Twelve Data</option><option value="stooq">Stooq</option><option value="manual">Manual</option></select></label></div>
         <div class="form-grid three"><label class="field"><span>Quantity</span><input id="asset-quantity" type="number" step="0.000001" value="1"></label><label class="field"><span>Currency</span><input id="asset-currency" list="currency-options" maxlength="3" placeholder="EUR"></label><label class="field"><span>Current/manual price</span><input id="asset-manual-price" type="number" step="0.0001" value="0"></label></div>
@@ -326,15 +326,18 @@
 
     <section class="modal-card surface-card wide-modal" data-modal="positions" hidden>
       <div class="modal-heading"><h3 id="positions-modal-title">Positions</h3><button class="icon-button" data-close-modal type="button">×</button></div>
-      <div class="modal-toolbar">
-        <div class="segmented-control compact-segments" role="group" aria-label="Position change window">
-          <button class="segment-button active" data-position-period="basis" type="button" aria-pressed="true">Since buy</button>
-          <button class="segment-button" data-position-period="today" type="button" aria-pressed="false">Today</button>
+      <div class="modal-toolbar positions-toolbar">
+        <div class="position-toggle-row">
+          <div class="segmented-control compact-segments" role="group" aria-label="Position change window">
+            <button class="segment-button active" data-position-period="basis" type="button" aria-pressed="true">Since buy</button>
+            <button class="segment-button" data-position-period="today" type="button" aria-pressed="false">Today</button>
+          </div>
+          <div class="segmented-control compact-segments" role="group" aria-label="Position change format">
+            <button class="segment-button active" data-position-unit="absolute" type="button" aria-pressed="true">Amount</button>
+            <button class="segment-button" data-position-unit="percent" type="button" aria-pressed="false">Percent</button>
+          </div>
         </div>
-        <div class="segmented-control compact-segments" role="group" aria-label="Position change format">
-          <button class="segment-button active" data-position-unit="absolute" type="button" aria-pressed="true">Amount</button>
-          <button class="segment-button" data-position-unit="percent" type="button" aria-pressed="false">Percent</button>
-        </div>
+        <button id="add-position-holding" class="primary-button compact" type="button">+ Holding</button>
       </div>
       <div class="modal-table-wrap"><table class="dialog-table"><thead><tr><th>Holding</th><th>Quantity</th><th>Price</th><th>Buy</th><th>Value</th><th id="positions-delta-heading">Change</th><th></th></tr></thead><tbody id="positions-body"></tbody></table></div>
       <div id="positions-pagination" class="pagination-bar"></div>
@@ -363,7 +366,7 @@
         <input id="rule-id" type="hidden">
         <label class="field"><span>Label</span><input id="rule-label" placeholder="Groceries at REWE"></label>
         <label class="field"><span>Category</span><select id="rule-category"></select></label>
-        <label class="field"><span>Keywords / phrases</span><input id="rule-keywords" placeholder="rewe, edeka, grocery"></label>
+        <label class="field"><span>Keywords | phrases</span><input id="rule-keywords" placeholder="rewe, edeka, grocery"></label>
         <label class="field"><span>Case sensitive</span><select id="rule-case-sensitive"><option value="false">No</option><option value="true">Yes</option></select></label>
         <div class="button-row"><button class="primary-button" type="submit">Save rule</button><button id="delete-rule-button" class="danger-button" type="button" hidden>Delete</button></div>
       </form>

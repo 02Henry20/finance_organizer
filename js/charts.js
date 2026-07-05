@@ -273,14 +273,20 @@ export function drawAccountBars(canvas, rows, currency = "EUR", options = {}) {
   const previousMap = new Map((options.previousRows || []).map(row => [row.id, row]));
   const data = (rows || [])
     .filter(row => !row.hidden)
-    .sort((a, b) => Number(b.balance?.converted || 0) - Number(a.balance?.converted || 0))
-    .slice(0, 9);
+    .sort((a, b) => {
+      const av = Number(a.balance?.converted || 0);
+      const bv = Number(b.balance?.converted || 0);
+      const aNeg = av < 0;
+      const bNeg = bv < 0;
+      if (aNeg !== bNeg) return aNeg ? 1 : -1;
+      return bv - av || String(a.name || "").localeCompare(String(b.name || ""));
+    });
   setEmpty(canvas, !data.length);
   if (!data.length) return;
   const { ctx, width, height, colors: c } = prepare(canvas);
   const mobile = width < 520;
-  const labelSpace = mobile ? Math.min(142, Math.max(124, width * 0.38)) : Math.min(168, Math.max(128, width * 0.22));
-  const valueSpace = mobile ? Math.min(78, Math.max(58, width * 0.18)) : Math.min(104, Math.max(76, width * 0.14));
+  const labelSpace = mobile ? Math.min(158, Math.max(132, width * 0.39)) : Math.min(132, Math.max(104, width * 0.17));
+  const valueSpace = mobile ? Math.min(70, Math.max(52, width * 0.14)) : Math.min(92, Math.max(64, width * 0.11));
   const area = { left: labelSpace, right: width - valueSpace, top: 18, bottom: height - 18 };
   const values = data.flatMap(row => {
     const current = Number(row.balance?.converted || 0);
@@ -288,7 +294,7 @@ export function drawAccountBars(canvas, rows, currency = "EUR", options = {}) {
     return [current, previous];
   });
   const maxAbs = Math.max(...values.map(value => Math.abs(value)), 1);
-  const zero = area.left + (area.right - area.left) * (mobile ? 0.46 : 0.44);
+  const zero = area.left + (area.right - area.left) * (mobile ? 0.50 : 0.46);
   const negScale = (zero - area.left - 8) / maxAbs;
   const posScale = (area.right - zero - 8) / maxAbs;
   const rowH = (area.bottom - area.top) / data.length;

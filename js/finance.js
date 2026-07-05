@@ -37,20 +37,20 @@ export const ACCOUNT_TYPES = [
   { id: "cash", label: "Cash", sign: 1 },
   { id: "broker", label: "Broker cash", sign: 1 },
   { id: "asset", label: "Asset holding", sign: 1 },
-  { id: "debt", label: "Debt / liability", sign: -1 },
+  { id: "debt", label: "Debt | liability", sign: -1 },
   { id: "loan", label: "Loan receivable", sign: 1 },
-  { id: "hidden", label: "Hidden / archive", sign: 0 }
+  { id: "hidden", label: "Hidden | archive", sign: 0 }
 ];
 
 export const DEFAULT_CATEGORIES = Object.freeze([
   { id: "income_salary", name: "Salary", group: "Income", type: "income", icon: "↗", color: "#19C37D" },
-  { id: "income_freelance", name: "Freelance / side income", group: "Income", type: "income", icon: "+", color: "#22C55E" },
+  { id: "income_freelance", name: "Freelance | side income", group: "Income", type: "income", icon: "+", color: "#22C55E" },
   { id: "income_dividend", name: "Dividends & interest", group: "Income", type: "income", icon: "◒", color: "#14B8A6" },
   { id: "income_other", name: "Other income", group: "Income", type: "income", icon: "+", color: "#84CC16" },
-  { id: "refund", name: "Refund / reimbursement", group: "Income", type: "income", icon: "↩", color: "#06B6D4" },
+  { id: "refund", name: "Refund | reimbursement", group: "Income", type: "income", icon: "↩", color: "#06B6D4" },
   { id: "transfer", name: "Internal transfer", group: "Neutral", type: "transfer", icon: "⇄", color: "#64748B" },
-  { id: "investment", name: "Investment / broker", group: "Neutral", type: "transfer", icon: "◆", color: "#8B5CF6" },
-  { id: "debt_bafog", name: "BAföG / debt", group: "Neutral", type: "transfer", icon: "◌", color: "#F59E0B" },
+  { id: "investment", name: "Investment | broker", group: "Neutral", type: "transfer", icon: "◆", color: "#8B5CF6" },
+  { id: "debt_bafog", name: "BAföG | debt", group: "Neutral", type: "transfer", icon: "◌", color: "#F59E0B" },
   { id: "rent", name: "Rent", group: "Housing", type: "expense", icon: "⌂", color: "#3B82F6" },
   { id: "utilities", name: "Utilities & phone", group: "Housing", type: "expense", icon: "⌁", color: "#0EA5E9" },
   { id: "insurance", name: "Insurance", group: "Housing", type: "expense", icon: "▣", color: "#6366F1" },
@@ -60,7 +60,7 @@ export const DEFAULT_CATEGORIES = Object.freeze([
   { id: "transport", name: "Transport & fuel", group: "Mobility", type: "expense", icon: "→", color: "#06B6D4" },
   { id: "public_transport", name: "Public transport", group: "Mobility", type: "expense", icon: "▱", color: "#14B8A6" },
   { id: "travel", name: "Travel", group: "Mobility", type: "expense", icon: "✈", color: "#8B5CF6" },
-  { id: "shopping", name: "Shopping / online", group: "Lifestyle", type: "expense", icon: "◧", color: "#EC4899" },
+  { id: "shopping", name: "Shopping | online", group: "Lifestyle", type: "expense", icon: "◧", color: "#EC4899" },
   { id: "clothing", name: "Clothing", group: "Lifestyle", type: "expense", icon: "◨", color: "#A855F7" },
   { id: "electronics", name: "Electronics & tools", group: "Lifestyle", type: "expense", icon: "⌘", color: "#6366F1" },
   { id: "subscriptions", name: "Subscriptions", group: "Lifestyle", type: "expense", icon: "◎", color: "#F59E0B" },
@@ -72,7 +72,7 @@ export const DEFAULT_CATEGORIES = Object.freeze([
   { id: "bank_fees", name: "Bank fees", group: "Admin", type: "expense", icon: "∙", color: "#64748B" },
   { id: "gifts_family", name: "Gifts & family", group: "Personal", type: "expense", icon: "♡", color: "#F97316" },
   { id: "donations", name: "Donations", group: "Personal", type: "expense", icon: "♧", color: "#22C55E" },
-  { id: "misc", name: "Misc / not applicable", group: "Misc", type: "neutral", icon: "?", color: "#64748B" }
+  { id: "misc", name: "Misc | not applicable", group: "Misc", type: "neutral", icon: "?", color: "#64748B" }
 ]);
 
 export const DEFAULT_RULES = Object.freeze([
@@ -283,7 +283,7 @@ export function categorizeTransaction(tx, rules = DEFAULT_RULES, categories = DE
       categoryId: "misc",
       confidence: 0.25,
       review: false,
-      reason: "No rule matched. Kept as Misc / not applicable.",
+      reason: "No rule matched. Kept as Misc | not applicable.",
       candidates: []
     };
   }
@@ -300,7 +300,7 @@ export function categorizeTransaction(tx, rules = DEFAULT_RULES, categories = DE
       review: true,
       reason: signMismatch
         ? `Rule '${top.rule.label}' looked like income but the amount is negative.`
-        : `Ambiguous: ${[top, ...challengers].map(item => categoryMap.get(item.rule.categoryId)?.name || item.rule.categoryId).join(" / ")}`,
+        : `Ambiguous: ${[top, ...challengers].map(item => categoryMap.get(item.rule.categoryId)?.name || item.rule.categoryId).join(" | ")}`,
       candidates: [top, ...challengers].map(item => ({
         categoryId: item.rule.categoryId,
         categoryName: categoryMap.get(item.rule.categoryId)?.name || item.rule.categoryId,

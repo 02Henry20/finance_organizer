@@ -775,3 +775,302 @@ td { font-size: .9rem; }
   .metric-strip { grid-template-columns: 1fr; }
   .reports-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
 }
+
+
+/* Final Capito readability and layout corrections */
+.balance-card .hero-date,
+.balance-card .net-worth-title {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #102016 !important;
+  background: color-mix(in srgb, var(--accent) 92%, #ffffff) !important;
+  border-color: color-mix(in srgb, var(--accent) 50%, #102016) !important;
+}
+.balance-card .hero-date {
+  min-width: 112px;
+  padding: 9px 15px !important;
+  font-size: clamp(1rem, 1.8vw, 1.38rem) !important;
+  font-weight: 950 !important;
+  letter-spacing: -.025em !important;
+  text-transform: uppercase;
+  box-shadow: 0 12px 28px rgba(159, 232, 112, .18);
+}
+.balance-card .net-worth-title { min-width: 112px; }
+.net-worth-meta strong .delta-period { margin-top: 10px; }
+#net-worth-window { margin-bottom: 12px; }
+.cashflow-line { padding-top: 6px; }
+
+.category-pill {
+  max-width: min(100%, 150px);
+  min-width: 0;
+  overflow: hidden;
+}
+.category-pill .category-icon { flex: 0 0 auto; }
+.category-pill .category-pill-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+td .category-pill, .mini-item .category-pill { max-width: 132px; }
+.category-col { max-width: 150px; }
+.transactions-table td:nth-child(4),
+.import-preview-table td:nth-child(4),
+#account-transactions-body td:nth-child(3) { max-width: 150px; overflow: hidden; }
+
+.report-controls .field { min-width: 0; }
+.reports-metric-grid .metric-card strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reports-metric-grid .metric-card small {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  line-height: 1.25;
+}
+.metric-trend {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 880;
+}
+#report-top-category {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-stat.total-stat.positive-stat {
+  border-color: color-mix(in srgb, var(--green) 42%, var(--line));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--green) 20%, var(--surface-2)), var(--surface-2));
+}
+.account-stat.total-stat.negative-stat {
+  border-color: color-mix(in srgb, var(--red) 42%, var(--line));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--red) 20%, var(--surface-2)), var(--surface-2));
+}
+.account-stat.total-stat.flat-stat {
+  border-color: color-mix(in srgb, var(--muted) 28%, var(--line));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--muted) 10%, var(--surface-2)), var(--surface-2));
+}
+
+.rules-search { margin-bottom: 16px; }
+.rules-scroll-list {
+  max-height: min(64vh, 680px);
+  overflow: auto;
+  padding-right: 6px;
+}
+.empty-list-note { padding: 14px; }
+.mobile-fold-button { display: none; }
+
+@media (min-width: 921px) {
+  .mobile-fold-button { display: none !important; }
+  .rules-panel.is-folded .rules-search,
+  .rules-panel.is-folded .rules-scroll-list { display: grid !important; }
+  .account-group-grid.cash-bank-grid,
+  .cash-bank-group .account-group-grid { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
+  .broker-group .account-group-grid { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+}
+
+@media (max-width: 920px) {
+  .mobile-fold-button { display: inline-flex; }
+  .rules-panel.is-folded .rules-search,
+  .rules-panel.is-folded .rules-scroll-list { display: none !important; }
+  .rules-search { margin-top: 4px; margin-bottom: 16px; }
+  .rules-scroll-list { max-height: 54vh; }
+}
+
+@media (max-width: 680px) {
+  .reports-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    padding: 15px;
+  }
+  .reports-toolbar > div:first-child {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .report-controls {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    gap: 9px;
+    align-items: end;
+  }
+  .report-mode-control {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: stretch;
+  }
+  #report-month-field,
+  #report-year-field {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  #report-compare-field {
+    grid-column: 2;
+    grid-row: 2;
+  }
+  .compact-field span { font-size: .62rem; }
+  .compact-field input,
+  .compact-field select { min-height: 38px; padding: 8px 10px; font-size: .78rem; }
+  .report-mode-control .segment-button { min-height: 36px; font-size: .72rem; padding-inline: 8px; }
+  td .category-pill, .mini-item .category-pill { max-width: 104px; }
+  .category-pill { padding-inline: 8px; font-size: .68rem; }
+  .balance-card .hero-date,
+  .balance-card .net-worth-title { min-width: 102px; min-height: 40px; font-size: .9rem !important; }
+}
+
+/* Capito final layout pass */
+.balance-card .hero-date,
+.balance-card .net-worth-title {
+  width: 126px !important;
+  min-width: 126px !important;
+  color: #101511 !important;
+  text-shadow: none !important;
+}
+:root[data-theme="light"] .balance-card .hero-date,
+:root[data-theme="light"] .balance-card .net-worth-title { color: #101511 !important; }
+.balance-card .net-worth-title { font-weight: 960 !important; }
+
+.account-card-controls {
+  position: relative;
+  display: inline-flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 7px;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+.account-menu-wrap { position: relative; flex: 0 0 auto; }
+.account-menu-button {
+  width: 34px;
+  height: 34px;
+  font-size: .92rem;
+  background: var(--surface-2);
+}
+.account-menu {
+  position: absolute;
+  top: calc(100% + 7px);
+  right: 0;
+  z-index: 25;
+  display: none;
+  min-width: 142px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface) 98%, transparent);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(16px);
+}
+.account-menu-wrap.menu-open .account-menu,
+.account-menu-wrap:focus-within .account-menu { display: grid; gap: 4px; }
+.account-menu button {
+  width: 100%;
+  min-height: 34px;
+  border: 0;
+  border-radius: 11px;
+  padding: 8px 10px;
+  background: transparent;
+  color: var(--muted-strong);
+  text-align: left;
+  font-size: .78rem;
+  font-weight: 820;
+}
+.account-menu button:hover { background: var(--surface-2); transform: none; }
+.hidden-pill { max-width: 70px; }
+.account-card > .item-card-actions,
+.account-holding-summary { display: none !important; }
+
+@media (min-width: 921px) {
+  #accounts-grid { display: grid; grid-template-columns: 1fr; gap: 30px; }
+  .account-group-section { gap: 16px; }
+  .cash-bank-group .account-group-grid,
+  .hidden-grid { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; gap: 16px; }
+  .broker-group .account-group-grid { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 16px; }
+  .account-card {
+    min-height: 0;
+    padding: 18px !important;
+    align-content: start;
+  }
+  .account-card-header { gap: 10px; }
+  .broker-value-row { grid-template-columns: 1fr; }
+  .broker-value-row .account-stat:not(.total-stat) { padding: 10px 12px; }
+  .broker-value-row .account-stat:not(.total-stat) strong { font-size: 1.02rem; }
+  .bank-value-row .account-stat.total-stat { min-height: 112px; justify-content: center; }
+}
+
+@media (max-width: 920px) {
+  .account-card-controls { gap: 5px; }
+  .account-menu-button { width: 30px; height: 30px; font-size: .8rem; }
+  .account-menu { min-width: 124px; border-radius: 14px; }
+  .account-menu button { min-height: 32px; font-size: .74rem; }
+  .position-toggle-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+  .positions-toolbar {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .positions-toolbar .compact-segments { width: 100%; }
+  #add-position-holding { justify-self: stretch; }
+}
+
+/* Keep category pills from colliding with adjacent table columns everywhere. */
+td .category-pill,
+.dialog-table td .category-pill,
+.import-preview-table td .category-pill,
+.transactions-table td .category-pill,
+#account-transactions-body .category-pill {
+  max-width: clamp(82px, 12vw, 132px) !important;
+  overflow: hidden;
+}
+td .category-pill .category-pill-text,
+.dialog-table .category-pill-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dialog-table td:nth-child(3),
+.transactions-table td:nth-child(4),
+.import-preview-table td:nth-child(4) { min-width: 0; overflow: hidden; }
+
+/* Mobile report selector layout: mode upper right, month/year beside compare selector. */
+@media (max-width: 680px) {
+  .reports-toolbar { position: relative; }
+  .report-controls {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    gap: 9px !important;
+    width: 100%;
+  }
+  .report-mode-control {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    align-self: start;
+  }
+  #report-month-field,
+  #report-year-field {
+    grid-column: 1 !important;
+    grid-row: 2 !important;
+  }
+  #report-compare-field {
+    grid-column: 2 !important;
+    grid-row: 2 !important;
+  }
+}
+
+/* Stronger contrast balance cards in both themes. */
+:root[data-theme="light"] .account-stat.total-stat strong,
+:root[data-theme="light"] .account-stat strong,
+:root[data-theme="light"] .metric-trend,
+:root[data-theme="light"] .account-trend { text-shadow: none; }
+:root[data-theme="dark"] .account-stat.total-stat,
+:root[data-theme="dark"] .account-menu { color: var(--text); }
