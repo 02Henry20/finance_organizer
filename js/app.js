@@ -1325,9 +1325,11 @@ function syncAssetPricingFields() {
 
   const manualField = $("#asset-manual-price-field");
   const manualInput = $("#asset-manual-price");
+  const manualLabel = manualField?.querySelector("span");
   const manualMode = provider === "manual";
   if (manualInput) manualInput.disabled = !manualMode;
   if (manualField) manualField.classList.toggle("is-disabled-field", !manualMode);
+  if (manualLabel) manualLabel.textContent = manualMode ? "Current/manual price" : "Latest provider price";
 
   const startingBox = $("#asset-starting-position");
   const startingDate = $("#asset-starting-at");
@@ -1351,7 +1353,8 @@ function openAssetModal(id = "", accountId = "") {
   $("#asset-provider").value = asset?.provider || state.settings.marketProvider || "manual";
   $("#asset-quantity").value = asset?.quantity ?? 1;
   $("#asset-currency").value = asset?.currency || selectedCurrency();
-  $("#asset-manual-price").value = asset?.manualPrice ?? asset?.lastPrice ?? 0;
+  const providerValue = asset?.provider || state.settings.marketProvider || "manual";
+  $("#asset-manual-price").value = providerValue === "manual" ? asset?.manualPrice ?? asset?.lastPrice ?? 0 : asset?.lastPrice ?? asset?.manualPrice ?? 0;
   $("#asset-buy-price").value = asset?.buyPrice ?? 0;
   $("#asset-cost-basis").value = asset?.costBasis ?? (Number(asset?.quantity || 0) * Number(asset?.buyPrice || 0));
   const startingInput = $("#asset-starting-position");
@@ -2256,7 +2259,7 @@ function wireEvents() {
         isin: $("#asset-isin")?.value || "",
         quantity,
         currency: normalizedCurrencyFrom("#asset-currency"),
-        manualPrice: parseMoney($("#asset-manual-price").value) || 0,
+        manualPrice: ($("#asset-provider").value || "manual") === "manual" ? parseMoney($("#asset-manual-price").value) || 0 : parseMoney($("#asset-manual-price").value) || state.assets.find(item => item.id === $("#asset-id").value)?.manualPrice || 0,
         buyPrice,
         costBasis,
         startingPosition: Boolean($("#asset-starting-position")?.checked),

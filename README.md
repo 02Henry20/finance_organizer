@@ -112,3 +112,9 @@ If a browser keeps old behavior, open `/cache-reset.html`, reset cache once, the
 - Stooq lookup tries ticker suffix candidates automatically, so AAPL can resolve as AAPL.US.
 - Stooq quote currency is inferred from the resolved symbol suffix.
 - Stooq errors now list the attempted symbols.
+
+
+## v31 update
+
+- Provider-based holdings show latest provider price in the editor instead of stale manual price.
+- Stooq refresh falls back to daily-history CSV when the live quote CSV has no row.

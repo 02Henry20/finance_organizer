@@ -73,6 +73,45 @@ export async function fetchTwelveDataQuote(asset, apiKey) {
   };
 }
 
+async function fetchStooqLiveQuote(symbol) {
+  const url = `https://stooq.com/q/l/?s=${encodeURIComponent(symbol)}&f=sd2t2ohlcv&h&e=csv`;
+  const response = await fetch(url, { mode: "cors" });
+  if (!response.ok) throw new Error(`live HTTP ${response.status}`);
+  const [row] = parseCsv(await response.text());
+  if (!row || row.Close === "N/D" || row.Date === "N/D") throw new Error("live not found");
+  const price = Number(row.Close);
+  if (!Number.isFinite(price)) throw new Error("live no price");
+  const resolvedSymbol = row.Symbol || symbol.toUpperCase();
+  return {
+    provider: "stooq",
+    symbol: resolvedSymbol,
+    price,
+    currency: stooqCurrencyForSymbol(resolvedSymbol, "USD"),
+    changePercent: null,
+    time: row.Date ? new Date(`${row.Date}T${row.Time || "00:00:00"}`).toISOString() : new Date().toISOString()
+  };
+}
+
+async function fetchStooqDailyFallback(symbol) {
+  const url = `https://stooq.com/q/d/l/?s=${encodeURIComponent(symbol)}&i=d`;
+  const response = await fetch(url, { mode: "cors" });
+  if (!response.ok) throw new Error(`daily HTTP ${response.status}`);
+  const rows = parseCsv(await response.text()).filter(row => row && row.Close && row.Close !== "N/D");
+  const row = rows.at(-1);
+  if (!row || row.Date === "N/D") throw new Error("daily not found");
+  const price = Number(row.Close);
+  if (!Number.isFinite(price)) throw new Error("daily no price");
+  const resolvedSymbol = symbol.toUpperCase();
+  return {
+    provider: "stooq",
+    symbol: resolvedSymbol,
+    price,
+    currency: stooqCurrencyForSymbol(resolvedSymbol, "USD"),
+    changePercent: null,
+    time: row.Date ? new Date(`${row.Date}T00:00:00`).toISOString() : new Date().toISOString()
+  };
+}
+
 export async function fetchStooqQuote(asset) {
   const candidates = stooqSymbolCandidates(asset);
   if (!candidates.length) throw new Error("Missing Stooq symbol. Example: AAPL.US, VUSA.UK, IWDA.NL.");
@@ -80,24 +119,14 @@ export async function fetchStooqQuote(asset) {
   const errors = [];
   for (const symbol of candidates) {
     try {
-      const url = `https://stooq.com/q/l/?s=${encodeURIComponent(symbol)}&f=sd2t2ohlcv&h&e=csv`;
-      const response = await fetch(url, { mode: "cors" });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const [row] = parseCsv(await response.text());
-      if (!row || row.Close === "N/D" || row.Date === "N/D") throw new Error("not found");
-      const price = Number(row.Close);
-      if (!Number.isFinite(price)) throw new Error("no price");
-      const resolvedSymbol = row.Symbol || symbol.toUpperCase();
-      return {
-        provider: "stooq",
-        symbol: resolvedSymbol,
-        price,
-        currency: stooqCurrencyForSymbol(resolvedSymbol, asset.currency),
-        changePercent: null,
-        time: row.Date ? new Date(`${row.Date}T${row.Time || "00:00:00"}`).toISOString() : new Date().toISOString()
-      };
-    } catch (error) {
-      errors.push(`${symbol}: ${error.message}`);
+      return await fetchStooqLiveQuote(symbol);
+    } catch (liveError) {
+      errors.push(`${symbol} live: ${liveError.message}`);
+      try {
+        return await fetchStooqDailyFallback(symbol);
+      } catch (dailyError) {
+        errors.push(`${symbol} daily: ${dailyError.message}`);
+      }
     }
   }
 

@@ -1,9 +1,9 @@
-Capito v30 verified build
-Build ID: capito-v30-stooq-symbol-currency-fix
-Created: 2026-07-05T14:50:06
+Capito v31 verified build
+Build ID: capito-v31-stooq-display-fallback
+Created: 2026-07-05T14:58:41
 
 Changes:
-- Stooq quote lookup now tries Stooq suffix candidates, e.g. AAPL -> AAPL.US.
-- Stooq quote currency is inferred from the resolved market suffix, e.g. AAPL.US -> USD.
-- Error messages show which Stooq symbols were tried.
-- Previous v29 Revolut opening-balance and v27 starting-position features retained.
+- Holding editor now shows lastPrice for Stooq/TwelveData holdings instead of stale manualPrice.
+- Non-manual price field label changes to "Latest provider price".
+- Stooq quote refresh now falls back from q/l live quote CSV to q/d/l daily history CSV.
+- Previous v30 Stooq symbol/currency fixes and v29/v27 features retained.
