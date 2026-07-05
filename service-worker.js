@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v12";
+const CACHE_NAME = "capito-v13";
 const CORE = ["./", "./index.html", "./styles.css", "./manifest.webmanifest", "./js/app.js", "./js/charts.js", "./js/finance.js", "./js/firebase.js", "./js/importer.js", "./js/market.js", "./js/store.js", "./firebase-config.js"];
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(CORE)).catch(() => undefined));

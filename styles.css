@@ -1074,3 +1074,196 @@ td .category-pill .category-pill-text,
 :root[data-theme="light"] .account-trend { text-shadow: none; }
 :root[data-theme="dark"] .account-stat.total-stat,
 :root[data-theme="dark"] .account-menu { color: var(--text); }
+
+/* Capito overview/report polish pass */
+.brand-lockup.compact { gap: 14px; }
+.brand-lockup.compact .brand-mark.small {
+  width: 44px;
+  height: 44px;
+  padding: 8px;
+  border-radius: 16px;
+}
+.brand-lockup.compact > strong {
+  font-size: clamp(1.42rem, 2vw, 1.72rem);
+  letter-spacing: -.035em;
+}
+.header-actions { gap: 12px; }
+.sync-pill {
+  min-height: 44px;
+  padding: 10px 14px;
+  border-radius: 18px;
+}
+.sync-pill strong { font-size: .86rem; }
+.sync-pill small { font-size: .72rem; }
+.user-chip {
+  min-height: 44px;
+  padding: 10px 14px;
+  max-width: 280px;
+  font-size: .88rem;
+}
+
+.home-layout { grid-template-columns: minmax(0, 1.42fr) 340px; }
+.home-layout.no-review { grid-template-columns: minmax(0, 1fr); }
+.balance-card {
+  min-height: 306px;
+  padding: clamp(20px, 2.4vw, 30px);
+}
+.net-worth-heading {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 10px;
+}
+.balance-card .hero-date,
+.balance-card .net-worth-title {
+  width: 152px !important;
+  min-width: 152px !important;
+  min-height: 48px !important;
+  padding: 10px 16px !important;
+  border: 1px solid color-mix(in srgb, var(--bg) 24%, transparent) !important;
+  border-radius: 18px !important;
+  background: color-mix(in srgb, var(--bg) 94%, transparent) !important;
+  color: var(--text) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 14px 30px rgba(0,0,0,.10) !important;
+  text-transform: none !important;
+  letter-spacing: -.02em !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+}
+.balance-card .net-worth-title {
+  justify-content: flex-start;
+  font-size: clamp(1.05rem, 1.75vw, 1.42rem) !important;
+  font-weight: 980 !important;
+}
+.balance-card .hero-date {
+  justify-content: center;
+  font-size: clamp(1.02rem, 1.45vw, 1.22rem) !important;
+  font-weight: 910 !important;
+}
+:root[data-theme="light"] .balance-card .hero-date,
+:root[data-theme="light"] .balance-card .net-worth-title { color: #101511 !important; }
+:root[data-theme="dark"] .balance-card .hero-date,
+:root[data-theme="dark"] .balance-card .net-worth-title { color: #f7f9f2 !important; }
+.hero-value { margin: 26px 0 22px; }
+.net-worth-meta > div {
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  border: 1px solid color-mix(in srgb, var(--bg) 24%, transparent);
+}
+.net-worth-meta strong .delta-period { margin-top: 12px; }
+#net-worth-window { margin-bottom: 14px; }
+.cashflow-line { padding-top: 8px; }
+
+.report-neutral-value {
+  color: var(--text) !important;
+}
+#report-income-detail > span:last-child,
+#report-spending-detail > span:last-child,
+#report-net-detail > span:last-child,
+#report-savings-rate-detail > span:last-child,
+#report-days-count > span:last-child,
+#report-top-category-value > span:last-child {
+  color: var(--muted);
+  font-weight: 760;
+}
+
+@media (max-width: 1180px) {
+  .home-layout { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 920px) {
+  .brand-lockup.compact .brand-mark.small {
+    width: 42px;
+    height: 42px;
+  }
+  .brand-lockup.compact > strong { font-size: 1.42rem; }
+  .header-actions .sync-pill { min-height: 42px; padding: 9px 12px; }
+  .header-actions .sync-pill strong { font-size: .82rem; }
+  .account-strip-card .chart-wrap.short { height: 286px !important; min-height: 286px !important; }
+}
+
+@media (max-width: 680px) {
+  .balance-card .hero-date,
+  .balance-card .net-worth-title {
+    width: 118px !important;
+    min-width: 118px !important;
+    min-height: 42px !important;
+    padding: 9px 12px !important;
+    border-radius: 15px !important;
+  }
+  .balance-card .net-worth-title { font-size: .98rem !important; }
+  .balance-card .hero-date { font-size: .9rem !important; }
+  .net-worth-heading { gap: 8px; }
+  .metric-strip { gap: 10px; }
+  .metric-card {
+    min-height: 118px;
+    padding: 13px 15px;
+  }
+  .metric-card strong {
+    margin: 9px 0 4px;
+    font-size: clamp(1.35rem, 7vw, 1.75rem);
+  }
+  .metric-card span,
+  .metric-card small { line-height: 1.25; }
+  .reports-toolbar {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "title mode"
+      "subtitle mode"
+      "controls controls";
+    align-items: start;
+    gap: 6px 12px;
+    padding: 15px !important;
+  }
+  .reports-toolbar > div:first-child {
+    display: contents !important;
+  }
+  .reports-toolbar > div:first-child .eyebrow {
+    grid-area: title;
+    margin: 0;
+    align-self: end;
+  }
+  .reports-toolbar > div:first-child h3 {
+    grid-area: subtitle;
+    margin: 0;
+    align-self: start;
+  }
+  .report-controls {
+    display: grid !important;
+    grid-area: controls;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    gap: 9px !important;
+    width: 100%;
+    margin-top: 8px;
+  }
+  .report-mode-control {
+    grid-area: mode !important;
+    width: min(158px, 43vw);
+    align-self: start;
+    justify-self: end;
+  }
+  #report-month-field,
+  #report-year-field { grid-column: 1 !important; grid-row: 1 !important; }
+  #report-compare-field { grid-column: 2 !important; grid-row: 1 !important; }
+  #report-category-chart,
+  #report-yoy-chart { max-height: 210px; }
+  #report-category-chart + .chart-empty,
+  #report-yoy-chart + .chart-empty { min-height: 0; }
+  #report-category-chart,
+  #report-yoy-chart { height: 210px; }
+  #report-category-chart:is(canvas),
+  #report-yoy-chart:is(canvas) { height: 210px !important; }
+  #report-category-chart,
+  #report-yoy-chart { display: block; }
+  #report-category-chart { min-height: 0; }
+  #report-yoy-chart { min-height: 0; }
+  .reports-grid .chart-card:has(#report-category-chart) .chart-wrap,
+  .reports-grid .chart-card:has(#report-yoy-chart) .chart-wrap {
+    min-height: 210px !important;
+    height: 210px !important;
+  }
+  .reports-grid .chart-card:has(#report-category-chart),
+  .reports-grid .chart-card:has(#report-yoy-chart) {
+    padding-bottom: 15px;
+  }
+}

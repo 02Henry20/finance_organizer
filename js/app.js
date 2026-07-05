@@ -693,22 +693,22 @@ function renderReports() {
   const dailyEl = $("#report-daily-spend");
   const topEl = $("#report-top-category");
   incomeEl.textContent = formatCurrency(summary.income, currency);
-  incomeEl.className = summary.income > 0 ? "amount-pos" : "delta-flat";
+  incomeEl.className = "report-neutral-value";
   spendingEl.textContent = formatCurrency(summary.expense, currency);
-  spendingEl.className = summary.expense > 0 ? "amount-neg" : "delta-flat";
+  spendingEl.className = "report-neutral-value";
   netEl.textContent = formatCurrency(summary.net, currency);
   netEl.className = summary.net > 0 ? "amount-pos" : summary.net < 0 ? "amount-neg" : "delta-flat";
   savingsEl.textContent = savingsRate == null ? "—" : formatPercent(savingsRate);
   savingsEl.className = savingsRate == null ? "delta-flat" : savingsRate >= 0 ? "amount-pos" : "amount-neg";
   dailyEl.textContent = formatCurrency(dailySpend, currency);
-  dailyEl.className = dailySpend > 0 ? "amount-neg" : "delta-flat";
+  dailyEl.className = "report-neutral-value";
   topEl.textContent = topCategory?.name || "—";
   topEl.title = topCategory?.name || "";
 
-  $("#report-income-detail").innerHTML = `${metricTrendHtml(summary.income, compareSummary.income, { currency })}<span>${periodRows.filter(tx => Number(tx.amount || 0) > 0).length} inflows vs ${escapeHtml(compareBounds.label)}</span>`;
-  $("#report-spending-detail").innerHTML = `${metricTrendHtml(summary.expense, compareSummary.expense, { currency, inverted: true })}<span>${periodRows.filter(tx => Number(tx.amount || 0) < 0).length} outflows vs ${escapeHtml(compareBounds.label)}</span>`;
+  $("#report-income-detail").innerHTML = `${metricTrendHtml(summary.income, compareSummary.income, { currency })}<span>vs ${escapeHtml(compareBounds.label)}</span>`;
+  $("#report-spending-detail").innerHTML = `${metricTrendHtml(summary.expense, compareSummary.expense, { currency, inverted: true })}<span>vs ${escapeHtml(compareBounds.label)}</span>`;
   $("#report-net-detail").innerHTML = `${metricTrendHtml(summary.net, compareSummary.net, { currency })}<span>${escapeHtml(bounds.label)}</span>`;
-  $("#report-savings-rate-detail").innerHTML = `${metricTrendHtml(savingsRate ?? 0, compareSavingsRate ?? 0, { mode: "points" })}<span>Net flow | income</span>`;
+  $("#report-savings-rate-detail").innerHTML = `${metricTrendHtml(savingsRate ?? 0, compareSavingsRate ?? 0, { mode: "points" })}<span>Net flow / income</span>`;
   $("#report-days-count").innerHTML = `${metricTrendHtml(dailySpend, compareDailySpend, { currency, inverted: true })}<span>${days} days</span>`;
   $("#report-top-category-value").innerHTML = topCategory
     ? `${metricTrendHtml(topCategory.value, compareTopValue, { currency, inverted: true })}<span>${formatCurrency(topCategory.value, currency)}</span>`

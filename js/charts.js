@@ -285,8 +285,8 @@ export function drawAccountBars(canvas, rows, currency = "EUR", options = {}) {
   if (!data.length) return;
   const { ctx, width, height, colors: c } = prepare(canvas);
   const mobile = width < 520;
-  const labelSpace = mobile ? Math.min(158, Math.max(132, width * 0.39)) : Math.min(132, Math.max(104, width * 0.17));
-  const valueSpace = mobile ? Math.min(70, Math.max(52, width * 0.14)) : Math.min(92, Math.max(64, width * 0.11));
+  const labelSpace = mobile ? Math.min(144, Math.max(116, width * 0.35)) : Math.min(126, Math.max(96, width * 0.16));
+  const valueSpace = mobile ? Math.min(66, Math.max(48, width * 0.13)) : Math.min(88, Math.max(60, width * 0.10));
   const area = { left: labelSpace, right: width - valueSpace, top: 18, bottom: height - 18 };
   const values = data.flatMap(row => {
     const current = Number(row.balance?.converted || 0);
@@ -294,11 +294,11 @@ export function drawAccountBars(canvas, rows, currency = "EUR", options = {}) {
     return [current, previous];
   });
   const maxAbs = Math.max(...values.map(value => Math.abs(value)), 1);
-  const zero = area.left + (area.right - area.left) * (mobile ? 0.50 : 0.46);
+  const zero = area.left + (area.right - area.left) * (mobile ? 0.48 : 0.45);
   const negScale = (zero - area.left - 8) / maxAbs;
   const posScale = (area.right - zero - 8) / maxAbs;
   const rowH = (area.bottom - area.top) / data.length;
-  const labelMax = Math.max(48, area.left - 18);
+  const labelMax = Math.max(44, area.left - (mobile ? 24 : 20));
   ctx.font = `${mobile ? 11 : 12}px Inter, system-ui`;
 
   const drawSegment = (fromValue, toValue, y, color, heightPx = 18) => {
@@ -330,7 +330,8 @@ export function drawAccountBars(canvas, rows, currency = "EUR", options = {}) {
     ctx.fillStyle = c.text;
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
-    ctx.fillText(fitText(ctx, row.name, labelMax), area.left - 12, y);
+    const labelText = fitText(ctx, row.name, labelMax);
+    ctx.fillText(labelText, area.left - (mobile ? 14 : 12), y);
 
     if (options.showDelta && Math.abs(delta) > 0.005) {
       drawSegment(0, previous, y, "rgba(148,163,184,.34)", 18);
