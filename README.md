@@ -1,22 +1,27 @@
-# Capito tutorial + UI update
+# Capito complete app package
 
-Included changes:
-- Guided tutorial button in Settings.
-- Full-screen spotlight tutorial overlay with close, back, next, progress bar and step counter.
-- Tutorial mode loads isolated local demo data from `js/tutorial-data.js`.
-- Tutorial data stays local and does not sync to Firebase.
-- Exiting the tutorial restores normal data and Firebase sync listeners.
-- Home hero card visual polish.
-- Mobile reports toolbar layout refinement.
-- Refined scrollbar styling.
+Deploy the files in this folder exactly as-is.
 
-Main tutorial files:
-- `js/tutorial.js`
-- `js/tutorial-data.js`
-- `js/store.js` (tutorial-mode support)
+Structure:
+- `index.html`
+- `styles.css`
+- `manifest.webmanifest`
+- `service-worker.js`
+- `firebase-config.js`
+- `cache-reset.html`
+- `js/`
+- `icons/`
 
-How it works:
-1. Sign in.
-2. Open **Settings**.
-3. Click **Start guided tutorial**.
-4. Close or finish the tutorial to return to your real data.
+Important:
+- This build uses cache-busted module imports (`capito-v16`) to avoid old desktop service-worker caches mixing old and new JavaScript files.
+- `service-worker.js` is network-first for HTML/CSS/JS/manifest files.
+- If a desktop browser is still stuck on the old login screen after deploying, open `/cache-reset.html`, click **Reset local app cache**, then open `/index.html`.
+
+Tutorial:
+- Settings contains **Start guided tutorial**.
+- Tutorial data is isolated in `js/tutorial-data.js`.
+- Tutorial mode does not sync to Firebase and restores the real user state when closed.
+
+Icons:
+- All production icons are inside `icons/`.
+- The manifest uses the icons in `icons/`, including Android round and maskable variants.

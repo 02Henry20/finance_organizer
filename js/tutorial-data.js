@@ -1,4 +1,4 @@
-import { DEFAULT_CATEGORIES, DEFAULT_RULES, DEFAULT_SETTINGS } from './finance.js';
+import { DEFAULT_CATEGORIES, DEFAULT_RULES, DEFAULT_SETTINGS } from './finance.js?v=capito-v16';
 
 const today = new Date();
 const iso = daysAgo => {

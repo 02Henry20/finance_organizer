@@ -1,5 +1,5 @@
-import { enterTutorialMode, exitTutorialMode, state, subscribe } from './store.js';
-import { TUTORIAL_DATA } from './tutorial-data.js';
+import { enterTutorialMode, exitTutorialMode, state, subscribe } from './store.js?v=capito-v16';
+import { TUTORIAL_DATA } from './tutorial-data.js?v=capito-v16';
 
 const $ = selector => document.querySelector(selector);
 

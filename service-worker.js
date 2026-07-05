@@ -1,9 +1,10 @@
-const CACHE_NAME = "capito-v14";
+const CACHE_NAME = "capito-v16";
 const CORE = [
   "./",
   "./index.html",
   "./styles.css",
   "./manifest.webmanifest",
+  "./firebase-config.js",
   "./js/app.js",
   "./js/charts.js",
   "./js/finance.js",
@@ -13,7 +14,17 @@ const CORE = [
   "./js/store.js",
   "./js/tutorial.js",
   "./js/tutorial-data.js",
-  "./firebase-config.js"
+  "./icons/favicon.ico",
+  "./icons/favicon-16x16.png",
+  "./icons/favicon-32x32.png",
+  "./icons/favicon-48x48.png",
+  "./icons/apple-touch-icon.png",
+  "./icons/icon-192.png",
+  "./icons/icon-512.png",
+  "./icons/android-round/icon-round-192.png",
+  "./icons/android-round/icon-round-512.png",
+  "./icons/android-maskable/icon-maskable-192.png",
+  "./icons/android-maskable/icon-maskable-512.png"
 ];
 
 self.addEventListener("install", event => {
@@ -32,16 +43,16 @@ self.addEventListener("fetch", event => {
   if (event.request.method !== "GET") return;
 
   const url = new URL(event.request.url);
-  const isCoreAsset =
+  const isAppShell =
     event.request.mode === "navigate" ||
     url.pathname.endsWith(".html") ||
     url.pathname.endsWith(".js") ||
     url.pathname.endsWith(".css") ||
     url.pathname.endsWith(".webmanifest");
 
-  if (isCoreAsset) {
+  if (isAppShell) {
     event.respondWith(
-      fetch(event.request)
+      fetch(event.request, { cache: "no-store" })
         .then(response => {
           const copy = response.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy)).catch(() => undefined);
@@ -52,5 +63,11 @@ self.addEventListener("fetch", event => {
     return;
   }
 
-  event.respondWith(caches.match(event.request).then(cached => cached || fetch(event.request)));
+  event.respondWith(
+    caches.match(event.request).then(cached => cached || fetch(event.request).then(response => {
+      const copy = response.clone();
+      caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy)).catch(() => undefined);
+      return response;
+    }))
+  );
 });

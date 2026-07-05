@@ -25,7 +25,7 @@ import {
   updateDoc,
   writeBatch
 } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js";
-import { firebaseConfig } from "../firebase-config.js";
+import { firebaseConfig } from "../firebase-config.js?v=capito-v16";
 
 export const firebaseApp = initializeApp(firebaseConfig);
 export const auth = getAuth(firebaseApp);

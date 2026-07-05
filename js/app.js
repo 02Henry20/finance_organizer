@@ -6,7 +6,7 @@ import {
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut
-} from "./firebase.js";
+} from "./firebase.js?v=capito-v16";
 import {
   connectUser,
   deleteAccount,
@@ -30,7 +30,7 @@ import {
   state,
   subscribe,
   updateAssetQuote
-} from "./store.js";
+} from "./store.js?v=capito-v16";
 import {
   ACCOUNT_TYPES,
   CATEGORY_COLORS,
@@ -47,10 +47,10 @@ import {
   monthKey,
   normalizeText,
   parseMoney
-} from "./finance.js";
-import { buildImportPreview, parseBankFile, serializeTransactionsCsv } from "./importer.js";
-import { fetchQuote } from "./market.js";
-import { drawAccountBars, drawDonut, drawIncomeExpense, drawNetSeries, drawYearComparison } from "./charts.js";
+} from "./finance.js?v=capito-v16";
+import { buildImportPreview, parseBankFile, serializeTransactionsCsv } from "./importer.js?v=capito-v16";
+import { fetchQuote } from "./market.js?v=capito-v16";
+import { drawAccountBars, drawDonut, drawIncomeExpense, drawNetSeries, drawYearComparison } from "./charts.js?v=capito-v16";
 
 const VIEW_LABELS = {
   overview: ["COMMAND CENTER", "Overview"],

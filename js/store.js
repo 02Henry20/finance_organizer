@@ -11,8 +11,8 @@ import {
   setDoc,
   updateDoc,
   writeBatch
-} from "./firebase.js";
-import { fetchLatestFxRates } from "./market.js";
+} from "./firebase.js?v=capito-v16";
+import { fetchLatestFxRates } from "./market.js?v=capito-v16";
 import {
   DEFAULT_ACCOUNTS,
   DEFAULT_CATEGORIES,
@@ -20,7 +20,7 @@ import {
   DEFAULT_SETTINGS,
   sortByDateDesc,
   uid
-} from "./finance.js";
+} from "./finance.js?v=capito-v16";
 
 const APP_PATH = ["apps", "finance-organizer", "users"];
 const LOCAL_SETTINGS_KEY = "capito-local-settings-v1";
