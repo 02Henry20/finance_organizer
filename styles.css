@@ -2600,3 +2600,43 @@ td .category-pill .category-pill-text,
     grid-template-columns: minmax(0, 1fr) 38px;
   }
 }
+
+
+/* v45: keep holding update age + refresh on one line and speed-focused ISIN lookup */
+.positions-table .positions-updated-header,
+.positions-table td.position-update-cell {
+  width: 138px !important;
+  min-width: 138px !important;
+}
+.positions-table td.position-update-cell {
+  white-space: nowrap !important;
+  padding-left: 6px !important;
+  padding-right: 6px !important;
+}
+.position-update-inline {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 4px !important;
+  white-space: nowrap !important;
+  flex-wrap: nowrap !important;
+  max-width: 100%;
+}
+.positions-table td.position-update-cell .quote-age {
+  min-width: 58px !important;
+  padding-inline: 5px !important;
+  font-size: .64rem !important;
+  white-space: nowrap !important;
+}
+.positions-table td.position-update-cell .tiny-icon-button {
+  display: inline-grid !important;
+  width: 22px !important;
+  min-width: 22px !important;
+  height: 22px !important;
+  min-height: 22px !important;
+  margin-left: 0 !important;
+  padding: 0 !important;
+  font-size: .72rem !important;
+  line-height: 1 !important;
+  vertical-align: middle !important;
+}

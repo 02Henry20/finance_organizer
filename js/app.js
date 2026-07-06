@@ -1423,7 +1423,17 @@ function openModal(type) {
   document.body.style.overflow = "hidden";
 }
 
+function currentModalType() {
+  return $(`[data-modal]:not([hidden])`)?.dataset.modal || "";
+}
+
 function closeModal() {
+  const modalType = currentModalType();
+  if (modalType === "asset" && activePositionsAccountId) {
+    renderPositionsModal();
+    openModal("positions");
+    return;
+  }
   elements.modalBackdrop.hidden = true;
   $$(`[data-modal]`).forEach(modal => modal.hidden = true);
   document.body.style.overflow = "";
@@ -1622,10 +1632,15 @@ function applyYahooAssetMatch(match = {}) {
 
 function yahooAssetMatchLabel(match = {}) {
   const price = Number(match.price);
-  const priceText = Number.isFinite(price) ? formatCurrency(price, match.currency || selectedCurrency()) : "No price";
-  const ageText = Number.isFinite(Number(match.ageDays)) ? `${Number(match.ageDays).toFixed(1)}d old` : "age unknown";
   const exchange = match.exchange ? ` · ${match.exchange}` : "";
-  return `${match.symbol || "—"} · ${priceText} · ${ageText}${exchange}`;
+  const exact = match.exactIdentifierMatch ? " · exact ISIN" : "";
+  if (Number.isFinite(price)) {
+    const priceText = formatCurrency(price, match.currency || selectedCurrency());
+    const ageText = Number.isFinite(Number(match.ageDays)) ? `${Number(match.ageDays).toFixed(1)}d old` : "age unknown";
+    return `${match.symbol || "—"} · ${priceText} · ${ageText}${exchange}${exact}`;
+  }
+  const currency = match.currency ? ` · ${match.currency}` : "";
+  return `${match.symbol || "—"}${currency}${exchange}${exact}`;
 }
 
 function chooseYahooAssetMatch(matches = []) {
@@ -1658,18 +1673,23 @@ async function runAssetIsinLookup() {
     toast("Add an ISIN first", "Enter the holding ISIN, then run the Yahoo search.", "error");
     return;
   }
-  toast("Yahoo search triggered", `Searching Yahoo Finance for ${isin}.`);
+  toast("Yahoo ISIN lookup started", `Searching Yahoo Finance for ${isin}. Max 5 results.`);
   if (button) {
     button.disabled = true;
     button.textContent = "…";
   }
   try {
-    const matches = await searchYahooAssetMatches(draft, { limit: 5, searchLimit: 12 });
+    const matches = await searchYahooAssetMatches(draft, { limit: 5, searchLimit: 5, validateQuotes: false });
     if (!matches.length) {
       toast("No Yahoo match", "Yahoo did not return a usable result for this ISIN.", "error");
       return;
     }
-    const selected = matches.length === 1 ? matches[0] : await chooseYahooAssetMatch(matches);
+    const exactMatches = matches.filter(match => match.exactIdentifierMatch);
+    const selected = exactMatches.length === 1
+      ? exactMatches[0]
+      : matches.length === 1
+        ? matches[0]
+        : await chooseYahooAssetMatch(matches);
     if (!selected) return;
     applyYahooAssetMatch(selected);
     toast("Yahoo match applied", `${selected.symbol || "Ticker"} filled into the holding form.`);
@@ -1753,7 +1773,7 @@ function renderPositionsModal() {
       <td>${buyPrice ? formatCurrency(buyPrice, currency) : "—"}</td>
       <td>${formatCurrency(value, currency)}</td>
       <td><span class="${deltaClass}">${deltaText}</span></td>
-      <td class="position-update-cell"><span class="${stale ? "quote-age stale" : "quote-age"}" title="${escapeHtml(quoteMetaText(asset))}">${escapeHtml(ageLabel)}</span><button class="icon-button tiny-icon-button" type="button" data-refresh-asset="${escapeHtml(asset.id)}" title="Update price" aria-label="Update price">↻</button></td>
+      <td class="position-update-cell"><span class="position-update-inline"><span class="${stale ? "quote-age stale" : "quote-age"}" title="${escapeHtml(quoteMetaText(asset))}">${escapeHtml(ageLabel)}</span><button class="icon-button tiny-icon-button" type="button" data-refresh-asset="${escapeHtml(asset.id)}" title="Update price" aria-label="Update price">↻</button></span></td>
       <td class="positions-edit-cell"><button class="ghost-button compact icon-only-action" type="button" data-edit-asset="${escapeHtml(asset.id)}" title="Edit holding" aria-label="Edit holding">✎</button></td>`;
     tbody.append(tr);
   }

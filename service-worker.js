@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v44-yahoo-isin-lookup";
+const CACHE_NAME = "capito-v45-yahoo-isin-fast";
 const CORE = [
   "./",
   "./index.html",
