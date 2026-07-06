@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v36-mobile-toast-fuller-icons";
+const CACHE_NAME = "capito-v37-user-icons-app-icon-revert";
 const CORE = [
   "./",
   "./index.html",

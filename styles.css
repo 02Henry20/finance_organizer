@@ -2344,22 +2344,3 @@ td .category-pill .category-pill-text,
   }
 }
 
-/* v36: render the app icon larger inside the visible header/auth slots */
-.brand-mark-img {
-  object-fit: contain;
-  padding: 0;
-}
-.brand-lockup.compact .brand-mark-img,
-.brand-lockup.compact .brand-mark.small {
-  width: 58px !important;
-  height: 58px !important;
-  border-radius: 19px !important;
-}
-@media (max-width: 920px) {
-  .brand-lockup.compact .brand-mark-img,
-  .brand-lockup.compact .brand-mark.small {
-    width: 52px !important;
-    height: 52px !important;
-    border-radius: 17px !important;
-  }
-}
