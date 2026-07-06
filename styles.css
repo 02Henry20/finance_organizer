@@ -2325,3 +2325,41 @@ td .category-pill .category-pill-text,
     display: none;
   }
 }
+
+/* v36: mobile toasts/errors stay clear of bottom tab selector */
+@media (max-width: 920px) {
+  .toast-container {
+    top: calc(12px + env(safe-area-inset-top));
+    right: 12px;
+    bottom: auto;
+    left: 12px;
+    width: auto;
+    max-width: none;
+    z-index: 140;
+  }
+  .toast {
+    width: 100%;
+    max-width: 520px;
+    margin: 0 auto;
+  }
+}
+
+/* v36: render the app icon larger inside the visible header/auth slots */
+.brand-mark-img {
+  object-fit: contain;
+  padding: 0;
+}
+.brand-lockup.compact .brand-mark-img,
+.brand-lockup.compact .brand-mark.small {
+  width: 58px !important;
+  height: 58px !important;
+  border-radius: 19px !important;
+}
+@media (max-width: 920px) {
+  .brand-lockup.compact .brand-mark-img,
+  .brand-lockup.compact .brand-mark.small {
+    width: 52px !important;
+    height: 52px !important;
+    border-radius: 17px !important;
+  }
+}

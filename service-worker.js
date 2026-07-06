@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v35-transaction-category-reference-selection";
+const CACHE_NAME = "capito-v36-mobile-toast-fuller-icons";
 const CORE = [
   "./",
   "./index.html",
