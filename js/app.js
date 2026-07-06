@@ -1649,7 +1649,7 @@ function renderPositionsModal() {
       <td>${formatCurrency(value, currency)}</td>
       <td><span class="${deltaClass}">${deltaText}</span></td>
       <td class="position-update-cell"><span class="${stale ? "quote-age stale" : "quote-age"}" title="${escapeHtml(quoteMetaText(asset))}">${escapeHtml(ageLabel)}</span><button class="icon-button tiny-icon-button" type="button" data-refresh-asset="${escapeHtml(asset.id)}" title="Update price" aria-label="Update price">↻</button></td>
-      <td class="action-cell"><button class="ghost-button compact icon-only-action" type="button" data-edit-asset="${escapeHtml(asset.id)}" title="Edit holding" aria-label="Edit holding">✎</button></td>`;
+      <td class="positions-edit-cell"><button class="ghost-button compact icon-only-action" type="button" data-edit-asset="${escapeHtml(asset.id)}" title="Edit holding" aria-label="Edit holding">✎</button></td>`;
     tbody.append(tr);
   }
   tbody.querySelectorAll("[data-edit-asset]").forEach(btn => btn.addEventListener("click", () => openAssetModal(btn.dataset.editAsset)));

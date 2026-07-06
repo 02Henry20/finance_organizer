@@ -682,6 +682,35 @@ function excelSerialToIso(value) {
   return epoch.toISOString().slice(0, 10);
 }
 
+function smartbrokerScaledDecimal(value, { allowScale = true } = {}) {
+  const parsed = parseMoney(value);
+  if (!Number.isFinite(Number(parsed))) return null;
+  const number = Number(parsed);
+  const raw = String(value ?? "").trim();
+  const looksIntegerLike = /^-?\d+$/.test(raw) || (typeof value === "number" && Number.isInteger(value));
+  if (allowScale && looksIntegerLike && Math.abs(number) >= 10000) return number / 1000;
+  return number;
+}
+
+function smartbrokerScaledQuantity(value, price, marketValue) {
+  const parsed = parseMoney(value);
+  if (!Number.isFinite(Number(parsed))) return null;
+  const quantity = Number(parsed);
+  const raw = String(value ?? "").trim();
+  const looksIntegerLike = /^\d+$/.test(raw) || (typeof value === "number" && Number.isInteger(value));
+  if (!looksIntegerLike || Math.abs(quantity) < 1000) return quantity;
+
+  const scaled = quantity / 1000;
+  const priceNumber = Number(price);
+  const valueNumber = Number(marketValue);
+  if (Number.isFinite(priceNumber) && priceNumber > 0 && Number.isFinite(valueNumber) && valueNumber > 0) {
+    const unscaledError = Math.abs(quantity * priceNumber - valueNumber);
+    const scaledError = Math.abs(scaled * priceNumber - valueNumber);
+    return scaledError <= unscaledError ? scaled : quantity;
+  }
+  return scaled;
+}
+
 function detectBrokerFormat(headers) {
   const normalized = headers.map(normalizeHeader).join("|");
   if (normalized.includes("isin") && normalized.includes("wkn") && normalized.includes("stucke") && normalized.includes("marktkurs pro stuck")) {
@@ -779,16 +808,21 @@ export async function parseBrokerPositionsFile(file) {
       continue;
     }
     const name = [row[i.name1], row[i.name2]].filter(Boolean).join(" · ").trim() || symbol || isin || wkn;
+    const marketPrice = smartbrokerScaledDecimal(row[i.price]);
+    const buyPrice = smartbrokerScaledDecimal(row[i.buyPrice]);
+    const costBasis = parseMoney(row[i.costBasis]) || 0;
+    const marketValue = parseMoney(row[i.marketValue]) || 0;
+    const scaledQuantity = smartbrokerScaledQuantity(row[i.quantity], marketPrice, marketValue);
     positions.push({
       symbol,
       name,
       type: assetTypeFrom(row[i.assetClass]),
-      quantity: Number(quantity || 0),
+      quantity: Number(scaledQuantity || 0),
       currency: String(row[i.currency] || "EUR").trim().toUpperCase().slice(0, 3) || "EUR",
-      costBasis: parseMoney(row[i.costBasis]) || 0,
-      buyPrice: normalizeHeader(String(row[i.buyPrice] || "")).match(/^\d{4,}$/) ? (parseMoney(row[i.buyPrice]) || 0) / 1000 : (parseMoney(row[i.buyPrice]) || 0),
-      manualPrice: normalizeHeader(String(row[i.price] || "")).match(/^\d{4,}$/) ? (parseMoney(row[i.price]) || 0) / 1000 : (parseMoney(row[i.price]) || 0),
-      lastPrice: parseMoney(row[i.price]) || null,
+      costBasis,
+      buyPrice: buyPrice || 0,
+      manualPrice: marketPrice || 0,
+      lastPrice: marketPrice || null,
       lastPriceAt: excelSerialToIso(row[i.date]) ? `${excelSerialToIso(row[i.date])}T00:00:00.000Z` : new Date().toISOString(),
       provider: "manual",
       wkn,
@@ -796,7 +830,7 @@ export async function parseBrokerPositionsFile(file) {
       hidden: false,
       startingPosition: true,
       startingAt: excelSerialToIso(row[i.date]) || new Date().toISOString().slice(0, 10),
-      startingValue: (parseMoney(row[i.marketValue]) || 0) || (parseMoney(row[i.costBasis]) || 0),
+      startingValue: marketValue || costBasis,
       note: row[i.exchange] ? `Exchange: ${row[i.exchange]}` : "",
       raw: row
     });

@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#111827">
   <meta name="description" content="Capito is a private finance organizer for accounts, transactions, holdings, rules and analytics.">
   <title>Capito</title>
-  <meta name="capito-build" content="capito-v41-yahoo-quotes">
+  <meta name="capito-build" content="capito-v42-yahoo-proxy-positions">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16x16.png">
@@ -370,7 +370,7 @@
         </div>
         <button id="add-position-holding" class="primary-button compact" type="button">+ Holding</button>
       </div>
-      <div class="modal-table-wrap"><table class="dialog-table positions-table"><thead><tr><th>Holding</th><th>Quantity</th><th>Price</th><th>Buy</th><th>Value</th><th id="positions-delta-heading">Change</th><th>Updated</th><th></th></tr></thead><tbody id="positions-body"></tbody></table></div>
+      <div class="modal-table-wrap"><table class="dialog-table positions-table"><thead><tr><th>Holding</th><th>Quantity</th><th>Price</th><th>Buy</th><th>Value</th><th id="positions-delta-heading">Change</th><th class="positions-updated-header">Updated</th><th class="positions-edit-header" aria-label="Edit"></th></tr></thead><tbody id="positions-body"></tbody></table></div>
       <div id="positions-pagination" class="pagination-bar"></div>
     </section>
 

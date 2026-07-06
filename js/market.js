@@ -113,10 +113,41 @@ function searchQueriesForAsset(asset = {}) {
     .filter((value, index, list) => list.findIndex(other => other.toLowerCase() === value.toLowerCase()) === index);
 }
 
+function yahooProxyUrls(url) {
+  const encoded = encodeURIComponent(url);
+  return [
+    { name: "direct", url },
+    { name: "AllOrigins", url: `https://api.allorigins.win/raw?url=${encoded}` },
+    { name: "CorsProxy.io", url: `https://corsproxy.io/?url=${encoded}` },
+    { name: "CodeTabs", url: `https://api.codetabs.com/v1/proxy?quest=${encoded}` }
+  ];
+}
+
+async function fetchTextWithTimeout(url, timeoutMs = 16000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { mode: "cors", cache: "no-store", signal: controller.signal });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.text();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function fetchJson(url) {
-  const response = await fetch(url, { mode: "cors", cache: "no-store" });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return response.json();
+  const errors = [];
+  for (const endpoint of yahooProxyUrls(url)) {
+    try {
+      const text = await fetchTextWithTimeout(endpoint.url);
+      const data = JSON.parse(text);
+      if (data?.chart?.error) throw new Error(data.chart.error.description || data.chart.error.code || "Yahoo error");
+      return data;
+    } catch (error) {
+      errors.push(`${endpoint.name}: ${error.name === "AbortError" ? "timeout" : error.message}`);
+    }
+  }
+  throw new Error(errors.join(" | "));
 }
 
 function yahooChartUrl(symbol, range = "5d", interval = "1d") {

@@ -2438,3 +2438,41 @@ td .category-pill .category-pill-text,
     gap: 6px;
   }
 }
+
+/* v42: keep position update controls and edit icon in separate table columns */
+.positions-table {
+  table-layout: fixed;
+  min-width: 920px;
+}
+.positions-table .positions-updated-header,
+.positions-table td.position-update-cell {
+  width: 126px;
+}
+.positions-table .positions-edit-header,
+.positions-table td.positions-edit-cell {
+  width: 48px;
+  text-align: center;
+  padding-left: 4px;
+  padding-right: 8px;
+}
+.positions-table td.positions-edit-cell {
+  display: table-cell !important;
+  white-space: nowrap;
+  border-left: 0 !important;
+}
+.positions-table td.position-update-cell {
+  display: table-cell !important;
+  white-space: nowrap;
+  border-right: 0 !important;
+}
+.positions-table td.position-update-cell .quote-age,
+.positions-table td.position-update-cell .tiny-icon-button {
+  vertical-align: middle;
+}
+.positions-table td.position-update-cell .tiny-icon-button {
+  margin-left: 6px;
+}
+.positions-table .icon-only-action {
+  display: inline-grid;
+  place-items: center;
+}
