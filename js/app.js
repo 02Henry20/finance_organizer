@@ -109,6 +109,7 @@ let txSort = { key: "date", dir: "desc" };
 let importSort = { key: "date", dir: "asc" };
 let txSelectionMode = false;
 let selectedTransactionIds = new Set();
+let transactionCategoryDebounce = null;
 let txFilteredRows = [];
 let importSelectedIds = new Set();
 let txPage = 1;
@@ -238,9 +239,14 @@ function categoryOptions(selected = "misc") {
   return state.categories.map(cat => `<option value="${escapeHtml(cat.id)}" ${cat.id === selected ? "selected" : ""}>${escapeHtml(cat.icon || "•")} ${escapeHtml(cat.name)}</option>`).join("");
 }
 
-function categorySearchValue(categoryId = "misc") {
-  const cat = state.categories.find(item => item.id === categoryId) || state.categories.find(item => item.id === "misc");
-  return cat ? `${cat.icon || "•"} ${cat.name}` : "Misc | not applicable";
+function categorySearchValue(categoryId = "") {
+  if (!categoryId) return "";
+  const cat = state.categories.find(item => item.id === categoryId);
+  return cat ? `${cat.icon || "•"} ${cat.name}` : "";
+}
+
+function cleanCategorySearchLabel(value = "") {
+  return String(value || "").trim().replace(/^[^\p{L}\p{N}]+/u, "").trim();
 }
 
 function categoryIdFromSearch(value = "") {
@@ -248,20 +254,69 @@ function categoryIdFromSearch(value = "") {
   if (!raw) return "";
   const byId = state.categories.find(cat => cat.id === raw);
   if (byId) return byId.id;
-  const normalized = normalizeText(raw.replace(/^[^\p{L}\p{N}]+/u, ""));
-  const compact = normalizeText(raw.replace(/^[^\p{L}\p{N}]+/u, "").replace(/\s+/g, " "));
+  const cleaned = cleanCategorySearchLabel(raw);
+  const normalized = normalizeText(cleaned);
+  const compact = normalizeText(cleaned.replace(/\s+/g, " "));
   const match = state.categories.find(cat => {
-    const label = normalizeText(categorySearchValue(cat.id).replace(/^[^\p{L}\p{N}]+/u, ""));
+    const label = normalizeText(cleanCategorySearchLabel(categorySearchValue(cat.id)));
     const name = normalizeText(cat.name);
     return normalized === label || normalized === name || compact === name;
   });
   return match?.id || "";
 }
 
+function matchingCategoryOptions(value = "") {
+  const query = normalizeText(cleanCategorySearchLabel(value));
+  const compactQuery = String(value || "").replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+  const source = state.categories.map(cat => ({
+    ...cat,
+    label: categorySearchValue(cat.id),
+    haystack: normalizeText([cat.name, cat.group, cat.type, cat.icon].join(" ")),
+    compact: [cat.name, cat.group, cat.type, cat.icon].join(" ").replace(/[^a-zA-Z0-9]/g, "").toLowerCase()
+  }));
+  if (!query && !compactQuery) return source.slice(0, 10);
+  return source
+    .map(cat => {
+      const name = normalizeText(cat.name);
+      const starts = name.startsWith(query) || cat.haystack.startsWith(query) ? 2 : 0;
+      const contains = cat.haystack.includes(query) || (compactQuery && cat.compact.includes(compactQuery)) ? 1 : 0;
+      return { cat, score: starts + contains };
+    })
+    .filter(item => item.score > 0)
+    .sort((a, b) => b.score - a.score || String(a.cat.name).localeCompare(String(b.cat.name)))
+    .slice(0, 10)
+    .map(item => item.cat);
+}
+
+function renderTransactionCategoryMenu(show = false) {
+  const menu = $("#transaction-category-menu");
+  const input = $("#transaction-category");
+  if (!menu || !input) return;
+  const matches = matchingCategoryOptions(input.value);
+  menu.replaceChildren();
+  if (!show || !matches.length) {
+    menu.hidden = true;
+    return;
+  }
+  for (const cat of matches) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "category-suggest-option";
+    button.dataset.categoryId = cat.id;
+    button.innerHTML = `<span>${escapeHtml(cat.icon || "•")}</span><strong>${escapeHtml(cat.name)}</strong><small>${escapeHtml(cat.group || "")}</small>`;
+    button.addEventListener("mousedown", event => event.preventDefault());
+    button.addEventListener("click", () => {
+      input.value = categorySearchValue(cat.id);
+      menu.hidden = true;
+      syncTransactionReviewControl();
+    });
+    menu.append(button);
+  }
+  menu.hidden = false;
+}
+
 function fillTransactionCategoryDatalist() {
-  const list = $("#transaction-category-options");
-  if (!list) return;
-  list.innerHTML = state.categories.map(cat => `<option value="${escapeHtml(categorySearchValue(cat.id))}"></option>`).join("");
+  renderTransactionCategoryMenu(false);
 }
 
 function accountOptions(selected = "", options = {}) {
@@ -857,7 +912,6 @@ function fillFilters() {
       transactionCategory.innerHTML = categoryOptions(transactionCategory.value || "misc");
     } else {
       fillTransactionCategoryDatalist();
-      if (!transactionCategory.value) transactionCategory.value = categorySearchValue("misc");
     }
   }
   if (accountType) accountType.innerHTML = typeOptions(accountType.value || "checking");
@@ -906,6 +960,7 @@ function renderTransactions() {
     renderTransactions();
   });
   updateSortButtons("transactions", txSort);
+  document.querySelector(".transactions-table")?.classList.toggle("selection-active", txSelectionMode);
   tbody.replaceChildren();
   for (const tx of pagedRows(rows, txPage, PAGE_SIZES.transactions)) {
     const cat = cats.get(tx.categoryId) || cats.get("misc");
@@ -1330,7 +1385,7 @@ function closeModal() {
 
 function syncTransactionReviewControl() {
   const categoryInput = $("#transaction-category");
-  const category = categoryInput?.tagName === "SELECT" ? (categoryInput.value || "misc") : (categoryIdFromSearch(categoryInput?.value) || "misc");
+  const category = categoryInput?.tagName === "SELECT" ? (categoryInput.value || "") : categoryIdFromSearch(categoryInput?.value);
   const review = $("#transaction-review");
   if (!review) return;
   const locked = Boolean(category && category !== "misc" && category !== "auto");
@@ -1339,6 +1394,41 @@ function syncTransactionReviewControl() {
   const ignore = $("#transaction-ignore-stats");
   const cat = state.categories.find(item => item.id === category);
   if (ignore && cat?.type === "transfer") ignore.checked = true;
+}
+
+function transactionDraftForCategorization() {
+  return {
+    accountId: $("#transaction-account")?.value || "",
+    date: $("#transaction-date")?.value || TODAY(),
+    amount: parseMoney($("#transaction-amount")?.value) ?? 0,
+    currency: ($("#transaction-currency")?.value || selectedCurrency()).toUpperCase(),
+    description: $("#transaction-description")?.value || "",
+    counterparty: $("#transaction-counterparty")?.value || "",
+    note: $("#transaction-note")?.value || ""
+  };
+}
+
+function applyRulesToTransactionCategory({ onlyWhenEmptyOrMisc = true, fillMisc = false } = {}) {
+  const input = $("#transaction-category");
+  if (!input) return null;
+  const currentId = categoryIdFromSearch(input.value);
+  if (onlyWhenEmptyOrMisc && currentId && currentId !== "misc") return null;
+  const draft = transactionDraftForCategorization();
+  if (![draft.description, draft.counterparty, draft.note].some(value => String(value || "").trim())) return null;
+  const result = categorizeTransaction(draft, state.rules, state.categories, state.accounts);
+  if (result?.categoryId && (result.categoryId !== "misc" || fillMisc)) {
+    input.value = categorySearchValue(result.categoryId);
+    syncTransactionReviewControl();
+  }
+  return result;
+}
+
+function scheduleTransactionCategoryAutofill() {
+  if (transactionCategoryDebounce) clearTimeout(transactionCategoryDebounce);
+  transactionCategoryDebounce = setTimeout(() => {
+    transactionCategoryDebounce = null;
+    applyRulesToTransactionCategory({ onlyWhenEmptyOrMisc: true, fillMisc: false });
+  }, 500);
 }
 
 function openTransactionModal(id = "") {
@@ -1350,7 +1440,8 @@ function openTransactionModal(id = "") {
   $("#transaction-amount").value = tx?.amount ?? "";
   $("#transaction-currency").value = tx?.currency || selectedCurrency();
   const categoryInput = $("#transaction-category");
-  if (categoryInput) categoryInput.value = categoryInput.tagName === "SELECT" ? (tx?.categoryId || "misc") : categorySearchValue(tx?.categoryId || "misc");
+  if (categoryInput) categoryInput.value = tx?.categoryId ? (categoryInput.tagName === "SELECT" ? tx.categoryId : categorySearchValue(tx.categoryId)) : "";
+  renderTransactionCategoryMenu(false);
   $("#transaction-counterparty").value = tx?.counterparty || "";
   $("#transaction-description").value = tx?.description || "";
   $("#transaction-note").value = tx?.note || "";
@@ -2192,6 +2283,74 @@ function importBalanceSummaryHtml() {
   }).filter(Boolean).join("");
 }
 
+
+function roundManualMoney(value) {
+  return Math.round(Number(value || 0) * 100) / 100;
+}
+
+function accountBalanceBeforeManualSave(accountId, excludingTransactionId = "") {
+  const account = state.accounts.find(item => item.id === accountId);
+  if (!account) return 0;
+  return Number(account.openingBalance || 0) + state.transactions
+    .filter(tx => tx.accountId === accountId && tx.id !== excludingTransactionId)
+    .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+}
+
+async function saveTransactionWithReferenceSplit(input) {
+  const account = state.accounts.find(item => item.id === input.accountId);
+  const referenceAccount = account?.referenceAccountId ? state.accounts.find(item => item.id === account.referenceAccountId) : null;
+  const amount = Number(input.amount || 0);
+  if (!account || !referenceAccount || amount >= 0 || input.internalTransfer) {
+    await saveTransaction(input);
+    return 1;
+  }
+
+  const balanceBefore = accountBalanceBeforeManualSave(account.id, input.id || "");
+  const requested = Math.abs(amount);
+  const available = Math.max(0, Number(balanceBefore || 0));
+  const shortage = roundManualMoney(Math.max(0, requested - available));
+  if (!Number.isFinite(shortage) || shortage <= 0.004) {
+    await saveTransaction(input);
+    return 1;
+  }
+
+  const localDeduction = roundManualMoney(Math.max(0, requested - shortage));
+  const groupId = `rf_${input.id || Date.now()}`;
+  const sourceTx = {
+    ...input,
+    amount: -localDeduction,
+    referenceFunding: true,
+    referenceFundingRole: "source-split",
+    referenceSourceAccountId: account.id,
+    referenceAccountId: referenceAccount.id,
+    referenceOriginalAmount: amount,
+    referenceCoveredAmount: shortage,
+    referenceFundingGroupId: groupId,
+    reason: `${input.reason || ""}${input.reason ? " " : ""}Split with reference account ${referenceAccount.name}: ${account.name} covers ${localDeduction.toFixed(2)}, reference covers ${shortage.toFixed(2)}.`
+  };
+  const sourceId = await saveTransaction(sourceTx);
+  await saveTransaction({
+    ...input,
+    id: input.id ? `${input.id}_ref_deduction` : undefined,
+    accountId: referenceAccount.id,
+    amount: -shortage,
+    description: `${account.name} reference remainder: ${input.description || "Transaction"}`,
+    counterparty: input.counterparty || account.name,
+    source: "auto:reference-account",
+    referenceFunding: true,
+    referenceFundingRole: "deduction",
+    referenceSourceAccountId: account.id,
+    referenceAccountId: referenceAccount.id,
+    referenceOriginalAmount: amount,
+    referenceCoveredAmount: shortage,
+    referenceFundingGroupId: groupId,
+    fundingOriginalId: sourceId,
+    note: input.note || "Auto-created reference-account remainder. Later matching reference-account imports are filtered.",
+    reason: `Auto deduction from ${referenceAccount.name} for the part of ${account.name} that would go below zero.`
+  });
+  return 2;
+}
+
 function selectedTransactions() {
   const ids = selectedTransactionIds;
   return state.transactions.filter(tx => ids.has(tx.id));
@@ -2513,8 +2672,18 @@ function wireEvents() {
   ["#asset-provider", "#asset-quantity", "#asset-buy-price", "#asset-starting-position"].forEach(selector => {
     $(selector)?.addEventListener(selector === "#asset-quantity" || selector === "#asset-buy-price" ? "input" : "change", syncAssetPricingFields);
   });
-  $("#transaction-category")?.addEventListener("input", syncTransactionReviewControl);
-  $("#transaction-category")?.addEventListener("change", syncTransactionReviewControl);
+  const transactionCategoryInput = $("#transaction-category");
+  transactionCategoryInput?.addEventListener("input", () => {
+    renderTransactionCategoryMenu(true);
+    syncTransactionReviewControl();
+  });
+  transactionCategoryInput?.addEventListener("focus", () => renderTransactionCategoryMenu(true));
+  transactionCategoryInput?.addEventListener("blur", () => setTimeout(() => renderTransactionCategoryMenu(false), 140));
+  transactionCategoryInput?.addEventListener("change", syncTransactionReviewControl);
+  ["#transaction-description", "#transaction-counterparty"].forEach(selector => {
+    $(selector)?.addEventListener("input", scheduleTransactionCategoryAutofill);
+    $(selector)?.addEventListener("blur", () => applyRulesToTransactionCategory({ onlyWhenEmptyOrMisc: true, fillMisc: false }));
+  });
 
   $("#tx-selection-toggle")?.addEventListener("click", () => {
     txSelectionMode = !txSelectionMode;
@@ -2605,13 +2774,14 @@ function wireEvents() {
     const form = event.currentTarget;
     setBusy(form, true);
     try {
+      const selectedCategoryId = categoryIdFromSearch($("#transaction-category")?.value);
       const input = {
         id: $("#transaction-id").value || undefined,
         accountId: $("#transaction-account").value,
         date: $("#transaction-date").value,
         amount: parseMoney($("#transaction-amount").value),
         currency: normalizedCurrencyFrom("#transaction-currency"),
-        categoryId: categoryIdFromSearch($("#transaction-category")?.value) || $("#transaction-category")?.value || "",
+        categoryId: selectedCategoryId,
         counterparty: $("#transaction-counterparty").value,
         description: $("#transaction-description").value,
         note: $("#transaction-note").value,
@@ -2623,18 +2793,19 @@ function wireEvents() {
         toast("Invalid transaction", "Account, date and amount are required.", "error");
         return;
       }
+      if (!input.categoryId) {
+        const cat = categorizeTransaction(input, state.rules, state.categories, state.accounts);
+        Object.assign(input, cat);
+        if (!input.categoryId) input.categoryId = "misc";
+      }
       if (!state.categories.some(cat => cat.id === input.categoryId)) {
         toast("Invalid category", "Choose an existing category from the category search list.", "error");
         $("#transaction-category")?.focus();
         return;
       }
       if (input.categoryId && input.categoryId !== "misc" && input.categoryId !== "auto") input.review = false;
-      if (!input.categoryId || input.categoryId === "auto") {
-        const cat = categorizeTransaction(input, state.rules, state.categories, state.accounts);
-        Object.assign(input, cat);
-      }
-      await saveTransaction(input);
-      toast("Transaction saved");
+      const savedCount = await saveTransactionWithReferenceSplit(input);
+      toast("Transaction saved", savedCount > 1 ? "Split with reference account." : "");
       closeModal();
     } catch (error) {
       toast("Save failed", error.message, "error");

@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#111827">
   <meta name="description" content="Capito is a private finance organizer for accounts, transactions, holdings, rules and analytics.">
   <title>Capito</title>
-  <meta name="capito-build" content="capito-v34-mobile-filter-category-reference-split">
+  <meta name="capito-build" content="capito-v35-transaction-category-reference-selection">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16x16.png">
@@ -313,10 +313,10 @@
       <form id="transaction-form" class="form-stack">
         <input id="transaction-id" type="hidden">
         <label class="field"><span>Account</span><select id="transaction-account" required></select></label>
-        <div class="form-grid two"><label class="field"><span>Date</span><input id="transaction-date" type="date" required></label><label class="field"><span>Amount</span><input id="transaction-amount" type="number" step="0.01" required placeholder="-24.90"></label></div>
-        <div class="form-grid two"><label class="field"><span>Currency</span><input id="transaction-currency" list="currency-options" maxlength="3" placeholder="EUR"></label><label class="field category-search-field"><span>Category</span><input id="transaction-category" list="transaction-category-options" autocomplete="off" placeholder="Search category" required><datalist id="transaction-category-options"></datalist><small class="field-help">Choose an existing category from the list.</small></label></div>
-        <label class="field"><span>Counterparty</span><input id="transaction-counterparty" placeholder="Payee or payer"></label>
         <label class="field"><span>Description</span><input id="transaction-description" placeholder="Transfer text"></label>
+        <div class="form-grid two"><label class="field"><span>Date</span><input id="transaction-date" type="date" required></label><label class="field"><span>Amount</span><input id="transaction-amount" type="number" step="0.01" required placeholder="-24.90"></label></div>
+        <div class="form-grid two transaction-currency-category-grid"><label class="field"><span>Currency</span><input id="transaction-currency" list="currency-options" maxlength="3" placeholder="EUR"><small class="field-help invisible-help">Currency code</small></label><label class="field category-search-field"><span>Category</span><input id="transaction-category" autocomplete="off" placeholder="Search category"><div id="transaction-category-menu" class="category-suggest-menu" hidden></div><small class="field-help">Choose an existing category from the list.</small></label></div>
+        <label class="field"><span>Counterparty</span><input id="transaction-counterparty" placeholder="Payee or payer"></label>
         <label class="field"><span>Note</span><textarea id="transaction-note" rows="3" placeholder="Optional note"></textarea></label>
         <label class="check-row"><input id="transaction-review" type="checkbox"> Mark as needs review</label>
         <label class="check-row"><input id="transaction-ignore-stats" type="checkbox"> Ignore in spending statistics</label>

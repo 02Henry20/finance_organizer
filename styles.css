@@ -2230,3 +2230,98 @@ td .category-pill .category-pill-text,
   font-weight: 700;
   line-height: 1.35;
 }
+
+/* v35 transaction modal category search + select-mode cleanup */
+.transactions-table:not(.selection-active) .select-col {
+  display: none !important;
+}
+.transaction-currency-category-grid {
+  align-items: start;
+}
+.category-search-field {
+  position: relative;
+  align-self: start;
+}
+.category-search-field input {
+  padding-right: 13px;
+}
+.category-suggest-menu {
+  position: absolute;
+  z-index: 160;
+  top: calc(100% - 18px);
+  left: 0;
+  right: 0;
+  display: grid;
+  gap: 6px;
+  max-height: min(300px, 42vh);
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface) 97%, transparent);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+}
+.category-suggest-option {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 38px;
+  border: 0;
+  border-radius: 13px;
+  padding: 8px 10px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+.category-suggest-option:hover,
+.category-suggest-option:focus-visible {
+  background: var(--surface-2);
+  transform: none;
+  outline: none;
+}
+.category-suggest-option span {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+.category-suggest-option strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: .84rem;
+}
+.category-suggest-option small {
+  color: var(--muted);
+  font-size: .68rem;
+  font-weight: 780;
+  white-space: nowrap;
+}
+.invisible-help {
+  visibility: hidden;
+}
+@media (max-width: 680px) {
+  .transaction-currency-category-grid {
+    grid-template-columns: 1fr;
+  }
+  .category-suggest-menu {
+    position: static;
+    margin-top: 6px;
+    max-height: 240px;
+  }
+  .category-suggest-option {
+    grid-template-columns: 24px minmax(0, 1fr);
+  }
+  .category-suggest-option small {
+    display: none;
+  }
+  .invisible-help {
+    display: none;
+  }
+}

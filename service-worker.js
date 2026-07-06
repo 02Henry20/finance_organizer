@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v34-mobile-filter-category-reference-split";
+const CACHE_NAME = "capito-v35-transaction-category-reference-selection";
 const CORE = [
   "./",
   "./index.html",
