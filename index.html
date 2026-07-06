@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#111827">
   <meta name="description" content="Capito is a private finance organizer for accounts, transactions, holdings, rules and analytics.">
   <title>Capito</title>
-  <meta name="capito-build" content="capito-v33-transfer-import-rules">
+  <meta name="capito-build" content="capito-v34-mobile-filter-category-reference-split">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16x16.png">
@@ -162,7 +162,7 @@
               <label class="field"><span>Category</span><select id="tx-category-filter"></select></label>
               <label class="field"><span>Currency</span><select id="tx-currency-filter"><option value="all">All currencies</option></select></label>
               <div class="form-grid two amount-filter-grid"><label class="field"><span>Min amount</span><input id="tx-min-amount" type="number" step="0.01" placeholder="Any"></label><label class="field"><span>Max amount</span><input id="tx-max-amount" type="number" step="0.01" placeholder="Any"></label></div>
-              <div class="form-grid two desktop-only-tools date-filter-grid"><label class="field"><span>From date</span><input id="tx-date-from" type="date"></label><label class="field"><span>To date</span><input id="tx-date-to" type="date"></label></div>
+              <div class="form-grid date-filter-grid"><label class="field"><span>From date</span><input id="tx-date-from" type="date"></label><label class="field"><span>To date</span><input id="tx-date-to" type="date"></label></div>
               <label class="field"><span>Status</span><select id="tx-review-filter"><option value="all">All</option><option value="review">Needs review</option><option value="clean">Clean</option></select></label>
               <button id="reset-tx-filters" class="secondary-button" type="button">Reset filters</button>
             </div>
@@ -314,7 +314,7 @@
         <input id="transaction-id" type="hidden">
         <label class="field"><span>Account</span><select id="transaction-account" required></select></label>
         <div class="form-grid two"><label class="field"><span>Date</span><input id="transaction-date" type="date" required></label><label class="field"><span>Amount</span><input id="transaction-amount" type="number" step="0.01" required placeholder="-24.90"></label></div>
-        <div class="form-grid two"><label class="field"><span>Currency</span><input id="transaction-currency" list="currency-options" maxlength="3" placeholder="EUR"></label><label class="field"><span>Category</span><select id="transaction-category"></select></label></div>
+        <div class="form-grid two"><label class="field"><span>Currency</span><input id="transaction-currency" list="currency-options" maxlength="3" placeholder="EUR"></label><label class="field category-search-field"><span>Category</span><input id="transaction-category" list="transaction-category-options" autocomplete="off" placeholder="Search category" required><datalist id="transaction-category-options"></datalist><small class="field-help">Choose an existing category from the list.</small></label></div>
         <label class="field"><span>Counterparty</span><input id="transaction-counterparty" placeholder="Payee or payer"></label>
         <label class="field"><span>Description</span><input id="transaction-description" placeholder="Transfer text"></label>
         <label class="field"><span>Note</span><textarea id="transaction-note" rows="3" placeholder="Optional note"></textarea></label>
@@ -335,7 +335,7 @@
         <label class="field"><span>Account note</span><textarea id="account-note" rows="3" placeholder="Optional account note"></textarea></label>
         <div class="form-grid two"><label class="field"><span>IBAN</span><input id="account-iban" placeholder="Optional IBAN"></label><label class="field"><span>Account | depot number</span><input id="account-number" placeholder="Optional identifier"></label></div>
         <div class="form-grid two"><label class="field"><span>BIC</span><input id="account-bic" placeholder="Optional BIC"></label><label class="field"><span>Transfer aliases</span><input id="account-aliases" placeholder="broker, depot, own account"></label></div>
-        <label class="field"><span>Reference account</span><select id="account-reference-account"></select><small class="field-help">Used for accounts like PayPal. If a transaction would push this account below zero, Capito creates ignored internal funding entries against the reference account.</small></label>
+        <label class="field"><span>Reference account</span><select id="account-reference-account"></select><small class="field-help">Used for accounts like PayPal. If a payment exceeds this account balance, Capito splits the payment: this account goes to zero and the remainder is deducted from the reference account.</small></label>
         <label class="check-row"><input id="account-hidden" type="checkbox"> Hide from app</label>
         <div class="button-row"><button class="primary-button" type="submit">Save account</button><button id="delete-account-button" class="danger-button" type="button" hidden>Delete account</button></div>
       </form>

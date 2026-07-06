@@ -2212,3 +2212,21 @@ td .category-pill .category-pill-text,
     flex: 1 1 160px;
   }
 }
+
+/* Mobile transaction filter + searchable transaction category */
+.filter-panel .date-filter-grid {
+  display: grid;
+  grid-template-columns: 1fr !important;
+  gap: 12px;
+}
+.category-search-field input[list] {
+  padding-right: 36px;
+}
+.field-help {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: .7rem;
+  font-weight: 700;
+  line-height: 1.35;
+}

@@ -405,71 +405,59 @@ function withInternalTransferFields(tx, categorization, groupId) {
   };
 }
 
-function buildInternalTransferMirror(tx, accounts = []) {
-  if (!tx.internalTransfer || !tx.transferSourceAccountId || !tx.transferTargetAccountId) return null;
-  const currentAccountId = tx.accountId;
-  const mirrorAccountId = Number(tx.amount || 0) < 0 ? tx.transferTargetAccountId : tx.transferSourceAccountId;
-  if (!mirrorAccountId || mirrorAccountId === currentAccountId) return null;
-  const source = accounts.find(account => account.id === tx.transferSourceAccountId);
-  const target = accounts.find(account => account.id === tx.transferTargetAccountId);
-  const counterAccount = accounts.find(account => account.id === currentAccountId);
-  const groupId = tx.internalTransferGroupId || `it_${tx.id}`;
-  return {
-    ...baseGeneratedFields(tx, groupId),
-    id: `${tx.id}_mirror`,
-    externalId: `${tx.externalId || tx.id}_mirror`,
-    accountId: mirrorAccountId,
-    amount: -Number(tx.amount || 0),
-    description: Number(tx.amount || 0) < 0
-      ? `Internal transfer from ${source?.name || "own account"}: ${tx.description}`
-      : `Internal transfer to ${target?.name || "own account"}: ${tx.description}`,
-    counterparty: counterAccount?.name || tx.counterparty || "Own account",
-    internalTransferRole: Number(tx.amount || 0) < 0 ? "target" : "source",
-    transferSourceAccountId: tx.transferSourceAccountId,
-    transferTargetAccountId: tx.transferTargetAccountId,
-    transferMatchedAccountId: currentAccountId
-  };
+function roundMoney(value) {
+  return Math.round(Number(value || 0) * 100) / 100;
 }
 
 function buildReferenceFundingRows(tx, account, referenceAccount, acceptedRows, existingRows) {
   if (!account?.referenceAccountId || !referenceAccount || Number(tx.amount || 0) >= 0 || tx.internalTransfer) return [];
-  const projected = currentBalanceForAccount(account, [...existingRows, ...acceptedRows]);
-  if (projected >= 0) return [];
-  const shortage = Math.abs(projected);
+  const balanceBefore = currentBalanceForAccount(account, [...existingRows, ...acceptedRows]);
+  const requested = Math.abs(Number(tx.amount || 0));
+  const available = Math.max(0, Number(balanceBefore || 0));
+  const shortage = roundMoney(Math.max(0, requested - available));
   if (!Number.isFinite(shortage) || shortage <= 0.004) return [];
+
+  const localDeduction = roundMoney(Math.max(0, requested - shortage));
+  const originalAmount = Number(tx.amount || 0);
+  tx.amount = -localDeduction;
+  tx.referenceFunding = true;
+  tx.referenceFundingRole = "source-split";
+  tx.referenceSourceAccountId = account.id;
+  tx.referenceAccountId = referenceAccount.id;
+  tx.referenceOriginalAmount = originalAmount;
+  tx.referenceCoveredAmount = shortage;
+  tx.reason = `${tx.reason || ""}${tx.reason ? " " : ""}Split with reference account ${referenceAccount.name}: ${account.name} covers ${localDeduction.toFixed(2)}, reference covers ${shortage.toFixed(2)}.`;
+
   const groupId = `rf_${tx.id}`;
-  const generated = baseGeneratedFields(tx, groupId);
-  const topup = {
-    ...generated,
-    id: `${tx.id}_ref_topup`,
-    externalId: `${tx.externalId || tx.id}_ref_topup`,
-    accountId: account.id,
-    amount: shortage,
-    description: `Reference top-up from ${referenceAccount.name}: ${tx.description}`,
-    counterparty: referenceAccount.name,
-    referenceFunding: true,
-    referenceFundingRole: "topup",
-    referenceSourceAccountId: account.id,
-    referenceAccountId: referenceAccount.id,
-    fundingOriginalId: tx.id,
-    reason: `Auto top-up because ${account.name} would go below zero.`
-  };
   const deduction = {
-    ...generated,
+    ...tx,
     id: `${tx.id}_ref_deduction`,
     externalId: `${tx.externalId || tx.id}_ref_deduction`,
     accountId: referenceAccount.id,
     amount: -shortage,
-    description: `Reference deduction for ${account.name}: ${tx.description}`,
-    counterparty: account.name,
+    description: `${account.name} reference remainder: ${tx.description}`,
+    counterparty: tx.counterparty || account.name,
+    source: "auto:reference-account",
+    internalTransfer: false,
+    internalTransferRole: "",
+    internalTransferGroupId: "",
+    transferSourceAccountId: "",
+    transferTargetAccountId: "",
+    transferMatchedAccountId: "",
+    matchedAccountId: "",
     referenceFunding: true,
     referenceFundingRole: "deduction",
     referenceSourceAccountId: account.id,
     referenceAccountId: referenceAccount.id,
+    referenceOriginalAmount: originalAmount,
+    referenceCoveredAmount: shortage,
     fundingOriginalId: tx.id,
-    reason: `Auto deduction from ${referenceAccount.name} for ${account.name}.`
+    excludeFromStats: Boolean(tx.excludeFromStats),
+    note: tx.note || "Auto-created reference-account remainder. Later matching reference-account imports are filtered.",
+    reason: `Auto deduction from ${referenceAccount.name} for the part of ${account.name} that would go below zero.`,
+    referenceFundingGroupId: groupId
   };
-  return [topup, deduction];
+  return [deduction];
 }
 
 export function rowToTransaction(row, mapping, context) {
@@ -549,13 +537,11 @@ export function buildImportPreview(parsed, mapping, context, existingTransaction
       continue;
     }
 
-    transactions.push(tx);
-    const mirror = buildInternalTransferMirror(tx, context.accounts || []);
-    if (mirror && !allKnownRows().some(item => item.id === mirror.id || item.externalId === mirror.externalId)) transactions.push(mirror);
-
     const account = (context.accounts || []).find(item => item.id === tx.accountId);
     const referenceAccount = account?.referenceAccountId ? (context.accounts || []).find(item => item.id === account.referenceAccountId) : null;
     const referenceRows = buildReferenceFundingRows(tx, account, referenceAccount, transactions, existingTransactions);
+
+    transactions.push(tx);
     for (const generated of referenceRows) {
       if (!matchesReferenceFundingDuplicate(generated, allKnownRows(), context.accounts || [])) transactions.push(generated);
     }

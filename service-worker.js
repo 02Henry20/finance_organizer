@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v33-transfer-import-rules";
+const CACHE_NAME = "capito-v34-mobile-filter-category-reference-split";
 const CORE = [
   "./",
   "./index.html",

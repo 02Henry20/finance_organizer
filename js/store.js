@@ -320,6 +320,9 @@ export async function saveTransaction(input) {
     referenceFundingRole: input.referenceFundingRole || "",
     referenceSourceAccountId: input.referenceSourceAccountId || "",
     referenceAccountId: input.referenceAccountId || "",
+    referenceOriginalAmount: input.referenceOriginalAmount == null ? null : Number(input.referenceOriginalAmount),
+    referenceCoveredAmount: input.referenceCoveredAmount == null ? null : Number(input.referenceCoveredAmount),
+    referenceFundingGroupId: input.referenceFundingGroupId || "",
     fundingOriginalId: input.fundingOriginalId || "",
     excludeFromStats: Boolean(input.excludeFromStats || input.ignoreFromStats || input.statsIgnored),
     createdAtMs: input.createdAtMs || Date.now()

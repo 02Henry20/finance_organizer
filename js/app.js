@@ -238,6 +238,32 @@ function categoryOptions(selected = "misc") {
   return state.categories.map(cat => `<option value="${escapeHtml(cat.id)}" ${cat.id === selected ? "selected" : ""}>${escapeHtml(cat.icon || "•")} ${escapeHtml(cat.name)}</option>`).join("");
 }
 
+function categorySearchValue(categoryId = "misc") {
+  const cat = state.categories.find(item => item.id === categoryId) || state.categories.find(item => item.id === "misc");
+  return cat ? `${cat.icon || "•"} ${cat.name}` : "Misc | not applicable";
+}
+
+function categoryIdFromSearch(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const byId = state.categories.find(cat => cat.id === raw);
+  if (byId) return byId.id;
+  const normalized = normalizeText(raw.replace(/^[^\p{L}\p{N}]+/u, ""));
+  const compact = normalizeText(raw.replace(/^[^\p{L}\p{N}]+/u, "").replace(/\s+/g, " "));
+  const match = state.categories.find(cat => {
+    const label = normalizeText(categorySearchValue(cat.id).replace(/^[^\p{L}\p{N}]+/u, ""));
+    const name = normalizeText(cat.name);
+    return normalized === label || normalized === name || compact === name;
+  });
+  return match?.id || "";
+}
+
+function fillTransactionCategoryDatalist() {
+  const list = $("#transaction-category-options");
+  if (!list) return;
+  list.innerHTML = state.categories.map(cat => `<option value="${escapeHtml(categorySearchValue(cat.id))}"></option>`).join("");
+}
+
 function accountOptions(selected = "", options = {}) {
   const { includeHidden = false, brokerOnly = false } = options;
   let accounts = state.accounts.filter(account => includeHidden || !account.hidden || account.id === selected);
@@ -826,7 +852,14 @@ function fillFilters() {
   if (importAccount) importAccount.innerHTML = accountOptions(importAccount.value || visibleAccounts()[0]?.id);
   if (positionsImportAccount) positionsImportAccount.innerHTML = accountOptions(positionsImportAccount.value || state.accounts.find(account => !account.hidden && account.type === "broker")?.id || visibleAccounts()[0]?.id, { brokerOnly: true });
   if (transactionAccount) transactionAccount.innerHTML = accountOptions(transactionAccount.value || visibleAccounts()[0]?.id);
-  if (transactionCategory) transactionCategory.innerHTML = categoryOptions(transactionCategory.value || "misc");
+  if (transactionCategory) {
+    if (transactionCategory.tagName === "SELECT") {
+      transactionCategory.innerHTML = categoryOptions(transactionCategory.value || "misc");
+    } else {
+      fillTransactionCategoryDatalist();
+      if (!transactionCategory.value) transactionCategory.value = categorySearchValue("misc");
+    }
+  }
   if (accountType) accountType.innerHTML = typeOptions(accountType.value || "checking");
   if (ruleCategory) ruleCategory.innerHTML = categoryOptions(ruleCategory.value || "misc");
   if (assetAccount) assetAccount.innerHTML = accountOptions(assetAccount.value || state.accounts.find(account => !account.hidden && account.type === "broker")?.id || visibleAccounts()[0]?.id, { brokerOnly: true });
@@ -1296,7 +1329,8 @@ function closeModal() {
 }
 
 function syncTransactionReviewControl() {
-  const category = $("#transaction-category")?.value || "misc";
+  const categoryInput = $("#transaction-category");
+  const category = categoryInput?.tagName === "SELECT" ? (categoryInput.value || "misc") : (categoryIdFromSearch(categoryInput?.value) || "misc");
   const review = $("#transaction-review");
   if (!review) return;
   const locked = Boolean(category && category !== "misc" && category !== "auto");
@@ -1315,7 +1349,8 @@ function openTransactionModal(id = "") {
   $("#transaction-date").value = tx?.date || TODAY();
   $("#transaction-amount").value = tx?.amount ?? "";
   $("#transaction-currency").value = tx?.currency || selectedCurrency();
-  $("#transaction-category").value = tx?.categoryId || "misc";
+  const categoryInput = $("#transaction-category");
+  if (categoryInput) categoryInput.value = categoryInput.tagName === "SELECT" ? (tx?.categoryId || "misc") : categorySearchValue(tx?.categoryId || "misc");
   $("#transaction-counterparty").value = tx?.counterparty || "";
   $("#transaction-description").value = tx?.description || "";
   $("#transaction-note").value = tx?.note || "";
@@ -2048,7 +2083,9 @@ function accountNameById(id) {
 function transactionFlagsHtml(tx = {}) {
   const flags = [];
   if (tx.internalTransfer) flags.push("Internal");
-  if (tx.referenceFunding) flags.push("Reference");
+  if (tx.referenceFundingRole === "source-split") flags.push("Reference split");
+  else if (tx.referenceFundingRole === "deduction") flags.push("Reference deduction");
+  else if (tx.referenceFunding) flags.push("Reference");
   if (shouldIgnoreTransactionInStats(tx)) flags.push("Ignored stats");
   if (!flags.length) return "";
   return `<span class="tx-flags">${flags.map(flag => `<span>${escapeHtml(flag)}</span>`).join("")}</span>`;
@@ -2476,6 +2513,7 @@ function wireEvents() {
   ["#asset-provider", "#asset-quantity", "#asset-buy-price", "#asset-starting-position"].forEach(selector => {
     $(selector)?.addEventListener(selector === "#asset-quantity" || selector === "#asset-buy-price" ? "input" : "change", syncAssetPricingFields);
   });
+  $("#transaction-category")?.addEventListener("input", syncTransactionReviewControl);
   $("#transaction-category")?.addEventListener("change", syncTransactionReviewControl);
 
   $("#tx-selection-toggle")?.addEventListener("click", () => {
@@ -2573,7 +2611,7 @@ function wireEvents() {
         date: $("#transaction-date").value,
         amount: parseMoney($("#transaction-amount").value),
         currency: normalizedCurrencyFrom("#transaction-currency"),
-        categoryId: $("#transaction-category").value,
+        categoryId: categoryIdFromSearch($("#transaction-category")?.value) || $("#transaction-category")?.value || "",
         counterparty: $("#transaction-counterparty").value,
         description: $("#transaction-description").value,
         note: $("#transaction-note").value,
@@ -2583,6 +2621,11 @@ function wireEvents() {
       };
       if (!input.accountId || !input.date || input.amount == null) {
         toast("Invalid transaction", "Account, date and amount are required.", "error");
+        return;
+      }
+      if (!state.categories.some(cat => cat.id === input.categoryId)) {
+        toast("Invalid category", "Choose an existing category from the category search list.", "error");
+        $("#transaction-category")?.focus();
         return;
       }
       if (input.categoryId && input.categoryId !== "misc" && input.categoryId !== "auto") input.review = false;
