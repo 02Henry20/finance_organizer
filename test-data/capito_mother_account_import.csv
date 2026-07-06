@@ -1,0 +1,38 @@
+﻿Date,Amount,Currency,Counterparty,Description,Balance,External ID
+2023-09-01,-500.00,EUR,Mother account,Mama Bargeld,,mother-001
+2023-10-01,-600.00,EUR,Mother account,Auto Reperatur (Federbruch),,mother-002
+2024-10-01,28000.00,EUR,Mother account,Erstübertragung,,mother-003
+2024-10-01,-1000.00,EUR,Mother account,Autoreparatur Kupfer Adelsdorf,,mother-004
+2024-11-04,-598.72,EUR,Mother account,Mercedes Gehaltsrückforderung,,mother-005
+2024-11-01,-1000.00,EUR,Mother account,Bargeld,,mother-006
+2024-12-01,-780.00,EUR,Mother account,München Miete Dezember 2024,,mother-007
+2025-01-01,-780.00,EUR,Mother account,München Miete Januar 2025,,mother-008
+2025-01-06,-1000.00,EUR,Mother account,Bargeld,,mother-009
+2025-02-01,-780.00,EUR,Mother account,München Miete Februar 2025,,mother-010
+2025-03-01,-780.00,EUR,Mother account,München Miete März 2026,,mother-011
+2025-03-06,1500.00,EUR,Mother account,Mama Geldübertrag für Bafög,,mother-012
+2025-03-13,2000.00,EUR,Mother account,Mama Steuerrückzahlung Übertrag für Bafög,,mother-013
+2025-05-01,6000.00,EUR,Mother account,Mam Geldübertrag,,mother-014
+2025-04-01,-680.00,EUR,Mother account,München Miete April 2025,,mother-015
+2025-05-01,-680.00,EUR,Mother account,München Miete Mai 2025,,mother-016
+2025-06-01,-680.00,EUR,Mother account,München Miete Juni 2025,,mother-017
+2025-07-01,-780.00,EUR,Mother account,München Miete Juli 2025,,mother-018
+2025-08-01,-780.00,EUR,Mother account,München Miete August 2025,,mother-019
+2025-07-01,400.00,EUR,Mother account,ESN Reembursement to Mutter,,mother-020
+2025-07-01,122.46,EUR,Mother account,Cindy Handvertrag bis Ende Juni 2025,,mother-021
+2025-08-01,-1000.00,EUR,Mother account,Wise Korea Übertragung,,mother-022
+2025-08-01,-3000.00,EUR,Mother account,Mama Bargeld für Korea,,mother-023
+2025-09-01,-1000.00,EUR,Mother account,Wise Korea Übertrag 2,,mother-024
+2025-09-01,880.11,EUR,Mother account,Wohnung München Kaution Rückzahlung,,mother-025
+2025-10-01,-1000.00,EUR,Mother account,Wise Korea Übertrag 3,,mother-026
+2025-10-01,1500.00,EUR,Mother account,Rückzahlung Cash an Mama in Korea (in Euro),,mother-027
+2025-10-01,540.00,EUR,Mother account,Cash in WON an Mama Jenny und Cindy für Urlaub,,mother-028
+2025-10-01,372.00,EUR,Mother account,"Urlaubskosten für mama und co - 128€ Olive Young Cindy, 71€ Koffer, 53€ Essen, 100€ Taxi, 20€ Bus",,mother-029
+2025-11-01,-1000.00,EUR,Mother account,Wise Korea Übertrag 4,,mother-030
+2025-12-01,-1500.00,EUR,Mother account,Wise Korea Übertrag 5,,mother-031
+2025-12-01,1000.00,EUR,Mother account,Wise Korea Rücksendung an Mama,,mother-032
+2026-03-01,591.00,EUR,Mother account,Cindy Ipad für Uni,,mother-033
+2026-03-01,600.00,EUR,Mother account,Autoreperatur Mercedes und Sharan,,mother-034
+2026-03-01,50.82,EUR,Mother account,Medizinkauf ApoSalis Versandapotheke,,mother-035
+2026-03-01,85.35,EUR,Mother account,Cindy Apple Pencil 2. Gen,,mother-036
+2026-06-22,-391.48,EUR,Mother account,Klassentreffen,,mother-037

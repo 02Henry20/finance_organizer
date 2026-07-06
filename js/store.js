@@ -244,6 +244,7 @@ export async function saveAccount(input) {
     transferAliases: Array.isArray(input.transferAliases)
       ? input.transferAliases.map(String).map(item => item.trim()).filter(Boolean)
       : String(input.transferAliases || "").split(",").map(item => item.trim()).filter(Boolean),
+    referenceAccountId: String(input.referenceAccountId || ""),
     sort: Number(input.sort || Date.now())
   });
   return id;
@@ -308,6 +309,19 @@ export async function saveTransaction(input) {
     candidates: input.candidates || [],
     rawText: input.rawText || "",
     raw: input.raw || null,
+    internalTransfer: Boolean(input.internalTransfer),
+    internalTransferRole: input.internalTransferRole || "",
+    internalTransferGroupId: input.internalTransferGroupId || "",
+    transferSourceAccountId: input.transferSourceAccountId || "",
+    transferTargetAccountId: input.transferTargetAccountId || "",
+    transferMatchedAccountId: input.transferMatchedAccountId || input.matchedAccountId || "",
+    matchedAccountId: input.matchedAccountId || "",
+    referenceFunding: Boolean(input.referenceFunding),
+    referenceFundingRole: input.referenceFundingRole || "",
+    referenceSourceAccountId: input.referenceSourceAccountId || "",
+    referenceAccountId: input.referenceAccountId || "",
+    fundingOriginalId: input.fundingOriginalId || "",
+    excludeFromStats: Boolean(input.excludeFromStats || input.ignoreFromStats || input.statsIgnored),
     createdAtMs: input.createdAtMs || Date.now()
   });
   return id;

@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#111827">
   <meta name="description" content="Capito is a private finance organizer for accounts, transactions, holdings, rules and analytics.">
   <title>Capito</title>
-  <meta name="capito-build" content="capito-v32-desktop-transaction-account-tools">
+  <meta name="capito-build" content="capito-v33-transfer-import-rules">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16x16.png">
@@ -162,7 +162,7 @@
               <label class="field"><span>Category</span><select id="tx-category-filter"></select></label>
               <label class="field"><span>Currency</span><select id="tx-currency-filter"><option value="all">All currencies</option></select></label>
               <div class="form-grid two amount-filter-grid"><label class="field"><span>Min amount</span><input id="tx-min-amount" type="number" step="0.01" placeholder="Any"></label><label class="field"><span>Max amount</span><input id="tx-max-amount" type="number" step="0.01" placeholder="Any"></label></div>
-              <div class="form-grid two desktop-only-tools"><label class="field"><span>From date</span><input id="tx-date-from" type="date"></label><label class="field"><span>To date</span><input id="tx-date-to" type="date"></label></div>
+              <div class="form-grid two desktop-only-tools date-filter-grid"><label class="field"><span>From date</span><input id="tx-date-from" type="date"></label><label class="field"><span>To date</span><input id="tx-date-to" type="date"></label></div>
               <label class="field"><span>Status</span><select id="tx-review-filter"><option value="all">All</option><option value="review">Needs review</option><option value="clean">Clean</option></select></label>
               <button id="reset-tx-filters" class="secondary-button" type="button">Reset filters</button>
             </div>
@@ -191,6 +191,7 @@
               <label id="positions-file-label" class="visually-hidden"><strong id="positions-file-title"></strong><small id="positions-file-detail"></small></label>
               <div class="button-row"><button id="commit-import-button" class="primary-button" type="button" disabled>Import file</button><button id="reset-import-button" class="secondary-button" type="button" disabled>Reset</button><button id="commit-positions-import-button" class="primary-button compact visually-hidden" type="button" disabled>Import positions</button><button id="reset-positions-import-button" class="secondary-button compact visually-hidden" type="button" disabled>Reset positions</button></div>
               <p id="import-message" class="form-message"></p>
+              <div id="import-balance-summary" class="import-balance-summary" hidden></div>
               <p id="positions-import-message" class="form-message"></p>
             </div>
           </article>
@@ -200,6 +201,12 @@
           <div id="import-selection-toolbar" class="bulk-toolbar desktop-only-tools" hidden><span id="import-selected-count" class="metric-tag">0 selected</span><button class="secondary-button compact" id="import-select-all" type="button">Select all</button><button class="secondary-button compact" id="import-clear-selection" type="button">Clear</button><button class="secondary-button compact" id="import-export-selected" type="button">Export selected</button><button class="secondary-button compact" id="import-group-edit" type="button">Group edit</button><button class="danger-button compact" id="import-delete-selected" type="button">Delete selected</button></div>
           <div class="table-scroll"><table class="import-preview-table"><thead><tr><th class="select-col desktop-only-tools"><input id="import-page-select-all" type="checkbox" aria-label="Select visible import rows"></th><th><button class="sort-button" data-sort-table="import" data-sort-key="date" type="button">Date <span class="sort-indicator"></span></button></th><th><button class="sort-button" data-sort-table="import" data-sort-key="description" type="button">Description <span class="sort-indicator"></span></button></th><th><button class="sort-button" data-sort-table="import" data-sort-key="amount" type="button">Amount <span class="sort-indicator"></span></button></th><th><button class="sort-button" data-sort-table="import" data-sort-key="category" type="button">Category <span class="sort-indicator"></span></button></th><th><button class="sort-button" data-sort-table="import" data-sort-key="status" type="button">Status <span class="sort-indicator"></span></button></th></tr></thead><tbody id="import-preview-body"></tbody></table></div>
           <div id="import-preview-pagination" class="pagination-bar"></div>
+        </article>
+        <article id="import-filtered-card" class="surface-card table-card import-filtered-card" hidden>
+          <div class="panel-heading import-preview-heading"><div><p class="eyebrow">FILTERED IMPORT ROWS</p><h3>Skipped or auto-filtered</h3></div><span id="filtered-preview-count" class="metric-tag">None</span></div>
+          <p class="muted import-filtered-note">Rows filtered as duplicates, internal-transfer counterparts or reference-account deductions stay here. You can add them back manually before importing.</p>
+          <div class="table-scroll"><table class="import-filtered-table"><thead><tr><th>Date</th><th>Description</th><th>Amount</th><th></th></tr></thead><tbody id="import-filtered-body"></tbody></table></div>
+          <div id="import-filtered-pagination" class="pagination-bar"></div>
         </article>
         <article class="surface-card table-card broker-preview-card">
           <div class="panel-heading import-preview-heading"><div><p class="eyebrow">POSITION PREVIEW</p><h3>Parsed holdings</h3></div><span id="positions-preview-count" class="metric-tag">No file</span></div>
@@ -312,6 +319,7 @@
         <label class="field"><span>Description</span><input id="transaction-description" placeholder="Transfer text"></label>
         <label class="field"><span>Note</span><textarea id="transaction-note" rows="3" placeholder="Optional note"></textarea></label>
         <label class="check-row"><input id="transaction-review" type="checkbox"> Mark as needs review</label>
+        <label class="check-row"><input id="transaction-ignore-stats" type="checkbox"> Ignore in spending statistics</label>
         <div class="button-row"><button class="primary-button" type="submit">Save transaction</button><button id="delete-transaction-button" class="danger-button" type="button" hidden>Delete</button></div>
       </form>
     </section>
@@ -327,6 +335,7 @@
         <label class="field"><span>Account note</span><textarea id="account-note" rows="3" placeholder="Optional account note"></textarea></label>
         <div class="form-grid two"><label class="field"><span>IBAN</span><input id="account-iban" placeholder="Optional IBAN"></label><label class="field"><span>Account | depot number</span><input id="account-number" placeholder="Optional identifier"></label></div>
         <div class="form-grid two"><label class="field"><span>BIC</span><input id="account-bic" placeholder="Optional BIC"></label><label class="field"><span>Transfer aliases</span><input id="account-aliases" placeholder="broker, depot, own account"></label></div>
+        <label class="field"><span>Reference account</span><select id="account-reference-account"></select><small class="field-help">Used for accounts like PayPal. If a transaction would push this account below zero, Capito creates ignored internal funding entries against the reference account.</small></label>
         <label class="check-row"><input id="account-hidden" type="checkbox"> Hide from app</label>
         <div class="button-row"><button class="primary-button" type="submit">Save account</button><button id="delete-account-button" class="danger-button" type="button" hidden>Delete account</button></div>
       </form>

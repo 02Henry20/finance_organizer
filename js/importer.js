@@ -1,4 +1,4 @@
-import { categorizeTransaction, normalizeText, parseDateValue, parseMoney, transactionHash, uid } from "./finance.js";
+import { accountIdentifiers, categorizeTransaction, normalizeIdentifier, normalizeText, parseDateValue, parseMoney, transactionHash, uid } from "./finance.js";
 
 const FIELD_ALIASES = {
   date: ["date", "datum", "buchungstag", "booking date", "transaction date", "umsatzdatum", "valutadatum", "wertstellung", "value date", "created", "completed date", "finished on"],
@@ -299,6 +299,179 @@ function transactionSignature(tx) {
   ].join("|");
 }
 
+function amountKey(value) {
+  return Math.abs(Number(value || 0)).toFixed(2);
+}
+
+function transferText(tx = {}) {
+  return normalizeIdentifier([tx.description, tx.counterparty, tx.note, tx.rawText].filter(Boolean).join(" "));
+}
+
+function deriveTransferMeta(tx = {}) {
+  if (!tx.internalTransfer && !tx.transferSourceAccountId && !tx.transferTargetAccountId) return null;
+  const amount = Number(tx.amount || 0);
+  const matchedAccountId = tx.transferMatchedAccountId || tx.matchedAccountId || "";
+  const sourceAccountId = tx.transferSourceAccountId || (amount >= 0 ? matchedAccountId : tx.accountId);
+  const targetAccountId = tx.transferTargetAccountId || (amount >= 0 ? tx.accountId : matchedAccountId);
+  if (!sourceAccountId || !targetAccountId || sourceAccountId === targetAccountId) return null;
+  return { sourceAccountId, targetAccountId };
+}
+
+function transferReferenceCompatible(a = {}, b = {}) {
+  const ax = transferText(a);
+  const bx = transferText(b);
+  if (!ax || !bx) return true;
+  if (ax.includes(bx) || bx.includes(ax)) return true;
+  const aTokens = new Set(ax.match(/[a-z0-9]{5,}/g) || []);
+  const bTokens = new Set(bx.match(/[a-z0-9]{5,}/g) || []);
+  let overlap = 0;
+  for (const token of aTokens) if (bTokens.has(token)) overlap += 1;
+  return overlap > 0;
+}
+
+function matchesInternalTransferDuplicate(tx, existing = []) {
+  const meta = deriveTransferMeta(tx);
+  if (!meta) return false;
+  const currency = String(tx.currency || "").toUpperCase();
+  const amount = amountKey(tx.amount);
+  return existing.some(item => {
+    const other = deriveTransferMeta(item);
+    if (!other) return false;
+    if (other.sourceAccountId !== meta.sourceAccountId || other.targetAccountId !== meta.targetAccountId) return false;
+    if (amountKey(item.amount) !== amount) return false;
+    if (String(item.currency || "").toUpperCase() !== currency) return false;
+    return true;
+  });
+}
+
+function referenceAccountTextMatches(tx = {}, sourceAccount = {}) {
+  const text = transferText(tx);
+  if (!text || !sourceAccount) return false;
+  return accountIdentifiers(sourceAccount).some(identifier => text.includes(identifier.normalized));
+}
+
+function matchesReferenceFundingDuplicate(tx, existing = [], accounts = []) {
+  const currency = String(tx.currency || "").toUpperCase();
+  const amount = amountKey(tx.amount);
+  return existing.some(item => {
+    if (!item.referenceFunding || item.referenceFundingRole !== "deduction") return false;
+    if (item.accountId !== tx.accountId) return false;
+    if (String(item.currency || "").toUpperCase() !== currency) return false;
+    if (amountKey(item.amount) !== amount) return false;
+    const sourceAccount = accounts.find(account => account.id === item.referenceSourceAccountId);
+    return referenceAccountTextMatches(tx, sourceAccount) || transferReferenceCompatible(tx, item);
+  });
+}
+
+function currentBalanceForAccount(account, rows = []) {
+  return Number(account?.openingBalance || 0) + rows
+    .filter(tx => tx.accountId === account?.id)
+    .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+}
+
+function baseGeneratedFields(tx, groupId) {
+  return {
+    date: tx.date,
+    currency: tx.currency,
+    categoryId: "transfer",
+    confidence: 0.98,
+    review: false,
+    source: "auto:transfer",
+    importBatchId: tx.importBatchId,
+    rawText: tx.rawText || "",
+    raw: tx.raw || null,
+    note: "Auto-created by Capito. Hidden from spending statistics.",
+    internalTransfer: true,
+    excludeFromStats: true,
+    reason: "Auto-created transfer counterpart.",
+    internalTransferGroupId: groupId,
+    createdAtMs: tx.createdAtMs || Date.now()
+  };
+}
+
+function withInternalTransferFields(tx, categorization, groupId) {
+  const sourceAccountId = categorization.transferSourceAccountId || (Number(tx.amount || 0) >= 0 ? categorization.matchedAccountId : tx.accountId);
+  const targetAccountId = categorization.transferTargetAccountId || (Number(tx.amount || 0) >= 0 ? tx.accountId : categorization.matchedAccountId);
+  return {
+    ...tx,
+    internalTransfer: true,
+    excludeFromStats: true,
+    internalTransferRole: Number(tx.amount || 0) >= 0 ? "target" : "source",
+    internalTransferGroupId: groupId,
+    transferSourceAccountId: sourceAccountId,
+    transferTargetAccountId: targetAccountId,
+    transferMatchedAccountId: categorization.matchedAccountId || categorization.transferMatchedAccountId || "",
+    reason: categorization.reason || tx.reason || "Internal transfer detected."
+  };
+}
+
+function buildInternalTransferMirror(tx, accounts = []) {
+  if (!tx.internalTransfer || !tx.transferSourceAccountId || !tx.transferTargetAccountId) return null;
+  const currentAccountId = tx.accountId;
+  const mirrorAccountId = Number(tx.amount || 0) < 0 ? tx.transferTargetAccountId : tx.transferSourceAccountId;
+  if (!mirrorAccountId || mirrorAccountId === currentAccountId) return null;
+  const source = accounts.find(account => account.id === tx.transferSourceAccountId);
+  const target = accounts.find(account => account.id === tx.transferTargetAccountId);
+  const counterAccount = accounts.find(account => account.id === currentAccountId);
+  const groupId = tx.internalTransferGroupId || `it_${tx.id}`;
+  return {
+    ...baseGeneratedFields(tx, groupId),
+    id: `${tx.id}_mirror`,
+    externalId: `${tx.externalId || tx.id}_mirror`,
+    accountId: mirrorAccountId,
+    amount: -Number(tx.amount || 0),
+    description: Number(tx.amount || 0) < 0
+      ? `Internal transfer from ${source?.name || "own account"}: ${tx.description}`
+      : `Internal transfer to ${target?.name || "own account"}: ${tx.description}`,
+    counterparty: counterAccount?.name || tx.counterparty || "Own account",
+    internalTransferRole: Number(tx.amount || 0) < 0 ? "target" : "source",
+    transferSourceAccountId: tx.transferSourceAccountId,
+    transferTargetAccountId: tx.transferTargetAccountId,
+    transferMatchedAccountId: currentAccountId
+  };
+}
+
+function buildReferenceFundingRows(tx, account, referenceAccount, acceptedRows, existingRows) {
+  if (!account?.referenceAccountId || !referenceAccount || Number(tx.amount || 0) >= 0 || tx.internalTransfer) return [];
+  const projected = currentBalanceForAccount(account, [...existingRows, ...acceptedRows]);
+  if (projected >= 0) return [];
+  const shortage = Math.abs(projected);
+  if (!Number.isFinite(shortage) || shortage <= 0.004) return [];
+  const groupId = `rf_${tx.id}`;
+  const generated = baseGeneratedFields(tx, groupId);
+  const topup = {
+    ...generated,
+    id: `${tx.id}_ref_topup`,
+    externalId: `${tx.externalId || tx.id}_ref_topup`,
+    accountId: account.id,
+    amount: shortage,
+    description: `Reference top-up from ${referenceAccount.name}: ${tx.description}`,
+    counterparty: referenceAccount.name,
+    referenceFunding: true,
+    referenceFundingRole: "topup",
+    referenceSourceAccountId: account.id,
+    referenceAccountId: referenceAccount.id,
+    fundingOriginalId: tx.id,
+    reason: `Auto top-up because ${account.name} would go below zero.`
+  };
+  const deduction = {
+    ...generated,
+    id: `${tx.id}_ref_deduction`,
+    externalId: `${tx.externalId || tx.id}_ref_deduction`,
+    accountId: referenceAccount.id,
+    amount: -shortage,
+    description: `Reference deduction for ${account.name}: ${tx.description}`,
+    counterparty: account.name,
+    referenceFunding: true,
+    referenceFundingRole: "deduction",
+    referenceSourceAccountId: account.id,
+    referenceAccountId: referenceAccount.id,
+    fundingOriginalId: tx.id,
+    reason: `Auto deduction from ${referenceAccount.name} for ${account.name}.`
+  };
+  return [topup, deduction];
+}
+
 export function rowToTransaction(row, mapping, context) {
   const get = field => mapping[field] == null ? "" : row[mapping[field]];
   const date = parseDateValue(get("date"));
@@ -328,7 +501,8 @@ export function rowToTransaction(row, mapping, context) {
   };
   const categorization = categorizeTransaction(base, context.rules, context.categories, context.accounts || []);
   const id = transactionHash(base);
-  return {
+  const groupId = categorization.internalTransfer ? `it_${id}` : "";
+  const tx = {
     ...base,
     id,
     externalId: id,
@@ -337,8 +511,15 @@ export function rowToTransaction(row, mapping, context) {
     review: categorization.review,
     reason: categorization.reason,
     candidates: categorization.candidates,
+    matchedAccountId: categorization.matchedAccountId || "",
+    transferMatchedAccountId: categorization.transferMatchedAccountId || categorization.matchedAccountId || "",
+    transferSourceAccountId: categorization.transferSourceAccountId || "",
+    transferTargetAccountId: categorization.transferTargetAccountId || "",
+    internalTransfer: Boolean(categorization.internalTransfer),
+    excludeFromStats: Boolean(categorization.excludeFromStats),
     note: ""
   };
+  return categorization.internalTransfer ? withInternalTransferFields(tx, categorization, groupId) : tx;
 }
 
 export function buildImportPreview(parsed, mapping, context, existingTransactions = []) {
@@ -347,6 +528,7 @@ export function buildImportPreview(parsed, mapping, context, existingTransaction
   const existingSignatures = new Set(existingTransactions.map(transactionSignature));
   const transactions = [];
   const skipped = [];
+  const allKnownRows = () => [...existingTransactions, ...transactions];
   for (const row of parsed.rows) {
     const tx = rowToTransaction(row, mapping, { ...context, importBatchId, formatLabel: parsed.formatLabel });
     if (!tx) {
@@ -355,10 +537,28 @@ export function buildImportPreview(parsed, mapping, context, existingTransaction
     }
     const signature = transactionSignature(tx);
     if (existingIds.has(tx.id) || existingSignatures.has(signature) || transactions.some(item => item.id === tx.id || transactionSignature(item) === signature)) {
-      skipped.push({ row, reason: "Exact duplicate" });
+      skipped.push({ row, tx, reason: "Exact duplicate" });
       continue;
     }
+    if (matchesInternalTransferDuplicate(tx, allKnownRows())) {
+      skipped.push({ row, tx, reason: "Internal transfer counterpart already represented" });
+      continue;
+    }
+    if (matchesReferenceFundingDuplicate(tx, allKnownRows(), context.accounts || [])) {
+      skipped.push({ row, tx, reason: "Reference-account deduction already represented" });
+      continue;
+    }
+
     transactions.push(tx);
+    const mirror = buildInternalTransferMirror(tx, context.accounts || []);
+    if (mirror && !allKnownRows().some(item => item.id === mirror.id || item.externalId === mirror.externalId)) transactions.push(mirror);
+
+    const account = (context.accounts || []).find(item => item.id === tx.accountId);
+    const referenceAccount = account?.referenceAccountId ? (context.accounts || []).find(item => item.id === account.referenceAccountId) : null;
+    const referenceRows = buildReferenceFundingRows(tx, account, referenceAccount, transactions, existingTransactions);
+    for (const generated of referenceRows) {
+      if (!matchesReferenceFundingDuplicate(generated, allKnownRows(), context.accounts || [])) transactions.push(generated);
+    }
   }
   return { transactions, skipped, importBatchId };
 }

@@ -48,7 +48,8 @@ import {
   formatCurrency,
   monthKey,
   normalizeText,
-  parseMoney
+  parseMoney,
+  shouldIgnoreTransactionInStats
 } from "./finance.js";
 import {
   RECOGNIZED_BANK_FORMATS,
@@ -112,6 +113,7 @@ let txFilteredRows = [];
 let importSelectedIds = new Set();
 let txPage = 1;
 let importPage = 1;
+let importSkippedPage = 1;
 let positionsPage = 1;
 let accountTransactionsPage = 1;
 let activePositionsAccountId = "";
@@ -477,7 +479,8 @@ function transactionsInRange(start, end) {
   });
 }
 
-function includeInSpending(cat) {
+function includeInSpending(cat, tx = {}) {
+  if (shouldIgnoreTransactionInStats(tx)) return false;
   return !(cat?.type === "transfer" && state.settings.hideInternalTransfersInSpending);
 }
 
@@ -486,8 +489,8 @@ function summarizeTransactions(rows) {
   return rows.reduce((totals, tx) => {
     const cat = cats.get(tx.categoryId) || cats.get("misc");
     const amount = convertCurrency(Number(tx.amount || 0), tx.currency || selectedCurrency(), state.settings);
-    if (cat?.type === "transfer" && !includeInSpending(cat)) {
-      totals.transfer += amount;
+    if (!includeInSpending(cat, tx)) {
+      if (cat?.type === "transfer") totals.transfer += amount;
       return totals;
     }
     if (amount >= 0) totals.income += amount;
@@ -503,7 +506,7 @@ function categorySpendForRange(start, end) {
   for (const tx of transactionsInRange(start, end)) {
     const cat = cats.get(tx.categoryId) || cats.get("misc");
     if (cat?.type === "income") continue;
-    if (!includeInSpending(cat)) continue;
+    if (!includeInSpending(cat, tx)) continue;
     const value = Math.abs(Math.min(0, convertCurrency(tx.amount, tx.currency || selectedCurrency(), state.settings)));
     if (value <= 0) continue;
     const prev = totals.get(cat.id) || { categoryId: cat.id, name: cat.name, group: cat.group, color: cat.color || DEFAULT_CATEGORY_COLOR, value: 0 };
@@ -598,7 +601,7 @@ function comparisonWindowFlow(compareDate) {
     const date = String(tx.date || "");
     if (!date || date < compareDate || date > today) return totals;
     const cat = cats.get(tx.categoryId) || cats.get("misc");
-    if (cat?.type === "transfer" && state.settings.hideInternalTransfersInSpending) return totals;
+    if (!includeInSpending(cat, tx)) return totals;
     const amount = convertCurrency(Number(tx.amount || 0), tx.currency || selectedCurrency(), state.settings);
     if (amount >= 0) totals.income += amount;
     else totals.expense += Math.abs(amount);
@@ -877,10 +880,11 @@ function renderTransactions() {
     const tr = document.createElement("tr");
     const selected = selectedTransactionIds.has(tx.id);
     tr.classList.toggle("is-selected-row", selected);
+    tr.classList.toggle("is-ignored-row", shouldIgnoreTransactionInStats(tx));
     tr.innerHTML = `
       <td class="select-col desktop-only-tools"><input class="tx-select-checkbox" data-select-tx="${escapeHtml(tx.id)}" type="checkbox" ${selected ? "checked" : ""} aria-label="Select transaction"></td>
       <td>${escapeHtml(tx.date)}</td>
-      <td class="description-cell"><strong>${escapeHtml(tx.description)}</strong><small class="muted table-ellipsis">${escapeHtml(tx.counterparty || tx.reason || "")}</small></td>
+      <td class="description-cell"><strong>${escapeHtml(tx.description)}</strong><small class="muted table-ellipsis">${escapeHtml(tx.counterparty || tx.reason || "")}</small>${transactionFlagsHtml(tx)}</td>
       <td>${escapeHtml(account?.name || tx.accountId || "—")}</td>
       <td>${categoryPill(cat, { review: tx.review })}</td>
       <td class="${Number(tx.amount) >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(tx.amount, tx.currency || selectedCurrency())}</td>
@@ -980,6 +984,7 @@ function buildAccountCard(account, row, previousRow, { hidden = false } = {}) {
         <h3 title="${escapeHtml(account.name)}">${escapeHtml(account.name)}</h3>
         <small class="account-meta-line">${escapeHtml(account.institution || "Manual")} · ${escapeHtml(account.type)} · Native ${escapeHtml(account.currency || selectedCurrency())}${currency !== (account.currency || selectedCurrency()).toUpperCase() ? ` · shown in ${escapeHtml(currency)}` : ""}</small>
         <small class="account-identifier">${escapeHtml(identifier)}</small>
+        ${account.referenceAccountId ? `<small class="account-reference-preview">Ref: ${escapeHtml(accountNameById(account.referenceAccountId))}</small>` : ""}
         ${account.note ? `<small class="account-note-preview">${escapeHtml(account.note)}</small>` : ""}
       </div>
       <div class="account-card-controls">
@@ -1297,6 +1302,9 @@ function syncTransactionReviewControl() {
   const locked = Boolean(category && category !== "misc" && category !== "auto");
   if (locked) review.checked = false;
   review.disabled = locked;
+  const ignore = $("#transaction-ignore-stats");
+  const cat = state.categories.find(item => item.id === category);
+  if (ignore && cat?.type === "transfer") ignore.checked = true;
 }
 
 function openTransactionModal(id = "") {
@@ -1312,6 +1320,7 @@ function openTransactionModal(id = "") {
   $("#transaction-description").value = tx?.description || "";
   $("#transaction-note").value = tx?.note || "";
   $("#transaction-review").checked = Boolean(tx?.review);
+  if ($("#transaction-ignore-stats")) $("#transaction-ignore-stats").checked = shouldIgnoreTransactionInStats(tx || {});
   $("#delete-transaction-button").hidden = !tx;
   syncTransactionReviewControl();
   openModal("transaction");
@@ -1333,6 +1342,14 @@ function openAccountModal(id = "") {
   $("#account-number").value = account?.accountNumber || "";
   $("#account-bic").value = account?.bic || "";
   $("#account-aliases").value = Array.isArray(account?.transferAliases) ? account.transferAliases.join(", ") : account?.transferAliases || "";
+  const referenceSelect = $("#account-reference-account");
+  if (referenceSelect) {
+    const currentId = account?.id || "";
+    const selectedReference = account?.referenceAccountId || "";
+    const choices = state.accounts.filter(item => item.id !== currentId && !item.hidden);
+    referenceSelect.innerHTML = `<option value="">No reference account</option>${choices.map(item => `<option value="${escapeHtml(item.id)}" ${item.id === selectedReference ? "selected" : ""}>${escapeHtml(item.name)} · ${escapeHtml(item.currency || selectedCurrency())}</option>`).join("")}`;
+    referenceSelect.value = selectedReference;
+  }
   $("#account-hidden").checked = Boolean(account?.hidden);
   $("#delete-account-button").hidden = !account;
   openModal("account");
@@ -1528,14 +1545,26 @@ function openCategoryModal(id = "") {
 }
 
 async function reapplyRulesToReviewQueue(rulesOverride = state.rules) {
-  const reviewed = state.transactions.filter(tx => tx.review);
-  if (!reviewed.length) return 0;
   const updates = [];
-  for (const tx of reviewed) {
+  for (const tx of state.transactions) {
     const result = categorizeTransaction(tx, rulesOverride, state.categories, state.accounts);
-    if (result.review || result.categoryId !== "misc") {
-      updates.push({ ...tx, ...result, review: result.review });
-    }
+    const next = {
+      ...tx,
+      categoryId: result.categoryId,
+      confidence: result.confidence,
+      review: result.review,
+      reason: result.reason,
+      candidates: result.candidates || [],
+      matchedAccountId: result.matchedAccountId || tx.matchedAccountId || "",
+      transferMatchedAccountId: result.transferMatchedAccountId || result.matchedAccountId || tx.transferMatchedAccountId || "",
+      transferSourceAccountId: result.transferSourceAccountId || tx.transferSourceAccountId || "",
+      transferTargetAccountId: result.transferTargetAccountId || tx.transferTargetAccountId || "",
+      internalTransfer: Boolean(result.internalTransfer || tx.internalTransfer),
+      excludeFromStats: Boolean(result.excludeFromStats || shouldIgnoreTransactionInStats(tx))
+    };
+    const changed = ["categoryId", "review", "reason", "internalTransfer", "excludeFromStats", "transferSourceAccountId", "transferTargetAccountId"]
+      .some(key => JSON.stringify(tx[key] ?? null) !== JSON.stringify(next[key] ?? null));
+    if (changed) updates.push(next);
   }
   if (updates.length) await saveTransactionsBatch(updates);
   return updates.length;
@@ -1717,6 +1746,7 @@ function buildActiveImportPreview() {
     accounts: state.accounts
   }, state.transactions);
   importPage = 1;
+  importSkippedPage = 1;
   $("#reset-import-button").disabled = false;
   renderImportPreview();
   updateUnifiedImportSummary();
@@ -1728,6 +1758,7 @@ function resetImportFlow(message = "") {
   brokerParsedFile = null;
   brokerPreview = null;
   importPage = 1;
+  importSkippedPage = 1;
   brokerPositionsPage = 1;
   const fileInput = $("#import-file");
   if (fileInput) fileInput.value = "";
@@ -1742,8 +1773,14 @@ function resetImportFlow(message = "") {
   updateImportFileLabel();
   updateBrokerPositionsFileLabel();
   setMessage($("#import-message"), message);
+  const balanceBox = $("#import-balance-summary");
+  if (balanceBox) {
+    balanceBox.hidden = true;
+    balanceBox.innerHTML = "";
+  }
   setMessage($("#positions-import-message"), "");
   renderImportPreview();
+  renderFilteredImportPreview();
   renderBrokerPositionsPreview();
 }
 
@@ -1757,6 +1794,7 @@ function renderImportPreview() {
     renderPagination($("#import-preview-pagination"), 0, 1, PAGE_SIZES.importPreview, () => {});
     updateSortButtons("import", importSort);
     updateImportSelectionUi();
+    renderFilteredImportPreview();
     return;
   }
   const cats = categoryMap();
@@ -1780,7 +1818,8 @@ function renderImportPreview() {
     const selected = importSelectedIds.has(id);
     const tr = document.createElement("tr");
     tr.classList.toggle("is-selected-row", selected);
-    tr.innerHTML = `<td class="select-col desktop-only-tools"><input class="import-select-checkbox" data-select-import-tx="${escapeHtml(id)}" type="checkbox" ${selected ? "checked" : ""} aria-label="Select import row"></td><td>${escapeHtml(tx.date)}</td><td class="description-cell"><strong>${escapeHtml(tx.description)}</strong><small class="muted table-ellipsis">${escapeHtml(tx.reason || "")}</small></td><td class="${tx.amount >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(tx.amount, tx.currency)}</td><td>${categoryPill(cat, { review: tx.review })}</td><td>${tx.review ? "Needs review" : "Prepared"}</td>`;
+    tr.classList.toggle("is-ignored-row", shouldIgnoreTransactionInStats(tx));
+    tr.innerHTML = `<td class="select-col desktop-only-tools"><input class="import-select-checkbox" data-select-import-tx="${escapeHtml(id)}" type="checkbox" ${selected ? "checked" : ""} aria-label="Select import row"></td><td>${escapeHtml(tx.date)}</td><td class="description-cell"><strong>${escapeHtml(tx.description)}</strong><small class="muted table-ellipsis">${escapeHtml(tx.reason || "")}</small>${transactionFlagsHtml(tx)}</td><td class="${tx.amount >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(tx.amount, tx.currency)}</td><td>${categoryPill(cat, { review: tx.review })}</td><td>${tx.review ? "Needs review" : "Prepared"}</td>`;
     tbody.append(tr);
   }
   tbody.querySelectorAll("[data-select-import-tx]").forEach(box => box.addEventListener("change", event => {
@@ -1790,8 +1829,48 @@ function renderImportPreview() {
     renderImportPreview();
   }));
   updateImportSelectionUi();
+  renderFilteredImportPreview();
 }
 
+function renderFilteredImportPreview() {
+  const card = $("#import-filtered-card");
+  const tbody = $("#import-filtered-body");
+  const count = $("#filtered-preview-count");
+  if (!card || !tbody) return;
+  const skipped = activePreview?.skipped || [];
+  card.hidden = skipped.length === 0;
+  tbody.replaceChildren();
+  if (count) count.textContent = skipped.length ? `${skipped.length} filtered` : "None";
+  if (!skipped.length) {
+    renderPagination($("#import-filtered-pagination"), 0, 1, PAGE_SIZES.importPreview, () => {});
+    return;
+  }
+  importSkippedPage = renderPagination($("#import-filtered-pagination"), skipped.length, importSkippedPage, PAGE_SIZES.importPreview, page => {
+    importSkippedPage = page;
+    renderFilteredImportPreview();
+  });
+  pagedRows(skipped, importSkippedPage, PAGE_SIZES.importPreview).forEach((item, index) => {
+    const tx = item.tx || null;
+    const rowNumber = (importSkippedPage - 1) * PAGE_SIZES.importPreview + index;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${tx?.date ? escapeHtml(tx.date) : "—"}</td>
+      <td class="description-cell"><strong>${escapeHtml(tx?.description || item.row?.join(" · ") || "Filtered row")}</strong><small class="muted table-ellipsis">${escapeHtml(item.reason || "Filtered")}</small>${tx ? transactionFlagsHtml(tx) : ""}</td>
+      <td class="${Number(tx?.amount || 0) >= 0 ? "amount-pos" : "amount-neg"}">${tx ? formatCurrency(tx.amount, tx.currency || selectedCurrency()) : "—"}</td>
+      <td class="action-cell"><button class="secondary-button compact" type="button" data-restore-skipped="${rowNumber}" ${tx ? "" : "disabled"}>Add back</button></td>`;
+    tbody.append(tr);
+  });
+  tbody.querySelectorAll("[data-restore-skipped]").forEach(button => button.addEventListener("click", () => {
+    const index = Number(button.dataset.restoreSkipped);
+    const item = activePreview?.skipped?.[index];
+    if (!item?.tx) return;
+    activePreview.transactions.push({ ...item.tx, review: true, reason: `Manually added back: ${item.reason || "filtered"}` });
+    activePreview.skipped.splice(index, 1);
+    toast("Row added back", "It is now included in the import preview and marked for review.");
+    renderImportPreview();
+    updateUnifiedImportSummary();
+  }));
+}
 
 function updateBrokerPositionsFileLabel() {
   const label = $("#positions-file-label");
@@ -1888,6 +1967,12 @@ function updateUnifiedImportSummary() {
   const parts = [];
   if (activeParsedFile) parts.push(`${activeParsedFile.formatLabel || "Bank export"}: ${txCount} transactions, ${reviewCount} review, ${txSkipped} duplicates/skipped${Number.isFinite(Number(activeParsedFile.openingBalanceHint)) ? `, opening ${formatCurrency(Number(activeParsedFile.openingBalanceHint), selectedCurrency())}` : ""}`);
   if (brokerParsedFile) parts.push(`${brokerParsedFile.formatLabel || "Broker export"}: ${posCount} positions, ${posSkipped} skipped`);
+  const balanceSummary = importBalanceSummaryHtml();
+  const balanceBox = $("#import-balance-summary");
+  if (balanceBox) {
+    balanceBox.hidden = !balanceSummary;
+    balanceBox.innerHTML = balanceSummary ? `<strong>Balance after import</strong><div class="import-balance-list">${balanceSummary}</div>` : "";
+  }
   if (parts.length) setMessage($("#import-message"), parts.join(" · "));
 }
 
@@ -1955,6 +2040,121 @@ function downloadTextFile(filename, content, type = "text/csv;charset=utf-8") {
   setTimeout(() => URL.revokeObjectURL(url), 1200);
 }
 
+
+function accountNameById(id) {
+  return state.accounts.find(account => account.id === id)?.name || id || "—";
+}
+
+function transactionFlagsHtml(tx = {}) {
+  const flags = [];
+  if (tx.internalTransfer) flags.push("Internal");
+  if (tx.referenceFunding) flags.push("Reference");
+  if (shouldIgnoreTransactionInStats(tx)) flags.push("Ignored stats");
+  if (!flags.length) return "";
+  return `<span class="tx-flags">${flags.map(flag => `<span>${escapeHtml(flag)}</span>`).join("")}</span>`;
+}
+
+function modalDialogShell(title, bodyHtml, { wide = false } = {}) {
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop app-dialog-backdrop";
+  backdrop.innerHTML = `
+    <section class="modal-card surface-card app-dialog-card ${wide ? "wide-modal" : ""}" role="dialog" aria-modal="true">
+      <div class="modal-heading"><h3>${escapeHtml(title)}</h3></div>
+      ${bodyHtml}
+    </section>`;
+  document.body.append(backdrop);
+  const previousOverflow = document.body.style.overflow;
+  document.body.style.overflow = "hidden";
+  const close = () => {
+    backdrop.remove();
+    document.body.style.overflow = previousOverflow;
+  };
+  return { backdrop, close };
+}
+
+function confirmDialog({ title = "Confirm", message = "", confirmLabel = "Confirm", cancelLabel = "Cancel", danger = false } = {}) {
+  return new Promise(resolve => {
+    const { backdrop, close } = modalDialogShell(title, `
+      <div class="dialog-copy muted">${escapeHtml(message)}</div>
+      <div class="button-row dialog-actions">
+        <button class="secondary-button" data-dialog-cancel type="button">${escapeHtml(cancelLabel)}</button>
+        <button class="${danger ? "danger-button" : "primary-button"}" data-dialog-confirm type="button">${escapeHtml(confirmLabel)}</button>
+      </div>`);
+    const finish = value => { close(); resolve(value); };
+    backdrop.querySelector("[data-dialog-cancel]").addEventListener("click", () => finish(false));
+    backdrop.querySelector("[data-dialog-confirm]").addEventListener("click", () => finish(true));
+    backdrop.addEventListener("click", event => { if (event.target === backdrop) finish(false); });
+    backdrop.querySelector("[data-dialog-cancel]").focus();
+  });
+}
+
+function bulkEditDialog(count, { title = "Group edit", allowAccount = true } = {}) {
+  return new Promise(resolve => {
+    const categorySelect = `<option value="">Keep category</option>${categoryOptions("")}`;
+    const accountSelect = `<option value="">Keep account</option>${accountOptions("", { includeHidden: true })}`;
+    const { backdrop, close } = modalDialogShell(title, `
+      <form class="form-stack" data-bulk-edit-form>
+        <p class="muted">${count} selected rows. Empty fields keep the current value.</p>
+        <div class="form-grid two">
+          <label class="field"><span>Category</span><select id="bulk-edit-category">${categorySelect}</select></label>
+          <label class="field"><span>Account</span><select id="bulk-edit-account" ${allowAccount ? "" : "disabled"}>${accountSelect}</select></label>
+        </div>
+        <label class="field"><span>Description</span><input id="bulk-edit-description" placeholder="Keep existing description"></label>
+        <label class="field"><span>Counterparty</span><input id="bulk-edit-counterparty" placeholder="Keep existing counterparty · type __CLEAR__ to clear"></label>
+        <label class="field"><span>Note</span><textarea id="bulk-edit-note" rows="3" placeholder="Keep existing note · type __CLEAR__ to clear"></textarea></label>
+        <div class="form-grid two">
+          <label class="field"><span>Review status</span><select id="bulk-edit-review"><option value="">Keep</option><option value="false">Clean</option><option value="true">Needs review</option></select></label>
+          <label class="field"><span>Statistics</span><select id="bulk-edit-ignore"><option value="">Keep</option><option value="false">Include in stats</option><option value="true">Ignore in stats</option></select></label>
+        </div>
+        <div class="button-row dialog-actions"><button class="secondary-button" data-dialog-cancel type="button">Cancel</button><button class="primary-button" type="submit">Continue</button></div>
+      </form>`, { wide: true });
+    const finish = value => { close(); resolve(value); };
+    backdrop.querySelector("[data-dialog-cancel]").addEventListener("click", () => finish(null));
+    backdrop.addEventListener("click", event => { if (event.target === backdrop) finish(null); });
+    backdrop.querySelector("[data-bulk-edit-form]").addEventListener("submit", event => {
+      event.preventDefault();
+      const patch = {};
+      const categoryId = backdrop.querySelector("#bulk-edit-category").value;
+      const accountId = backdrop.querySelector("#bulk-edit-account").value;
+      const description = backdrop.querySelector("#bulk-edit-description").value.trim();
+      const counterparty = backdrop.querySelector("#bulk-edit-counterparty").value.trim();
+      const note = backdrop.querySelector("#bulk-edit-note").value;
+      const review = backdrop.querySelector("#bulk-edit-review").value;
+      const ignore = backdrop.querySelector("#bulk-edit-ignore").value;
+      if (categoryId) patch.categoryId = categoryId;
+      if (allowAccount && accountId) patch.accountId = accountId;
+      if (description) patch.description = description === "__CLEAR__" ? "" : description;
+      if (counterparty) patch.counterparty = counterparty === "__CLEAR__" ? "" : counterparty;
+      if (note) patch.note = note === "__CLEAR__" ? "" : note;
+      if (review) patch.review = review === "true";
+      if (ignore) patch.excludeFromStats = ignore === "true";
+      finish(patch);
+    });
+    backdrop.querySelector("#bulk-edit-category").focus();
+  });
+}
+
+function accountBalanceAfterRows(account, rows = []) {
+  return Number(account?.openingBalance || 0) + [
+    ...state.transactions,
+    ...rows
+  ].filter(tx => tx.accountId === account?.id).reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+}
+
+function importBalanceSummaryHtml() {
+  const rows = activePreview?.transactions || [];
+  if (!rows.length) return "";
+  const accountIds = [...new Set(rows.map(tx => tx.accountId).filter(Boolean))];
+  return accountIds.map(accountId => {
+    const account = state.accounts.find(item => item.id === accountId);
+    if (!account) return "";
+    const current = accountBalanceAfterRows(account, []);
+    const next = accountBalanceAfterRows(account, rows);
+    const currency = account.currency || selectedCurrency();
+    return `<div><strong>${escapeHtml(account.name)}</strong><span>${formatCurrency(current, currency)} → ${formatCurrency(next, currency)}</span></div>`;
+  }).filter(Boolean).join("");
+}
+
 function selectedTransactions() {
   const ids = selectedTransactionIds;
   return state.transactions.filter(tx => ids.has(tx.id));
@@ -2003,39 +2203,15 @@ function updateImportSelectionUi() {
   }
 }
 
-function promptBulkTransactionPatch(count) {
-  const categoryText = prompt(`Group edit ${count} selected transactions.\nCategory: enter category name or ID. Leave empty to keep existing categories.`);
-  if (categoryText === null) return null;
-  let categoryId = "";
-  const wanted = normalizeText(categoryText);
-  if (wanted) {
-    const cat = state.categories.find(item => normalizeText(item.id) === wanted || normalizeText(item.name) === wanted);
-    if (!cat) {
-      toast("Category not found", "Use a category name or ID exactly as shown in Capito.", "error");
-      return null;
-    }
-    categoryId = cat.id;
-  }
-  const noteText = prompt("Note: enter new note. Leave empty to keep existing notes. Type __CLEAR__ to clear notes.");
-  if (noteText === null) return null;
-  const counterpartyText = prompt("Counterparty: enter new counterparty. Leave empty to keep existing counterparties. Type __CLEAR__ to clear.");
-  if (counterpartyText === null) return null;
-  const reviewText = prompt("Review status: enter yes, no, or leave empty to keep.");
-  if (reviewText === null) return null;
-  const patch = {};
-  if (categoryId) patch.categoryId = categoryId;
-  if (noteText) patch.note = noteText === "__CLEAR__" ? "" : noteText;
-  if (counterpartyText) patch.counterparty = counterpartyText === "__CLEAR__" ? "" : counterpartyText;
-  if (/^(yes|y|true|review)$/i.test(reviewText.trim())) patch.review = true;
-  else if (/^(no|n|false|clean)$/i.test(reviewText.trim())) patch.review = false;
-  if (!Object.keys(patch).length) return {};
-  return patch;
+async function promptBulkTransactionPatch(count, options = {}) {
+  return bulkEditDialog(count, options);
 }
 
 async function deleteSelectedTransactions() {
   const rows = selectedTransactions();
   if (!rows.length) return toast("No transactions selected", "", "error");
-  if (!confirm(`Delete ${rows.length} selected transactions permanently?`)) return;
+  const ok = await confirmDialog({ title: "Delete transactions", message: `Delete ${rows.length} selected transactions permanently?`, confirmLabel: "Delete", danger: true });
+  if (!ok) return;
   for (const tx of rows) await deleteTransaction(tx.id);
   selectedTransactionIds.clear();
   toast("Transactions deleted", `${rows.length} removed.`);
@@ -2045,10 +2221,11 @@ async function deleteSelectedTransactions() {
 async function groupEditSelectedTransactions() {
   const rows = selectedTransactions();
   if (!rows.length) return toast("No transactions selected", "", "error");
-  const patch = promptBulkTransactionPatch(rows.length);
+  const patch = await promptBulkTransactionPatch(rows.length, { title: "Group edit transactions", allowAccount: true });
   if (patch === null) return;
   if (!Object.keys(patch).length) return toast("No changes", "Nothing was changed.");
-  if (!confirm(`Apply these changes to ${rows.length} selected transactions?`)) return;
+  const ok = await confirmDialog({ title: "Apply group edit", message: `Apply these changes to ${rows.length} selected transactions?`, confirmLabel: "Apply changes" });
+  if (!ok) return;
   await saveTransactionsBatch(rows.map(tx => ({ ...tx, ...patch, source: tx.source || "bulk-edit" })));
   toast("Transactions updated", `${rows.length} changed.`);
   renderTransactions();
@@ -2066,10 +2243,11 @@ function exportImportSelection() {
   downloadTextFile(`capito-selected-import-rows-${TODAY()}.csv`, serializeTransactionsCsv(rows, state.categories, state.accounts));
 }
 
-function deleteSelectedImportRows() {
+async function deleteSelectedImportRows() {
   const rows = importPreviewSelectedRows();
   if (!rows.length) return toast("No import rows selected", "", "error");
-  if (!confirm(`Delete ${rows.length} selected rows from the import preview?`)) return;
+  const ok = await confirmDialog({ title: "Remove preview rows", message: `Delete ${rows.length} selected rows from the import preview?`, confirmLabel: "Remove rows", danger: true });
+  if (!ok) return;
   const ids = new Set(rows.map(tx => tx.id || tx.externalId));
   activePreview.transactions = activePreview.transactions.filter(tx => !ids.has(tx.id || tx.externalId));
   importSelectedIds.clear();
@@ -2078,13 +2256,14 @@ function deleteSelectedImportRows() {
   updateUnifiedImportSummary();
 }
 
-function groupEditImportRows() {
+async function groupEditImportRows() {
   const rows = importPreviewSelectedRows();
   if (!rows.length) return toast("No import rows selected", "", "error");
-  const patch = promptBulkTransactionPatch(rows.length);
+  const patch = await promptBulkTransactionPatch(rows.length, { title: "Group edit import rows", allowAccount: true });
   if (patch === null) return;
   if (!Object.keys(patch).length) return toast("No changes", "Nothing was changed.");
-  if (!confirm(`Apply these changes to ${rows.length} selected import rows?`)) return;
+  const ok = await confirmDialog({ title: "Apply import edit", message: `Apply these changes to ${rows.length} selected import rows?`, confirmLabel: "Apply changes" });
+  if (!ok) return;
   const ids = new Set(rows.map(tx => tx.id || tx.externalId));
   activePreview.transactions = activePreview.transactions.map(tx => ids.has(tx.id || tx.externalId) ? { ...tx, ...patch } : tx);
   toast("Import rows updated", `${rows.length} changed.`);
@@ -2109,13 +2288,17 @@ async function importJsonBackupFile(file) {
   const button = $("#import-json-button");
   const fileInput = $("#import-json-file");
   const replace = $("#import-json-mode").value === "replace";
-  if (replace && !confirm("Replace all current Capito data with this JSON backup?")) {
-    if (fileInput) fileInput.value = "";
-    return;
-  }
-  if (replace && !confirm("Final confirmation: this deletes current accounts, rules, transactions and holdings before importing.")) {
-    if (fileInput) fileInput.value = "";
-    return;
+  if (replace) {
+    const firstOk = await confirmDialog({ title: "Replace current data", message: "Replace all current Capito data with this JSON backup?", confirmLabel: "Continue", danger: true });
+    if (!firstOk) {
+      if (fileInput) fileInput.value = "";
+      return;
+    }
+    const secondOk = await confirmDialog({ title: "Final confirmation", message: "This deletes current accounts, rules, transactions and holdings before importing.", confirmLabel: "Replace data", danger: true });
+    if (!secondOk) {
+      if (fileInput) fileInput.value = "";
+      return;
+    }
   }
 
   if (button) button.disabled = true;
@@ -2340,9 +2523,9 @@ function wireEvents() {
     importSelectedIds.clear();
     renderImportPreview();
   });
-  $("#import-delete-selected")?.addEventListener("click", deleteSelectedImportRows);
+  $("#import-delete-selected")?.addEventListener("click", () => deleteSelectedImportRows().catch(error => toast("Preview delete failed", error.message, "error")));
   $("#import-export-selected")?.addEventListener("click", exportImportSelection);
-  $("#import-group-edit")?.addEventListener("click", groupEditImportRows);
+  $("#import-group-edit")?.addEventListener("click", () => groupEditImportRows().catch(error => toast("Group edit failed", error.message, "error")));
 
   $("#export-button")?.addEventListener("click", exportTransactionsCsv);
   $("#export-json-button")?.addEventListener("click", () => exportBackupJson().catch(error => toast("JSON export failed", error.message, "error")));
@@ -2365,7 +2548,8 @@ function wireEvents() {
   });
   $("#delete-all-data-button")?.addEventListener("click", async () => {
     if ($("#delete-all-confirm")?.value !== "DELETE ALL DATA") return;
-    if (!confirm("Delete all Capito data permanently?")) return;
+    const ok = await confirmDialog({ title: "Delete all data", message: "Delete all Capito data permanently?", confirmLabel: "Delete all data", danger: true });
+    if (!ok) return;
     try {
       await deleteAllData();
       $("#delete-all-confirm").value = "";
@@ -2394,6 +2578,7 @@ function wireEvents() {
         description: $("#transaction-description").value,
         note: $("#transaction-note").value,
         review: $("#transaction-review").checked,
+        excludeFromStats: Boolean($("#transaction-ignore-stats")?.checked),
         source: $("#transaction-id").value ? "manual-edit" : "manual"
       };
       if (!input.accountId || !input.date || input.amount == null) {
@@ -2419,6 +2604,8 @@ function wireEvents() {
   $("#delete-transaction-button").addEventListener("click", async () => {
     const id = $("#transaction-id").value;
     if (!id) return;
+    const ok = await confirmDialog({ title: "Delete transaction", message: "Delete this transaction permanently?", confirmLabel: "Delete", danger: true });
+    if (!ok) return;
     await deleteTransaction(id);
     toast("Transaction deleted");
     closeModal();
@@ -2443,6 +2630,7 @@ function wireEvents() {
         accountNumber: $("#account-number").value,
         bic: $("#account-bic").value,
         transferAliases: $("#account-aliases").value,
+        referenceAccountId: $("#account-reference-account")?.value || "",
         hidden: $("#account-hidden").checked
       });
       toast("Account saved");
@@ -2460,9 +2648,9 @@ function wireEvents() {
     if (!id || !account) return;
     const txCount = state.transactions.filter(tx => tx.accountId === id).length;
     const assetCount = state.assets.filter(asset => asset.accountId === id).length;
-    const first = confirm(`Delete '${account.name}'? This account will be removed instead of hidden.`);
+    const first = await confirmDialog({ title: "Delete account", message: `Delete '${account.name}'? This account will be removed instead of hidden.`, confirmLabel: "Continue", danger: true });
     if (!first) return;
-    const second = confirm(`Final confirmation: delete '${account.name}' with ${txCount} linked transactions and ${assetCount} linked holdings?`);
+    const second = await confirmDialog({ title: "Final confirmation", message: `Delete '${account.name}' with ${txCount} linked transactions and ${assetCount} linked holdings?`, confirmLabel: "Delete account", danger: true });
     if (!second) return;
     try {
       await deleteAccount(id, { hideOnly: false });
@@ -2512,6 +2700,8 @@ function wireEvents() {
   $("#delete-asset-button").addEventListener("click", async () => {
     const id = $("#asset-id").value;
     if (!id) return;
+    const ok = await confirmDialog({ title: "Delete holding", message: "Delete this holding permanently?", confirmLabel: "Delete", danger: true });
+    if (!ok) return;
     await deleteAsset(id);
     toast("Asset deleted");
     closeModal();
@@ -2547,17 +2737,19 @@ function wireEvents() {
       ? state.rules.map(rule => rule.id === savedId ? nextRule : rule)
       : [...state.rules, nextRule];
     const reapplied = await reapplyRulesToReviewQueue(nextRules);
-    toast("Rule saved", reapplied ? `${reapplied} reviewed entries rechecked.` : "No reviewed entries changed.");
+    toast("Rule saved", reapplied ? `${reapplied} past transactions rechecked.` : "No past transactions changed.");
     closeModal();
   });
 
   $("#delete-rule-button").addEventListener("click", async () => {
     const id = $("#rule-id").value;
     if (!id) return;
+    const ok = await confirmDialog({ title: "Delete rule", message: "Delete this keyword rule and recategorize past transactions?", confirmLabel: "Delete rule", danger: true });
+    if (!ok) return;
     const nextRules = state.rules.filter(rule => rule.id !== id);
     await deleteRule(id);
     const reapplied = await reapplyRulesToReviewQueue(nextRules);
-    toast("Rule deleted", reapplied ? `${reapplied} reviewed entries rechecked.` : "");
+    toast("Rule deleted", reapplied ? `${reapplied} past transactions rechecked.` : "");
     closeModal();
   });
 

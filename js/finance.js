@@ -151,17 +151,26 @@ export function accountIdentifiers(account) {
 export function detectInternalTransfer(tx, accounts = []) {
   const text = normalizeIdentifier([tx.description, tx.counterparty, tx.rawText, tx.note].filter(Boolean).join(" "));
   if (!text || !accounts.length) return null;
-  const otherAccounts = accounts.filter(account => account.id !== tx.accountId && !account.hidden);
+  const currentAccountId = tx.accountId || "";
+  const otherAccounts = accounts.filter(account => account.id !== currentAccountId && !account.hidden);
   for (const account of otherAccounts) {
     const match = accountIdentifiers(account).find(identifier => text.includes(identifier.normalized));
     if (match) {
+      const amount = Number(tx.amount || 0);
+      const sourceAccountId = amount >= 0 ? account.id : currentAccountId;
+      const targetAccountId = amount >= 0 ? currentAccountId : account.id;
       return {
         categoryId: "transfer",
-        confidence: 0.92,
+        confidence: 0.94,
         review: false,
         reason: `Detected own account identifier '${match.raw}' for ${account.name}.`,
         matchedAccountId: account.id,
-        candidates: [{ categoryId: "transfer", categoryName: "Internal transfer", score: 115, keywords: [match.raw] }]
+        transferMatchedAccountId: account.id,
+        transferSourceAccountId: sourceAccountId,
+        transferTargetAccountId: targetAccountId,
+        internalTransfer: true,
+        excludeFromStats: true,
+        candidates: [{ categoryId: "transfer", categoryName: "Internal transfer", score: 120, keywords: [match.raw] }]
       };
     }
   }
@@ -265,16 +274,22 @@ export function categorizeTransaction(tx, rules = DEFAULT_RULES, categories = DE
   if (detectedTransfer) return detectedTransfer;
   const matches = [];
 
+  const compactText = normalizeIdentifier(rawText);
   for (const rule of rules) {
     const rawKeywords = (rule.keywords || []).map(value => String(value || "").trim()).filter(Boolean);
     if (!rawKeywords.length) continue;
-    const caseSensitive = Boolean(rule.caseSensitive);
-    const text = caseSensitive ? rawText : normalizedText;
-    const keywords = caseSensitive ? rawKeywords : rawKeywords.map(normalizeText).filter(Boolean);
-    const matched = keywords.filter(keyword => text.includes(keyword));
+    const matched = rawKeywords.filter(keyword => {
+      const normalizedKeyword = normalizeText(keyword);
+      const compactKeyword = normalizeIdentifier(keyword);
+      return Boolean(
+        (normalizedKeyword && normalizedText.includes(normalizedKeyword)) ||
+        (compactKeyword && compactText.includes(compactKeyword))
+      );
+    });
     if (!matched.length) continue;
-    const exactPhraseBonus = matched.some(item => item.includes(" ")) ? 12 : 0;
-    const score = matched.length * 18 + exactPhraseBonus;
+    const exactPhraseBonus = matched.some(item => normalizeText(item).includes(" ")) ? 12 : 0;
+    const compactBonus = matched.some(item => normalizeIdentifier(item).length >= 8) ? 4 : 0;
+    const score = matched.length * 18 + exactPhraseBonus + compactBonus;
     matches.push({ rule, score, matched });
   }
 
@@ -324,6 +339,10 @@ export function monthKey(dateString) {
   return String(dateString || "").slice(0, 7);
 }
 
+export function shouldIgnoreTransactionInStats(tx = {}) {
+  return Boolean(tx.excludeFromStats || tx.ignoreFromStats || tx.statsIgnored);
+}
+
 export function buildMonthlySeries(transactions, categories, settings, monthsBack = 12) {
   const now = new Date(`${TODAY()}T00:00:00`);
   const months = [];
@@ -339,6 +358,10 @@ export function buildMonthlySeries(transactions, categories, settings, monthsBac
     if (!row) continue;
     const cat = categoryMap.get(tx.categoryId);
     const amount = convertCurrency(Number(tx.amount), tx.currency, settings);
+    if (shouldIgnoreTransactionInStats(tx)) {
+      if (cat?.type === "transfer") row.transfer += amount;
+      continue;
+    }
     if (cat?.type === "transfer") {
       row.transfer += amount;
       if (settings.hideInternalTransfersInSpending) continue;
@@ -355,6 +378,7 @@ export function buildCategorySpend(transactions, categories, settings, period = 
   const totals = new Map();
   for (const tx of transactions) {
     if (monthKey(tx.date) !== period) continue;
+    if (shouldIgnoreTransactionInStats(tx)) continue;
     const cat = categoryMap.get(tx.categoryId) || categoryMap.get("misc");
     if (cat?.type === "income") continue;
     if (cat?.type === "transfer" && settings.hideInternalTransfersInSpending) continue;

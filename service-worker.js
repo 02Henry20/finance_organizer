@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v32-desktop-transaction-account-tools";
+const CACHE_NAME = "capito-v33-transfer-import-rules";
 const CORE = [
   "./",
   "./index.html",
