@@ -220,8 +220,9 @@ function syncStatus() {
   pill.querySelector("strong").textContent = label;
   const sub = pill.querySelector("small");
   if (sub) {
-    sub.textContent = status === "synced" ? "" : (state.sync.detail || "");
-    sub.hidden = status === "synced" || !sub.textContent;
+    const hideDetail = status === "synced" || status === "loading";
+    sub.textContent = hideDetail ? "" : (state.sync.detail || "");
+    sub.hidden = hideDetail || !sub.textContent;
   }
 }
 
@@ -1085,9 +1086,12 @@ function trendInline(current, previous, { inverted = false, currency = selectedC
   return `<small class="account-trend ${cls}">${arrow} ${signedCurrency(delta, currency)} | ${signedPercent(pct)}</small>`;
 }
 
-function accountStat(label, value, previous, { currency = selectedCurrency(), emphasize = false, inverted = false } = {}) {
+function accountStat(label, value, previous, { currency = selectedCurrency(), emphasize = false, inverted = false, staleCount = 0, accountId = "" } = {}) {
   const signClass = Number(value || 0) < 0 ? "negative-stat" : Number(value || 0) > 0 ? "positive-stat" : "flat-stat";
-  return `<div class="account-stat ${emphasize ? "total-stat" : ""} ${signClass}"><span>${escapeHtml(label)}</span><strong>${formatCurrency(value, currency)}</strong>${trendInline(value, previous, { inverted, currency })}</div>`;
+  const warning = staleCount > 0
+    ? `<button class="account-stale-warning" type="button" data-account-stale-warning="${escapeHtml(accountId)}" title="${staleCount} holding${staleCount === 1 ? "" : "s"} need a price update" aria-label="${staleCount} stale holding price${staleCount === 1 ? "" : "s"}">!</button>`
+    : "";
+  return `<div class="account-stat ${emphasize ? "total-stat" : ""} ${signClass}"><span class="account-stat-label">${escapeHtml(label)}${warning}</span><strong>${formatCurrency(value, currency)}</strong>${trendInline(value, previous, { inverted, currency })}</div>`;
 }
 
 function buildAccountCard(account, row, previousRow, { hidden = false } = {}) {
@@ -1095,6 +1099,8 @@ function buildAccountCard(account, row, previousRow, { hidden = false } = {}) {
   const isBroker = ["broker", "asset"].includes(account.type);
   const cashCurrent = convertPrimaryToAccountDisplay(row.balance?.converted || 0, currency);
   const cashPrevious = previousRow?.balance?.converted == null ? cashCurrent : convertPrimaryToAccountDisplay(previousRow.balance.converted, currency);
+  const brokerHoldings = isBroker ? holdingsForAccount(account.id) : [];
+  const staleHoldingsCount = brokerHoldings.filter(asset => quoteIsStale(asset)).length;
   const holdingsCurrent = isBroker ? holdingsValueFor(account, currency) : 0;
   const holdingsPrevious = isBroker ? previousHoldingValueFor(account, holdingsCurrent, currency) : 0;
   const totalCurrent = cashCurrent + holdingsCurrent;
@@ -1127,7 +1133,7 @@ function buildAccountCard(account, row, previousRow, { hidden = false } = {}) {
     ? `<div class="account-value-row broker-value-row">
         ${accountStat("Total", totalCurrent, totalPrevious, { currency, emphasize: true })}
         ${accountStat("Cash", cashCurrent, cashPrevious, { currency })}
-        ${accountStat("Holdings", holdingsCurrent, holdingsPrevious, { currency })}
+        ${accountStat("Holdings", holdingsCurrent, holdingsPrevious, { currency, staleCount: staleHoldingsCount, accountId: account.id })}
       </div>`
     : `<div class="account-value-row bank-value-row">
         ${accountStat("Balance", cashCurrent, cashPrevious, { currency, emphasize: true, inverted: account.type === "debt" })}
@@ -1224,6 +1230,13 @@ function wireAccountCardActions(root) {
     const wasOpen = Boolean(wrap?.classList.contains("menu-open"));
     document.querySelectorAll(".account-menu-wrap.menu-open").forEach(open => open.classList.remove("menu-open"));
     if (!wasOpen) wrap?.classList.add("menu-open");
+  }));
+  root.querySelectorAll("[data-account-stale-warning]").forEach(btn => btn.addEventListener("click", event => {
+    event.preventDefault();
+    event.stopPropagation();
+    const accountId = btn.dataset.accountStaleWarning;
+    const staleCount = holdingsForAccount(accountId).filter(asset => quoteIsStale(asset)).length;
+    toast("Stale holding prices", `${staleCount} holding${staleCount === 1 ? "" : "s"} in this broker account have no Yahoo price from the last 7 days. Open Positions and refresh them.`, "error");
   }));
 }
 
@@ -1601,8 +1614,8 @@ function renderPositionsModal() {
   $("#positions-modal-title").textContent = account ? `${account.name} holdings` : "Holdings";
   const warning = $("#positions-stale-warning");
   if (warning) {
-    warning.hidden = staleCount === 0;
-    warning.onclick = () => toast("Stale holding prices", `${staleCount} holding${staleCount === 1 ? "" : "s"} have no Yahoo price from the last 7 days. Use the refresh icon next to the update age.`, "error");
+    warning.hidden = true;
+    warning.onclick = null;
   }
   $("#positions-delta-heading").textContent = positionsPeriod === "today" ? "Today" : "Since buy";
   $$('[data-position-period]').forEach(button => {

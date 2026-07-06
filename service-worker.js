@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v42-yahoo-proxy-positions";
+const CACHE_NAME = "capito-v43-sync-position-warning";
 const CORE = [
   "./",
   "./index.html",

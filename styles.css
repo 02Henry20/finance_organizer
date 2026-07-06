@@ -2476,3 +2476,46 @@ td .category-pill .category-pill-text,
   display: inline-grid;
   place-items: center;
 }
+
+
+/* v43: sync and broker stale placement tweaks */
+.sync-pill.loading small {
+  display: none !important;
+}
+.account-stat-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.account-stale-warning {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid color-mix(in srgb, var(--red) 68%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--red) 15%, transparent);
+  color: var(--red);
+  font-size: .7rem;
+  font-weight: 950;
+  line-height: 1;
+  cursor: pointer;
+}
+.account-stale-warning:hover {
+  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--red) 24%, transparent);
+}
+.positions-table .positions-updated-header,
+.positions-table td.position-update-cell {
+  width: 158px;
+}
+.positions-table td.position-update-cell {
+  padding-right: 12px;
+}
+.positions-table td.position-update-cell .quote-age {
+  min-width: 70px;
+}
+.positions-table td.position-update-cell .tiny-icon-button {
+  margin-left: 8px;
+}
