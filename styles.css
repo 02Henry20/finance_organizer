@@ -2344,3 +2344,9 @@ td .category-pill .category-pill-text,
   }
 }
 
+
+/* Stooq/provider price metadata */
+.price-stack { display: grid; gap: 3px; min-width: 0; }
+.price-stack strong { font-size: .9rem; letter-spacing: -.015em; }
+.price-stack small { max-width: 150px; font-size: .68rem; line-height: 1.25; }
+#asset-last-price-meta { display: block; line-height: 1.35; }

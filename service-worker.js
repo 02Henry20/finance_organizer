@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v37-user-icons-app-icon-revert";
+const CACHE_NAME = "capito-v39-stooq-price-fix";
 const CORE = [
   "./",
   "./index.html",

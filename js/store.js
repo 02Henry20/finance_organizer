@@ -375,6 +375,7 @@ export async function saveAsset(input) {
     isin: String(input.isin || "").trim().toUpperCase(),
     manualPrice: Number(input.manualPrice || 0),
     provider: input.provider || state.settings.marketProvider || "manual",
+    providerSymbol: input.providerSymbol == null ? String(existing?.providerSymbol || "").trim().toUpperCase() : String(input.providerSymbol || "").trim().toUpperCase(),
     accountId: input.accountId || "",
     hidden: Boolean(input.hidden),
     createdAtMs: existing?.createdAtMs || input.createdAtMs || Date.now(),
@@ -394,6 +395,8 @@ export async function updateAssetQuote(id, quote) {
     lastPrice: Number(quote.price),
     lastPriceAt: quote.time || new Date().toISOString(),
     lastChangePercent: Number.isFinite(Number(quote.changePercent)) ? Number(quote.changePercent) : null,
+    lastProviderSymbol: quote.symbol || "",
+    lastQuoteSource: quote.source || quote.provider || "",
     currency: quote.currency || state.assets.find(asset => asset.id === id)?.currency || state.settings.primaryCurrency,
     provider: quote.provider || state.assets.find(asset => asset.id === id)?.provider || state.settings.marketProvider
   });

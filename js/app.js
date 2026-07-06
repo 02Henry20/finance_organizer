@@ -616,6 +616,13 @@ function formatDateTime(value) {
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
+function quoteMetaText(asset = null) {
+  if (!asset?.lastPriceAt) return "No provider pull yet";
+  const source = asset.lastQuoteSource || asset.provider || "provider";
+  const symbol = asset.lastProviderSymbol || asset.providerSymbol || asset.symbol || "";
+  return `${source}${symbol ? ` · ${symbol}` : ""} · pulled ${formatDateTime(asset.lastPriceAt)}`;
+}
+
 function maskIban(value) {
   const clean = String(value || "").replace(/\s+/g, "").toUpperCase();
   if (!clean) return "No identifier";
@@ -1492,10 +1499,16 @@ function syncAssetPricingFields() {
   const manualField = $("#asset-manual-price-field");
   const manualInput = $("#asset-manual-price");
   const manualLabel = manualField?.querySelector("span");
+  const manualMeta = $("#asset-last-price-meta");
+  const modalAsset = state.assets.find(item => item.id === $("#asset-id")?.value);
   const manualMode = provider === "manual";
   if (manualInput) manualInput.disabled = !manualMode;
   if (manualField) manualField.classList.toggle("is-disabled-field", !manualMode);
   if (manualLabel) manualLabel.textContent = manualMode ? "Current/manual price" : "Latest provider price";
+  if (manualMeta) {
+    manualMeta.textContent = manualMode ? "Stored manually." : quoteMetaText(modalAsset);
+    manualMeta.hidden = false;
+  }
 
   const startingBox = $("#asset-starting-position");
   const startingDate = $("#asset-starting-at");
@@ -1591,7 +1604,7 @@ function renderPositionsModal() {
     tr.innerHTML = `
       <td><strong>${escapeHtml(asset.symbol || asset.name)}</strong><small class="muted table-ellipsis">${escapeHtml(asset.name || asset.type || "")}${asset.startingPosition ? " · given" : ""}</small></td>
       <td>${Number(asset.quantity || 0).toLocaleString()}</td>
-      <td>${formatCurrency(price, currency)}</td>
+      <td><span class="price-stack"><strong>${formatCurrency(price, currency)}</strong><small class="muted table-ellipsis">${escapeHtml(quoteMetaText(asset))}</small></span></td>
       <td>${buyPrice ? formatCurrency(buyPrice, currency) : "—"}</td>
       <td>${formatCurrency(value, currency)}</td>
       <td><span class="${deltaClass}">${deltaText}</span></td>
@@ -1713,7 +1726,7 @@ async function refreshAsset(id) {
   try {
     const quote = await fetchQuote(asset, state.settings);
     await updateAssetQuote(id, quote);
-    toast("Price updated", `${asset.symbol || asset.name}: ${formatCurrency(quote.price, quote.currency || asset.currency)}`);
+    toast("Price updated", `${quote.symbol || asset.symbol || asset.name}: ${formatCurrency(quote.price, quote.currency || asset.currency)} · ${formatDateTime(quote.time)}`);
   } catch (error) {
     toast("Price refresh failed", error.message, "error");
   }
