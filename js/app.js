@@ -616,16 +616,40 @@ function formatDateTime(value) {
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
+function quoteTimestamp(asset = null) {
+  return asset?.lastQuotePriceAt || asset?.lastPriceAt || "";
+}
+
+function quoteAgeDays(asset = null) {
+  const time = quoteTimestamp(asset) ? new Date(quoteTimestamp(asset)).getTime() : NaN;
+  if (!Number.isFinite(time)) return null;
+  return Math.max(0, (Date.now() - time) / 86400000);
+}
+
+function quoteAgeLabel(asset = null) {
+  const age = quoteAgeDays(asset);
+  if (age == null) return "no update";
+  return `${age.toFixed(1)}d ago`;
+}
+
+function quoteIsStale(asset = null, thresholdDays = 7) {
+  const age = quoteAgeDays(asset);
+  return age == null || age > thresholdDays;
+}
+
+function quoteAgeClass(asset = null) {
+  return quoteIsStale(asset) ? "quote-age stale" : "quote-age";
+}
+
 function quoteMetaText(asset = null) {
-  if (!asset?.lastPriceAt) return "No provider pull yet";
+  if (!asset?.lastPriceAt && !asset?.lastQuotePriceAt) return "No provider pull yet";
   const source = asset.lastQuoteSource || asset.provider || "provider";
   const symbol = asset.lastProviderSymbol || asset.providerSymbol || asset.symbol || "";
   const exchange = asset.lastQuoteExchange ? ` · ${asset.lastQuoteExchange}` : "";
   const providerPrice = Number.isFinite(Number(asset.lastProviderPrice)) && asset.lastProviderCurrency
-    ? ` · provider ${formatCurrency(Number(asset.lastProviderPrice), asset.lastProviderCurrency)}`
+    ? ` · ${formatCurrency(Number(asset.lastProviderPrice), asset.lastProviderCurrency)}`
     : "";
-  const priceTime = asset.lastQuotePriceAt ? ` · price ${formatDateTime(asset.lastQuotePriceAt)}` : "";
-  return `${source}${symbol ? ` · ${symbol}` : ""}${exchange}${providerPrice} · pulled ${formatDateTime(asset.lastPriceAt)}${priceTime}`;
+  return `${source}${symbol ? ` · ${symbol}` : ""}${exchange}${providerPrice}`;
 }
 
 function maskIban(value) {
@@ -989,7 +1013,7 @@ function renderTransactions() {
       <td>${categoryPill(cat, { review: tx.review })}</td>
       <td class="${Number(tx.amount) >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(tx.amount, tx.currency || selectedCurrency())}</td>
       <td class="note-cell"><span class="table-ellipsis" title="${escapeHtml(tx.note || "")}">${escapeHtml(tx.note || "")}</span></td>
-      <td class="action-cell"><button class="ghost-button compact" type="button" data-edit-tx="${escapeHtml(tx.id)}">Edit</button></td>`;
+      <td class="action-cell"><button class="ghost-button compact icon-only-action" type="button" data-edit-tx="${escapeHtml(tx.id)}" title="Edit transaction" aria-label="Edit transaction">✎</button></td>`;
     tbody.append(tr);
   }
   tbody.querySelectorAll("[data-edit-tx]").forEach(btn => btn.addEventListener("click", () => openTransactionModal(btn.dataset.editTx)));
@@ -1094,7 +1118,7 @@ function buildAccountCard(account, row, previousRow, { hidden = false } = {}) {
           <div class="account-menu" role="menu">
             ${!hidden ? `<button type="button" role="menuitem" data-account-transactions="${escapeHtml(account.id)}">Txns</button>` : ""}
             ${isBroker && !hidden ? `<button type="button" role="menuitem" data-view-positions="${escapeHtml(account.id)}">Positions</button>` : ""}
-            <button type="button" role="menuitem" data-edit-account="${escapeHtml(account.id)}">${hidden ? "Restore | edit" : "Edit"}</button>
+            <button type="button" role="menuitem" data-edit-account="${escapeHtml(account.id)}">${hidden ? "Restore · ✎" : "✎"}</button>
           </div>
         </div>
       </div>
@@ -1245,7 +1269,7 @@ function renderRules() {
     const related = state.rules.filter(rule => rule.categoryId === cat.id);
     const row = document.createElement("div");
     row.className = "settings-row category-row";
-    row.innerHTML = `<div><strong><span class="category-color-dot" style="--cat-color:${safeColor(cat.color)}"></span>${escapeHtml(cat.icon || "•")} ${escapeHtml(cat.name)}</strong><small>${escapeHtml(cat.group)} · ${escapeHtml(cat.type)} · ${related.length} keyword rules</small></div><button class="ghost-button compact" data-edit-category="${escapeHtml(cat.id)}" type="button">Edit</button>`;
+    row.innerHTML = `<div><strong><span class="category-color-dot" style="--cat-color:${safeColor(cat.color)}"></span>${escapeHtml(cat.icon || "•")} ${escapeHtml(cat.name)}</strong><small>${escapeHtml(cat.group)} · ${escapeHtml(cat.type)} · ${related.length} keyword rules</small></div><button class="ghost-button compact icon-only-action" data-edit-category="${escapeHtml(cat.id)}" type="button" title="Edit category" aria-label="Edit category">✎</button>`;
     categoriesList.append(row);
   }
   if (!filteredCategories.length) categoriesList.innerHTML = `<p class="muted empty-list-note">No categories match this search.</p>`;
@@ -1267,7 +1291,7 @@ function renderRules() {
       const row = document.createElement("div");
       row.className = "settings-row rule-row";
       const sensitivity = rule.caseSensitive ? "case-sensitive" : "case-insensitive";
-      row.innerHTML = `<div><strong>${escapeHtml(rule.label)}</strong><small>${sensitivity}: ${(rule.keywords || []).map(escapeHtml).join(", ")}</small></div><button class="ghost-button compact" data-edit-rule="${escapeHtml(rule.id)}" type="button">Edit</button>`;
+      row.innerHTML = `<div><strong>${escapeHtml(rule.label)}</strong><small>${sensitivity}: ${(rule.keywords || []).map(escapeHtml).join(", ")}</small></div><button class="ghost-button compact icon-only-action" data-edit-rule="${escapeHtml(rule.id)}" type="button" title="Edit rule" aria-label="Edit rule">✎</button>`;
       wrapper.append(row);
     }
     rulesList.append(wrapper);
@@ -1285,8 +1309,8 @@ function renderSettings() {
   $("#setting-currency").value = selectedCurrency();
   $("#setting-theme").value = state.settings.theme || "dark";
   $("#setting-motion").value = state.settings.motion || "on";
-  $("#setting-market-provider").value = state.settings.marketProvider === "stooq" ? "twelvedata" : (state.settings.marketProvider || "twelvedata");
-  $("#setting-market-key").value = getLocalMarketApiKey();
+  const providerSetting = state.settings.marketProvider === "manual" ? "manual" : "yahoo";
+  $("#setting-market-provider").value = providerSetting;
   $("#setting-hide-transfers").value = String(state.settings.hideInternalTransfersInSpending !== false);
   $("#setting-quote-interval").value = String(Number(state.settings.quoteRefreshIntervalMinutes ?? 720) / 60);
   const deltaBars = $("#setting-account-delta-bars");
@@ -1326,13 +1350,12 @@ let settingsSaveTimer = null;
 
 async function saveSettingsFromForm({ silent = true } = {}) {
   const primaryCurrency = normalizedCurrencyFrom("#setting-currency", "EUR");
-  setLocalMarketApiKey($("#setting-market-key").value.trim());
   const comparisonMode = $("#setting-compare-mode").value || "rolling";
   await saveSettings({
     primaryCurrency,
     theme: $("#setting-theme").value,
     motion: $("#setting-motion").value,
-    marketProvider: $("#setting-market-provider").value,
+    marketProvider: $("#setting-market-provider").value === "manual" ? "manual" : "yahoo",
     quoteRefreshIntervalMinutes: Math.max(0.6, Number($("#setting-quote-interval").value || 12) * 60),
     portfolioComparisonMode: comparisonMode,
     portfolioComparisonDays: comparisonMode === "rolling" ? Number($("#setting-compare-days").value || 30) : Number(state.settings.portfolioComparisonDays || 30),
@@ -1511,7 +1534,9 @@ function syncAssetPricingFields() {
   if (manualField) manualField.classList.toggle("is-disabled-field", !manualMode);
   if (manualLabel) manualLabel.textContent = manualMode ? "Current/manual price" : "Latest provider price";
   if (manualMeta) {
-    manualMeta.textContent = manualMode ? "Stored manually." : quoteMetaText(modalAsset);
+    manualMeta.textContent = manualMode ? "manual" : quoteAgeLabel(modalAsset);
+    manualMeta.title = manualMode ? "Stored manually." : quoteMetaText(modalAsset);
+    manualMeta.className = manualMode ? "quote-age-badge" : `quote-age-badge ${quoteIsStale(modalAsset) ? "stale" : ""}`;
     manualMeta.hidden = false;
   }
 
@@ -1534,10 +1559,11 @@ function openAssetModal(id = "", accountId = "") {
   $("#asset-wkn").value = asset?.wkn || "";
   $("#asset-isin").value = asset?.isin || "";
   $("#asset-type").value = asset?.type || "stock";
-  $("#asset-provider").value = asset?.provider === "stooq" ? "twelvedata" : (asset?.provider || state.settings.marketProvider || "manual");
+  const selectedAssetProvider = asset?.provider === "manual" ? "manual" : (state.settings.marketProvider === "manual" && !asset ? "manual" : "yahoo");
+  $("#asset-provider").value = selectedAssetProvider;
   $("#asset-quantity").value = asset?.quantity ?? 1;
   $("#asset-currency").value = asset?.currency || selectedCurrency();
-  const providerValue = asset?.provider === "stooq" ? "twelvedata" : (asset?.provider || state.settings.marketProvider || "manual");
+  const providerValue = selectedAssetProvider;
   $("#asset-manual-price").value = providerValue === "manual" ? asset?.manualPrice ?? asset?.lastPrice ?? 0 : asset?.lastPrice ?? asset?.manualPrice ?? 0;
   $("#asset-buy-price").value = asset?.buyPrice ?? 0;
   $("#asset-cost-basis").value = asset?.costBasis ?? (Number(asset?.quantity || 0) * Number(asset?.buyPrice || 0));
@@ -1571,14 +1597,20 @@ function renderPositionsModal() {
   if (!tbody || !activePositionsAccountId) return;
   const account = state.accounts.find(item => item.id === activePositionsAccountId);
   const holdings = holdingsForAccount(activePositionsAccountId);
-  $("#positions-modal-title").textContent = account ? `${account.name} positions` : "Positions";
+  const staleCount = holdings.filter(asset => quoteIsStale(asset)).length;
+  $("#positions-modal-title").textContent = account ? `${account.name} holdings` : "Holdings";
+  const warning = $("#positions-stale-warning");
+  if (warning) {
+    warning.hidden = staleCount === 0;
+    warning.onclick = () => toast("Stale holding prices", `${staleCount} holding${staleCount === 1 ? "" : "s"} have no Yahoo price from the last 7 days. Use the refresh icon next to the update age.`, "error");
+  }
   $("#positions-delta-heading").textContent = positionsPeriod === "today" ? "Today" : "Since buy";
-  $$("[data-position-period]").forEach(button => {
+  $$('[data-position-period]').forEach(button => {
     const active = button.dataset.positionPeriod === positionsPeriod;
     button.classList.toggle("active", active);
     button.setAttribute("aria-pressed", String(active));
   });
-  $$("[data-position-unit]").forEach(button => {
+  $$('[data-position-unit]').forEach(button => {
     const active = button.dataset.positionUnit === positionsUnit;
     button.classList.toggle("active", active);
     button.setAttribute("aria-pressed", String(active));
@@ -1589,7 +1621,7 @@ function renderPositionsModal() {
   });
   tbody.replaceChildren();
   if (!holdings.length) {
-    tbody.innerHTML = `<tr><td colspan="7" class="muted">No positions in this account yet.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" class="muted">No holdings in this account yet.</td></tr>`;
     return;
   }
   for (const asset of pagedRows(holdings, positionsPage, PAGE_SIZES.positions)) {
@@ -1605,20 +1637,35 @@ function renderPositionsModal() {
         ? signedPercent(deltaValue)
         : signedCurrency(deltaValue, currency);
     const buyPrice = Number(asset.buyPrice || 0) || (Number(asset.quantity || 0) ? Number(asset.costBasis || 0) / Number(asset.quantity || 1) : 0);
+    const ageLabel = quoteAgeLabel(asset);
+    const stale = quoteIsStale(asset);
+    const providerSymbol = asset.lastProviderSymbol || asset.providerSymbol || asset.symbol || "";
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td><strong>${escapeHtml(asset.symbol || asset.name)}</strong><small class="muted table-ellipsis">${escapeHtml(asset.name || asset.type || "")}${asset.startingPosition ? " · given" : ""}</small></td>
       <td>${Number(asset.quantity || 0).toLocaleString()}</td>
-      <td><span class="price-stack"><strong>${formatCurrency(price, currency)}</strong><small class="muted table-ellipsis">${escapeHtml(quoteMetaText(asset))}</small></span></td>
+      <td><span class="price-stack"><strong>${formatCurrency(price, currency)}</strong><small class="muted table-ellipsis" title="${escapeHtml(quoteMetaText(asset))}">${escapeHtml(providerSymbol)}</small></span></td>
       <td>${buyPrice ? formatCurrency(buyPrice, currency) : "—"}</td>
       <td>${formatCurrency(value, currency)}</td>
       <td><span class="${deltaClass}">${deltaText}</span></td>
-      <td class="action-cell"><button class="ghost-button compact" type="button" data-edit-asset="${escapeHtml(asset.id)}">Edit</button></td>`;
+      <td class="position-update-cell"><span class="${stale ? "quote-age stale" : "quote-age"}" title="${escapeHtml(quoteMetaText(asset))}">${escapeHtml(ageLabel)}</span><button class="icon-button tiny-icon-button" type="button" data-refresh-asset="${escapeHtml(asset.id)}" title="Update price" aria-label="Update price">↻</button></td>
+      <td class="action-cell"><button class="ghost-button compact icon-only-action" type="button" data-edit-asset="${escapeHtml(asset.id)}" title="Edit holding" aria-label="Edit holding">✎</button></td>`;
     tbody.append(tr);
   }
   tbody.querySelectorAll("[data-edit-asset]").forEach(btn => btn.addEventListener("click", () => openAssetModal(btn.dataset.editAsset)));
+  tbody.querySelectorAll("[data-refresh-asset]").forEach(btn => btn.addEventListener("click", async () => {
+    const id = btn.dataset.refreshAsset;
+    btn.disabled = true;
+    btn.textContent = "…";
+    try {
+      await refreshAsset(id);
+      renderPositionsModal();
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "↻";
+    }
+  }));
 }
-
 function openPositionsModal(accountId) {
   activePositionsAccountId = accountId || "";
   activeAccountTransactionsId = "";
@@ -1656,7 +1703,7 @@ function renderAccountTransactionsModal() {
       <td>${categoryPill(cat, { review: tx.review })}</td>
       <td class="${Number(tx.amount) >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(tx.amount, tx.currency || selectedCurrency())}</td>
       <td class="note-cell"><span class="table-ellipsis" title="${escapeHtml(tx.note || "")}">${escapeHtml(tx.note || "")}</span></td>
-      <td class="action-cell"><button class="ghost-button compact" type="button" data-edit-tx="${escapeHtml(tx.id)}">Edit</button></td>`;
+      <td class="action-cell"><button class="ghost-button compact icon-only-action" type="button" data-edit-tx="${escapeHtml(tx.id)}" title="Edit transaction" aria-label="Edit transaction">✎</button></td>`;
     tbody.append(tr);
   }
   tbody.querySelectorAll("[data-edit-tx]").forEach(btn => btn.addEventListener("click", () => openTransactionModal(btn.dataset.editTx)));
@@ -2907,7 +2954,7 @@ function wireEvents() {
         symbol: $("#asset-symbol").value,
         name: $("#asset-name").value,
         type: $("#asset-type").value,
-        provider: $("#asset-provider").value === "stooq" ? "twelvedata" : $("#asset-provider").value,
+        provider: $("#asset-provider").value === "manual" ? "manual" : "yahoo",
         wkn: $("#asset-wkn")?.value || "",
         isin: $("#asset-isin")?.value || "",
         quantity,

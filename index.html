@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#111827">
   <meta name="description" content="Capito is a private finance organizer for accounts, transactions, holdings, rules and analytics.">
   <title>Capito</title>
-  <meta name="capito-build" content="capito-v40-twelvedata-only">
+  <meta name="capito-build" content="capito-v41-yahoo-quotes">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16x16.png">
@@ -262,8 +262,7 @@
               <label id="compare-days-field" class="field compare-field"><span>Days back</span><input id="setting-compare-days" type="number" min="1" max="3650" value="30"></label>
               <label id="compare-date-field" class="field compare-field" hidden><span>Fixed date</span><input id="setting-compare-date" type="date"></label>
               <label class="field"><span>Balance graph trend bars</span><select id="setting-account-delta-bars"><option value="true">Show delta overlay</option><option value="false">Current balances only</option></select><small class="field-help">Uses the same comparison period and shows previous balance vs current balance in the balances chart.</small></label>
-              <label class="field"><span>Default market provider</span><select id="setting-market-provider"><option value="twelvedata">Twelve Data</option><option value="manual">Manual prices only</option></select></label>
-              <label class="field"><span>Twelve Data API key (stored only in this browser)</span><input id="setting-market-key" type="password" placeholder="Optional API key"></label>
+              <label class="field"><span>Default market provider</span><select id="setting-market-provider"><option value="yahoo">Yahoo Finance</option><option value="manual">Manual prices only</option></select></label>
               <label class="field"><span>Price and FX refresh interval</span><input id="setting-quote-interval" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="12"><small class="field-help">Hours. Example: 0.01 hours ≈ 36 seconds.</small></label>
               <label class="field"><span>Hide internal transfers from spending</span><select id="setting-hide-transfers"><option value="true">Yes</option><option value="false">No</option></select></label>
               <p id="settings-message" class="form-message" aria-live="polite"></p>
@@ -346,10 +345,10 @@
       <form id="asset-form" class="form-stack">
         <input id="asset-id" type="hidden">
         <label class="field"><span>Broker account</span><select id="asset-account"></select></label>
-        <div class="form-grid two"><label class="field"><span>Symbol | ticker</span><input id="asset-symbol" placeholder="AAPL, KO, SHA0"><small class="field-help">For Twelve Data, use the market ticker. WKN/ISIN are used as fallback hints during symbol search.</small></label><label class="field"><span>Name</span><input id="asset-name" placeholder="Apple"></label></div>
+        <div class="form-grid two"><label class="field"><span>Symbol | ticker</span><input id="asset-symbol" placeholder="APC.DE, CCC3.DE, SHA0.DE"></label><label class="field"><span>Name</span><input id="asset-name" placeholder="Apple"></label></div>
         <div class="form-grid two"><label class="field"><span>WKN</span><input id="asset-wkn" placeholder="Optional WKN"></label><label class="field"><span>ISIN</span><input id="asset-isin" placeholder="Optional ISIN"></label></div>
-        <div class="form-grid two"><label class="field"><span>Type</span><select id="asset-type"><option value="stock">Stock</option><option value="etf">ETF</option><option value="bond">Bond</option><option value="crypto">Crypto</option><option value="fund">Fund</option><option value="manual">Manual asset</option></select></label><label class="field"><span>Provider</span><select id="asset-provider"><option value="twelvedata">Twelve Data</option><option value="manual">Manual</option></select></label></div>
-        <div class="form-grid three"><label class="field"><span>Quantity</span><input id="asset-quantity" type="number" step="0.000001" value="1"></label><label class="field"><span>Currency</span><input id="asset-currency" list="currency-options" maxlength="3" placeholder="EUR"></label><label id="asset-manual-price-field" class="field"><span>Current/manual price</span><input id="asset-manual-price" type="number" step="0.0001" value="0"><small id="asset-last-price-meta" class="field-help">No provider pull yet</small></label></div>
+        <div class="form-grid two"><label class="field"><span>Type</span><select id="asset-type"><option value="stock">Stock</option><option value="etf">ETF</option><option value="bond">Bond</option><option value="crypto">Crypto</option><option value="fund">Fund</option><option value="manual">Manual asset</option></select></label><label class="field"><span>Provider</span><select id="asset-provider"><option value="yahoo">Yahoo Finance</option><option value="manual">Manual</option></select></label></div>
+        <div class="form-grid three"><label class="field"><span>Quantity</span><input id="asset-quantity" type="number" step="0.000001" value="1"></label><label class="field"><span>Currency</span><input id="asset-currency" list="currency-options" maxlength="3" placeholder="EUR"></label><label id="asset-manual-price-field" class="field asset-price-field"><span>Current/manual price</span><div class="asset-price-input-row"><input id="asset-manual-price" type="number" step="0.0001" value="0"><small id="asset-last-price-meta" class="quote-age-badge">No pull</small></div></label></div>
         <div class="form-grid two"><label class="field"><span>Buy price</span><input id="asset-buy-price" type="number" step="0.0001" value="0"></label><label class="field"><span>Cost basis total</span><input id="asset-cost-basis" type="number" step="0.01" value="0" readonly></label></div>
         <div class="form-grid two"><label class="check-row"><input id="asset-starting-position" type="checkbox"> Given / starting position</label><label class="field"><span>Given date</span><input id="asset-starting-at" type="date"><small class="field-help">Used as the baseline date so the original position value is not counted as a new gain.</small></label></div>
         <div class="button-row"><button class="primary-button" type="submit">Save holding</button><button id="delete-asset-button" class="danger-button" type="button" hidden>Delete</button></div>
@@ -357,7 +356,7 @@
     </section>
 
     <section class="modal-card surface-card wide-modal" data-modal="positions" hidden>
-      <div class="modal-heading"><h3 id="positions-modal-title">Positions</h3><button class="icon-button" data-close-modal type="button">×</button></div>
+      <div class="modal-heading"><div class="positions-title-row"><h3 id="positions-modal-title">Holdings</h3><button id="positions-stale-warning" class="stale-warning-button" type="button" hidden title="Some holdings need a price update">!</button></div><button class="icon-button" data-close-modal type="button">×</button></div>
       <div class="modal-toolbar positions-toolbar">
         <div class="position-toggle-row">
           <div class="segmented-control compact-segments" role="group" aria-label="Position change window">
@@ -371,7 +370,7 @@
         </div>
         <button id="add-position-holding" class="primary-button compact" type="button">+ Holding</button>
       </div>
-      <div class="modal-table-wrap"><table class="dialog-table"><thead><tr><th>Holding</th><th>Quantity</th><th>Price</th><th>Buy</th><th>Value</th><th id="positions-delta-heading">Change</th><th></th></tr></thead><tbody id="positions-body"></tbody></table></div>
+      <div class="modal-table-wrap"><table class="dialog-table positions-table"><thead><tr><th>Holding</th><th>Quantity</th><th>Price</th><th>Buy</th><th>Value</th><th id="positions-delta-heading">Change</th><th>Updated</th><th></th></tr></thead><tbody id="positions-body"></tbody></table></div>
       <div id="positions-pagination" class="pagination-bar"></div>
     </section>
 

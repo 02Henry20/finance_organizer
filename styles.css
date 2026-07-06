@@ -2350,3 +2350,91 @@ td .category-pill .category-pill-text,
 .price-stack strong { font-size: .9rem; letter-spacing: -.015em; }
 .price-stack small { max-width: 150px; font-size: .68rem; line-height: 1.25; }
 #asset-last-price-meta { display: block; line-height: 1.35; }
+
+/* v41: Yahoo holdings updates */
+.toast-container {
+  top: 18px;
+  right: 18px;
+  bottom: auto;
+}
+.positions-title-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.stale-warning-button {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid color-mix(in srgb, var(--red) 62%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--red) 14%, transparent);
+  color: var(--red);
+  font-weight: 950;
+  line-height: 1;
+}
+.position-update-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.quote-age,
+.quote-age-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: .7rem;
+  font-weight: 850;
+  line-height: 1;
+  white-space: nowrap;
+}
+.quote-age.stale,
+.quote-age-badge.stale {
+  border-color: color-mix(in srgb, var(--red) 58%, transparent);
+  background: color-mix(in srgb, var(--red) 11%, transparent);
+  color: var(--red);
+}
+.tiny-icon-button {
+  width: 28px;
+  height: 28px;
+  font-size: .9rem;
+}
+.icon-only-action {
+  min-width: 34px;
+  padding-inline: 10px;
+  font-size: .98rem;
+}
+.asset-price-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+.asset-price-input-row input {
+  min-width: 0;
+}
+.positions-table th:nth-child(7),
+.positions-table td:nth-child(7) {
+  white-space: nowrap;
+}
+@media (max-width: 920px) {
+  .toast-container {
+    top: calc(12px + env(safe-area-inset-top));
+    right: 12px;
+    bottom: auto;
+    left: 12px;
+  }
+  .asset-price-input-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+}

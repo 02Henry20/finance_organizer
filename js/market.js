@@ -14,7 +14,7 @@ function cleanTicker(value) {
 }
 
 function looksLikeTicker(value) {
-  return /^[A-Z0-9._^-]{1,24}$/.test(cleanTicker(value));
+  return /^[A-Z0-9._^-]{1,32}$/.test(cleanTicker(value));
 }
 
 function isoFromUnixSeconds(value) {
@@ -31,69 +31,79 @@ function isoFromDateValue(value) {
   return Number.isNaN(date.getTime()) ? "" : date.toISOString();
 }
 
-function quotePriceTime(data = {}) {
-  return isoFromUnixSeconds(data.last_quote_at)
-    || isoFromUnixSeconds(data.timestamp)
-    || isoFromDateValue(data.datetime)
-    || "";
+function quoteAgeDays(value) {
+  const time = value ? new Date(value).getTime() : NaN;
+  if (!Number.isFinite(time)) return null;
+  return Math.max(0, (Date.now() - time) / 86400000);
 }
 
-function addUnique(list, item) {
+function addUnique(list, item, source = "candidate") {
   const symbol = cleanTicker(item?.symbol || item);
   if (!symbol || !looksLikeTicker(symbol)) return;
-  const exchange = String(item?.exchange || "").trim();
-  const micCode = String(item?.micCode || item?.mic_code || "").trim().toUpperCase();
-  const key = [symbol, exchange.toUpperCase(), micCode].join("|");
+  const key = symbol.toUpperCase();
   if (list.some(existing => existing.key === key)) return;
-  list.push({ symbol, exchange, micCode, key });
+  list.push({ symbol, key, source: item?.source || source });
 }
 
-function knownTwelveDataCandidates(asset = {}) {
+const YAHOO_KNOWN_BY_ISIN = Object.freeze({
+  US0378331005: ["APC.DE", "AAPL"],
+  US1912161007: ["CCC3.DE", "KO"],
+  DE000SHA0159: ["SHA0.DE", "SHA.DE"],
+  DE000SHA0100: ["SHA0.DE", "SHA.DE"],
+  DE0005152623: ["D6RG.F"],
+  DE0007100000: ["MBG.DE", "MBG.F"],
+  DE000DK0ECS2: ["D6RF.HM"],
+  DE000DK0ECU8: ["OG70.MU"],
+  DE000ETFL581: ["ACWI.PA"],
+  FR0010524777: ["NRJ.PA"],
+  IE00B1XNHC34: ["IQQH.DE"],
+  IE00B3WJKG14: ["QDVE.DE"],
+  IE00B4X9L533: ["H4ZJ.DE"],
+  IE00BDR55927: ["UIMM.DE"],
+  IE00BTJRMP35: ["XMEM.DE"],
+  LU0489337690: ["XUKS.MU"]
+});
+
+const YAHOO_KNOWN_BY_WKN = Object.freeze({
+  "865985": ["APC.DE", "AAPL"],
+  "850663": ["CCC3.DE", "KO"],
+  SHA015: ["SHA0.DE", "SHA.DE"],
+  SHA010: ["SHA0.DE", "SHA.DE"],
+  "515262": ["D6RG.F"],
+  "710000": ["MBG.DE", "MBG.F"],
+  DK0ECS: ["D6RF.HM"],
+  DK0ECU: ["OG70.MU"],
+  ETFL58: ["ACWI.PA"],
+  LYX0CB: ["NRJ.PA"],
+  A0MW0M: ["IQQH.DE"],
+  A142N1: ["QDVE.DE"],
+  A1C9KK: ["H4ZJ.DE"],
+  A2H5CB: ["UIMM.DE"],
+  A12GVR: ["XMEM.DE"],
+  DBX0F1: ["XUKS.MU"]
+});
+
+function yahooCurrencyHint(symbol) {
+  const s = cleanTicker(symbol);
+  if ([".DE", ".F", ".HM", ".MU", ".PA", ".AS", ".MI", ".MC"].some(suffix => s.endsWith(suffix))) return "EUR";
+  if (s.endsWith(".L")) return "GBP";
+  return "";
+}
+
+function yahooQuoteCandidates(asset = {}) {
+  const candidates = [];
+  const add = (item, source) => addUnique(candidates, item, source);
   const isin = String(asset.isin || "").trim().toUpperCase();
   const wkn = String(asset.wkn || "").trim().toUpperCase();
-  const rawSymbol = cleanTicker(asset.symbol || asset.providerSymbol || asset.ticker);
-  const name = String(asset.name || "").toLowerCase();
-  const candidates = [];
 
-  const add = item => addUnique(candidates, item);
+  // Explicitly saved working Yahoo symbols should be tried first.
+  [asset.providerSymbol, asset.lastProviderSymbol, asset.yahooSymbol, asset.symbol, asset.ticker].forEach(value => add(value, "asset"));
+  (YAHOO_KNOWN_BY_ISIN[isin] || []).forEach(symbol => add(symbol, `known isin ${isin}`));
+  (YAHOO_KNOWN_BY_WKN[wkn] || []).forEach(symbol => add(symbol, `known wkn ${wkn}`));
 
-  if (isin === "US0378331005" || wkn === "865985" || rawSymbol === "AAPL" || name.includes("apple")) {
-    add({ symbol: "AAPL", exchange: "NASDAQ", micCode: "XNGS" });
-    add("AAPL");
-  }
-  if (isin === "US1912161007" || wkn === "850663" || rawSymbol === "KO" || name.includes("coca-cola") || name.includes("coca cola")) {
-    add({ symbol: "KO", exchange: "NYSE", micCode: "XNYS" });
-    add("KO");
-  }
-  if (isin === "DE000SHA0159" || isin === "DE000SHA0100" || wkn === "SHA015" || wkn === "SHA010" || rawSymbol === "SHA" || rawSymbol === "SHA0" || name.includes("schaeffler")) {
-    add({ symbol: "SHA0", exchange: "XETRA", micCode: "XETR" });
-    add("SHA0");
-  }
-  if (isin === "DE0007100000" || wkn === "710000" || name.includes("mercedes")) {
-    add({ symbol: "MBG", exchange: "XETRA", micCode: "XETR" });
-    add("MBG");
-  }
-
-  return candidates;
-}
-
-function twelveDataQuoteCandidates(asset = {}) {
-  const candidates = [];
-  const add = item => addUnique(candidates, item);
-
-  knownTwelveDataCandidates(asset).forEach(add);
-
-  const explicitExchange = asset.providerExchange || asset.exchange || asset.lastQuoteExchange || "";
-  const explicitMic = asset.providerMicCode || asset.micCode || asset.lastQuoteMicCode || "";
-  [asset.providerSymbol, asset.twelveDataSymbol, asset.symbol, asset.ticker].forEach(value => {
-    const symbol = cleanTicker(value);
-    if (!symbol || !looksLikeTicker(symbol)) return;
-    add({ symbol, exchange: explicitExchange, micCode: explicitMic });
-    add(symbol);
-    if (String(asset.isin || "").toUpperCase().startsWith("DE")) add({ symbol, exchange: "XETRA", micCode: "XETR" });
-  });
-
-  return candidates.map(({ key, ...item }) => item);
+  const compact = cleanTicker(asset.symbol || "").replace(/[^A-Z0-9]/g, "");
+  if (compact && compact.length <= 10) [".DE", ".F", ".HM", ".MU", ".PA", ".AS", ".MI", ".L"].forEach(suffix => add(`${compact}${suffix}`, `suffix ${suffix}`));
+  return candidates.map(({ key, ...candidate }) => candidate);
 }
 
 function searchQueriesForAsset(asset = {}) {
@@ -103,138 +113,149 @@ function searchQueriesForAsset(asset = {}) {
     .filter((value, index, list) => list.findIndex(other => other.toLowerCase() === value.toLowerCase()) === index);
 }
 
-function buildTwelveDataUrl(path, params) {
-  const query = new URLSearchParams();
-  Object.entries(params).forEach(([key, value]) => {
-    if (value != null && String(value).trim()) query.set(key, String(value).trim());
-  });
-  return `https://api.twelvedata.com/${path}?${query.toString()}`;
-}
-
 async function fetchJson(url) {
   const response = await fetch(url, { mode: "cors", cache: "no-store" });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return response.json();
 }
 
-function twelveDataErrorMessage(data, fallback = "Twelve Data returned an error.") {
-  return data?.message || data?.error || data?.status || fallback;
+function yahooChartUrl(symbol, range = "5d", interval = "1d") {
+  const query = new URLSearchParams({ range, interval, includePrePost: "false", events: "history" });
+  return `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(cleanTicker(symbol))}?${query.toString()}`;
 }
 
-function parseTwelveDataQuote(data, candidate, url) {
-  if (!data || typeof data !== "object") throw new Error("Empty Twelve Data response.");
-  if (data.status === "error" || data.code) throw new Error(twelveDataErrorMessage(data));
-  const price = parseNumber(data.close ?? data.price ?? data.previous_close);
-  if (!Number.isFinite(price) || price <= 0) throw new Error("No usable price in Twelve Data response.");
+function parseYahooChartQuote(data, candidate, url) {
+  const chart = data?.chart || {};
+  if (chart.error) throw new Error(chart.error.description || chart.error.code || "Yahoo Finance returned an error.");
+  const result = Array.isArray(chart.result) ? chart.result[0] : null;
+  if (!result) throw new Error("Yahoo Finance returned no quote result.");
+  const meta = result.meta || {};
+  const quote = result.indicators?.quote?.[0] || {};
+  const timestamps = Array.isArray(result.timestamp) ? result.timestamp : [];
+
+  let price = parseNumber(meta.regularMarketPrice);
+  let priceTime = isoFromUnixSeconds(meta.regularMarketTime);
+  if (!Number.isFinite(price) || price <= 0) {
+    const closes = Array.isArray(quote.close) ? quote.close : [];
+    for (let index = closes.length - 1; index >= 0; index -= 1) {
+      const close = parseNumber(closes[index]);
+      if (Number.isFinite(close) && close > 0) {
+        price = close;
+        priceTime = isoFromUnixSeconds(timestamps[index]);
+        break;
+      }
+    }
+  }
+  if (!Number.isFinite(price) || price <= 0) throw new Error("No usable Yahoo Finance price.");
+  if (!priceTime && timestamps.length) priceTime = isoFromUnixSeconds(timestamps[timestamps.length - 1]);
 
   const pulledAt = new Date().toISOString();
+  const symbol = cleanTicker(meta.symbol || candidate.symbol);
   return {
-    provider: "twelvedata",
-    source: "Twelve Data quote",
-    symbol: cleanTicker(data.symbol || candidate.symbol),
-    exchange: data.exchange || candidate.exchange || "",
-    micCode: data.mic_code || candidate.micCode || "",
-    name: data.name || "",
+    provider: "yahoo",
+    source: "Yahoo Finance",
+    symbol,
+    exchange: meta.fullExchangeName || meta.exchangeName || meta.exchange || "",
+    micCode: meta.exchange || "",
+    name: meta.shortName || meta.longName || "",
     price,
-    currency: data.currency || candidate.currency || "",
-    changePercent: Number.isFinite(parseNumber(data.percent_change)) ? parseNumber(data.percent_change) : null,
+    currency: String(meta.currency || candidate.currency || yahooCurrencyHint(symbol) || "").toUpperCase(),
+    changePercent: null,
     time: pulledAt,
     pulledAt,
-    priceTime: quotePriceTime(data) || pulledAt,
+    priceTime: priceTime || pulledAt,
     url,
-    raw: data
+    raw: meta
   };
 }
 
-async function fetchTwelveDataQuoteCandidate(candidate, apiKey) {
-  const url = buildTwelveDataUrl("quote", {
-    symbol: candidate.symbol,
-    exchange: candidate.exchange,
-    mic_code: candidate.micCode,
-    apikey: apiKey
-  });
-  const data = await fetchJson(url);
-  return parseTwelveDataQuote(data, candidate, url);
+async function fetchYahooQuoteCandidate(candidate) {
+  const errors = [];
+  for (const [range, interval] of [["5d", "1d"], ["1mo", "1d"]]) {
+    const url = yahooChartUrl(candidate.symbol, range, interval);
+    try {
+      return parseYahooChartQuote(await fetchJson(url), candidate, url);
+    } catch (error) {
+      errors.push(`${range}/${interval}: ${error.message}`);
+    }
+  }
+  throw new Error(errors.join(" | "));
 }
 
-function scoreSearchResult(result = {}, asset = {}) {
-  const isin = String(asset.isin || "").trim().toUpperCase();
-  const wkn = String(asset.wkn || "").trim().toUpperCase();
-  const wantedSymbol = cleanTicker(asset.providerSymbol || asset.symbol || asset.ticker);
-  const wantedName = String(asset.name || "").toLowerCase();
-  const symbol = cleanTicker(result.symbol);
-  const name = String(result.instrument_name || result.name || "").toLowerCase();
-  const mic = String(result.mic_code || "").toUpperCase();
-  const exchange = String(result.exchange || "").toUpperCase();
+function scoreYahooSearchResult(result = {}, asset = {}) {
+  const wantedCurrency = String(asset.currency || "EUR").toUpperCase();
+  const symbol = cleanTicker(result.symbol || "");
   let score = 0;
-  if (symbol && wantedSymbol && symbol === wantedSymbol) score += 50;
-  if (isin && String(result.isin || "").toUpperCase() === isin) score += 120;
-  if (wkn && String(result.wkn || "").toUpperCase() === wkn) score += 80;
-  if (wantedName && name && (name.includes(wantedName) || wantedName.includes(name))) score += 25;
-  if (mic === "XETR" || exchange.includes("XETRA")) score += 10;
-  if (String(result.currency || "").toUpperCase() === String(asset.currency || "").toUpperCase()) score += 8;
-  if (String(result.type || "").toLowerCase().includes(String(asset.type || "").toLowerCase())) score += 3;
+  if (String(result.currency || "").toUpperCase() === wantedCurrency) score += 60;
+  if ([".DE", ".F", ".HM", ".MU", ".PA", ".AS", ".MI"].some(suffix => symbol.endsWith(suffix))) score += 25;
+  if (String(result.quoteType || "").toUpperCase().match(/EQUITY|ETF|MUTUALFUND|FUND/)) score += 10;
   return score;
 }
 
-async function searchTwelveDataCandidates(asset, apiKey) {
+async function searchYahooCandidates(asset) {
   const found = [];
   for (const query of searchQueriesForAsset(asset).slice(0, 5)) {
     try {
-      const url = buildTwelveDataUrl("symbol_search", { symbol: query, outputsize: 12, apikey: apiKey });
+      const url = `https://query1.finance.yahoo.com/v1/finance/search?${new URLSearchParams({ q: query, quotesCount: "12", newsCount: "0", listsCount: "0", enableFuzzyQuery: "true" }).toString()}`;
       const data = await fetchJson(url);
-      const rows = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+      const rows = Array.isArray(data?.quotes) ? data.quotes : [];
       rows
         .filter(row => row?.symbol)
-        .sort((a, b) => scoreSearchResult(b, asset) - scoreSearchResult(a, asset))
-        .slice(0, 4)
-        .forEach(row => addUnique(found, {
-          symbol: row.symbol,
-          exchange: row.exchange || "",
-          micCode: row.mic_code || "",
-          currency: row.currency || ""
-        }));
+        .sort((a, b) => scoreYahooSearchResult(b, asset) - scoreYahooSearchResult(a, asset))
+        .slice(0, 5)
+        .forEach(row => addUnique(found, { symbol: row.symbol, source: `Yahoo search ${query}` }));
     } catch (error) {
-      console.warn("Twelve Data symbol search skipped", query, error);
+      console.warn("Yahoo search skipped", query, error);
     }
   }
   return found.map(({ key, ...item }) => item);
 }
 
-export async function fetchTwelveDataQuote(asset, apiKey) {
-  if (!apiKey) throw new Error("Add a Twelve Data API key in Settings or switch the holding provider to Manual.");
-
+export async function fetchYahooQuote(asset, { maxAgeDays = 7, targetCurrency = "EUR" } = {}) {
   const errors = [];
   const tried = new Set();
+  let bestFallback = null;
+  const target = String(targetCurrency || asset.currency || "EUR").toUpperCase();
+
   const tryCandidate = async candidate => {
-    const key = [cleanTicker(candidate.symbol), String(candidate.exchange || "").toUpperCase(), String(candidate.micCode || "").toUpperCase()].join("|");
-    if (tried.has(key)) return null;
-    tried.add(key);
+    const symbol = cleanTicker(candidate.symbol);
+    if (!symbol || tried.has(symbol)) return null;
+    tried.add(symbol);
     try {
-      return await fetchTwelveDataQuoteCandidate(candidate, apiKey);
+      const quote = await fetchYahooQuoteCandidate({ ...candidate, symbol });
+      const age = quoteAgeDays(quote.priceTime);
+      const fresh = age == null || age <= maxAgeDays;
+      const targetMatch = String(quote.currency || "").toUpperCase() === target;
+      if (fresh && targetMatch) return quote;
+      const rank = [fresh && !targetMatch ? 1 : 2, targetMatch ? 0 : 1, age == null ? 999999 : age];
+      const betterFallback = !bestFallback
+        || rank[0] < bestFallback.rank[0]
+        || (rank[0] === bestFallback.rank[0] && rank[1] < bestFallback.rank[1])
+        || (rank[0] === bestFallback.rank[0] && rank[1] === bestFallback.rank[1] && rank[2] < bestFallback.rank[2]);
+      if (betterFallback) bestFallback = { quote, rank, age, targetMatch, fresh };
     } catch (error) {
-      errors.push(`${candidate.symbol}${candidate.exchange ? ` @ ${candidate.exchange}` : ""}: ${error.message}`);
-      return null;
+      errors.push(`${symbol}: ${error.message}`);
     }
+    return null;
   };
 
-  for (const candidate of twelveDataQuoteCandidates(asset)) {
+  for (const candidate of yahooQuoteCandidates(asset)) {
+    const quote = await tryCandidate(candidate);
+    if (quote) return quote;
+  }
+  for (const candidate of await searchYahooCandidates(asset)) {
     const quote = await tryCandidate(candidate);
     if (quote) return quote;
   }
 
-  for (const candidate of await searchTwelveDataCandidates(asset, apiKey)) {
-    const quote = await tryCandidate(candidate);
-    if (quote) return quote;
-  }
-
-  const triedText = [...tried].map(item => item.split("|").filter(Boolean).join(" @ ")).join(", ");
-  throw new Error(`Twelve Data did not find a usable quote for ${asset.name || asset.symbol || "this holding"}.${triedText ? ` Tried: ${triedText}.` : ""}${errors.length ? ` ${errors.slice(0, 5).join(" | ")}` : ""}`);
+  if (bestFallback?.quote) return bestFallback.quote;
+  const triedText = [...tried].join(", ");
+  throw new Error(`Yahoo Finance did not find a usable quote for ${asset.name || asset.symbol || "this holding"}.${triedText ? ` Tried: ${triedText}.` : ""}${errors.length ? ` ${errors.slice(0, 5).join(" | ")}` : ""}`);
 }
 
 export async function fetchQuote(asset, settings) {
   const rawProvider = asset.provider || settings.marketProvider || "manual";
-  const provider = rawProvider === "stooq" ? "twelvedata" : rawProvider;
+  const provider = ["stooq", "twelvedata"].includes(rawProvider) ? "yahoo" : rawProvider;
   if (provider === "manual") {
     const price = Number(asset.manualPrice || asset.lastPrice || 0);
     if (!Number.isFinite(price) || price <= 0) throw new Error("Manual asset needs a manual price first.");
@@ -251,7 +272,7 @@ export async function fetchQuote(asset, settings) {
       priceTime: pulledAt
     };
   }
-  return fetchTwelveDataQuote(asset, settings.marketApiKeyLocalOnly || "");
+  return fetchYahooQuote(asset, { maxAgeDays: 7, targetCurrency: asset.currency || settings.primaryCurrency || "EUR" });
 }
 
 export async function fetchLatestFxRates(currencies = []) {

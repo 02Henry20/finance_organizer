@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v40-twelvedata-only";
+const CACHE_NAME = "capito-v41-yahoo-quotes";
 const CORE = [
   "./",
   "./index.html",

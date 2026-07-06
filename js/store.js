@@ -374,7 +374,7 @@ export async function saveAsset(input) {
     wkn: String(input.wkn || "").trim().toUpperCase(),
     isin: String(input.isin || "").trim().toUpperCase(),
     manualPrice: Number(input.manualPrice || 0),
-    provider: (input.provider === "stooq" ? "twelvedata" : (input.provider || state.settings.marketProvider || "manual")),
+    provider: (["stooq", "twelvedata"].includes(input.provider) ? "yahoo" : (input.provider || state.settings.marketProvider || "manual")),
     providerSymbol: input.providerSymbol == null ? String(existing?.providerSymbol || "").trim().toUpperCase() : String(input.providerSymbol || "").trim().toUpperCase(),
     accountId: input.accountId || "",
     hidden: Boolean(input.hidden),
@@ -422,7 +422,7 @@ export async function updateAssetQuote(id, quote) {
     lastQuoteExchange: quote.exchange || "",
     lastQuoteMicCode: quote.micCode || "",
     currency: targetCurrency,
-    provider: quote.provider === "stooq" ? "twelvedata" : (quote.provider || existing?.provider || state.settings.marketProvider)
+    provider: (["stooq", "twelvedata"].includes(quote.provider) ? "yahoo" : (quote.provider || existing?.provider || state.settings.marketProvider))
   });
 }
 

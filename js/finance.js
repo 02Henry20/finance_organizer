@@ -9,7 +9,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   primaryCurrency: "EUR",
   theme: "dark",
   motion: "on",
-  marketProvider: "twelvedata",
+  marketProvider: "yahoo",
   marketApiKeyLocalOnly: "",
   autoRefreshQuotes: "on",
   autoRefreshFx: "on",
