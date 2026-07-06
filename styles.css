@@ -2519,3 +2519,84 @@ td .category-pill .category-pill-text,
 .positions-table td.position-update-cell .tiny-icon-button {
   margin-left: 8px;
 }
+
+/* v44: Yahoo ISIN lookup and tighter position update layout */
+.asset-lookup-row {
+  display: grid;
+  grid-template-columns: minmax(0, .8fr) 38px;
+  align-items: center;
+  gap: 8px;
+}
+.asset-lookup-row input {
+  min-width: 0;
+}
+.asset-lookup-button {
+  width: 38px;
+  height: 38px;
+  min-height: 38px;
+  padding: 0;
+  font-size: 1rem;
+}
+.yahoo-match-list {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0;
+}
+.yahoo-match-option {
+  display: grid;
+  grid-template-columns: minmax(86px, auto) minmax(0, 1fr);
+  gap: 4px 12px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface-2);
+  text-align: left;
+}
+.yahoo-match-option strong {
+  color: var(--primary);
+  font-weight: 900;
+}
+.yahoo-match-option span,
+.yahoo-match-option small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.yahoo-match-option small {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: .76rem;
+}
+.positions-table {
+  min-width: 980px;
+}
+.positions-table .positions-updated-header,
+.positions-table td.position-update-cell {
+  width: 196px !important;
+  min-width: 196px;
+}
+.positions-table td.position-update-cell {
+  white-space: nowrap;
+  padding-left: 8px;
+  padding-right: 10px;
+}
+.positions-table td.position-update-cell .quote-age {
+  min-width: 62px;
+  padding-inline: 6px;
+  font-size: .66rem;
+}
+.positions-table td.position-update-cell .tiny-icon-button {
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  margin-left: 5px;
+  padding: 0;
+  font-size: .78rem;
+}
+@media (max-width: 920px) {
+  .asset-lookup-row {
+    grid-template-columns: minmax(0, 1fr) 38px;
+  }
+}

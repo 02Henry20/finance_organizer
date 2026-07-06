@@ -189,6 +189,7 @@ function parseYahooChartQuote(data, candidate, url) {
     exchange: meta.fullExchangeName || meta.exchangeName || meta.exchange || "",
     micCode: meta.exchange || "",
     name: meta.shortName || meta.longName || "",
+    quoteType: meta.instrumentType || meta.quoteType || candidate.quoteType || "",
     price,
     currency: String(meta.currency || candidate.currency || yahooCurrencyHint(symbol) || "").toUpperCase(),
     changePercent: null,
@@ -221,6 +222,150 @@ function scoreYahooSearchResult(result = {}, asset = {}) {
   if ([".DE", ".F", ".HM", ".MU", ".PA", ".AS", ".MI"].some(suffix => symbol.endsWith(suffix))) score += 25;
   if (String(result.quoteType || "").toUpperCase().match(/EQUITY|ETF|MUTUALFUND|FUND/)) score += 10;
   return score;
+}
+
+
+function yahooSearchName(row = {}) {
+  return String(row.longname || row.longName || row.shortname || row.shortName || row.name || row.title || "").trim();
+}
+
+function yahooAssetTypeFromQuoteType(value = "") {
+  const type = String(value || "").toUpperCase();
+  if (type === "EQUITY") return "stock";
+  if (type === "ETF") return "etf";
+  if (["MUTUALFUND", "FUND"].includes(type)) return "fund";
+  if (type === "CRYPTOCURRENCY") return "crypto";
+  return "stock";
+}
+
+function nameTokens(value = "") {
+  return String(value || "")
+    .toUpperCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .split(/[^A-Z0-9]+/)
+    .filter(token => token.length >= 2 && !["ETF", "UCITS", "FUND", "AG", "INC", "THE", "GROUP", "COMPANY", "SA", "PLC", "ACC", "DIST"].includes(token));
+}
+
+function scoreYahooNameMatch(row = {}, asset = {}) {
+  const queryName = String(asset.name || asset.symbol || "").trim();
+  const candidateName = yahooSearchName(row);
+  if (!queryName || !candidateName) return 0;
+  const query = nameTokens(queryName);
+  const candidate = new Set(nameTokens(candidateName));
+  if (!query.length || !candidate.size) return 0;
+  let overlap = 0;
+  for (const token of query) if (candidate.has(token)) overlap += 1;
+  const coverage = overlap / Math.max(1, query.length);
+  let score = overlap * 18 + coverage * 60;
+  if (candidateName.toUpperCase().includes(queryName.toUpperCase())) score += 80;
+  return score;
+}
+
+function scoreYahooLookupCandidate(candidate = {}, asset = {}) {
+  const wantedCurrency = String(asset.currency || "EUR").toUpperCase();
+  const symbol = cleanTicker(candidate.symbol || "");
+  let score = Number(candidate.nameScore || 0);
+  if (String(candidate.currency || "").toUpperCase() === wantedCurrency) score += 70;
+  if ([".DE", ".F", ".HM", ".MU", ".PA", ".AS", ".MI", ".MC"].some(suffix => symbol.endsWith(suffix))) score += 30;
+  if (String(candidate.quoteType || "").toUpperCase().match(/EQUITY|ETF|MUTUALFUND|FUND/)) score += 10;
+  if (candidate.source?.startsWith("known")) score += 40;
+  return score;
+}
+
+export async function searchYahooAssetMatches(asset = {}, { limit = 5, searchLimit = 12 } = {}) {
+  const targetCurrency = String(asset.currency || "EUR").toUpperCase();
+  const maxResults = Math.max(1, Math.min(Number(limit) || 5, 5));
+  const candidates = [];
+  const seen = new Set();
+  const addCandidate = (item = {}, source = "candidate") => {
+    const symbol = cleanTicker(item.symbol || item);
+    if (!symbol || !looksLikeTicker(symbol) || seen.has(symbol)) return;
+    seen.add(symbol);
+    candidates.push({
+      symbol,
+      source: item.source || source,
+      name: item.name || "",
+      quoteType: item.quoteType || "",
+      currency: String(item.currency || yahooCurrencyHint(symbol) || "").toUpperCase(),
+      exchange: item.exchange || "",
+      nameScore: Number(item.nameScore || 0),
+      searchScore: Number(item.searchScore || 0)
+    });
+  };
+
+  const isin = String(asset.isin || "").trim().toUpperCase();
+  const wkn = String(asset.wkn || "").trim().toUpperCase();
+  (YAHOO_KNOWN_BY_ISIN[isin] || []).forEach(symbol => addCandidate({ symbol, nameScore: 20 }, `known isin ${isin}`));
+  (YAHOO_KNOWN_BY_WKN[wkn] || []).forEach(symbol => addCandidate({ symbol, nameScore: 16 }, `known wkn ${wkn}`));
+
+  const searchQueries = [isin, asset.name, asset.symbol, wkn]
+    .map(value => String(value || "").trim())
+    .filter(Boolean)
+    .filter((value, index, list) => list.findIndex(other => other.toLowerCase() === value.toLowerCase()) === index)
+    .slice(0, 4);
+
+  for (const query of searchQueries) {
+    try {
+      const url = `https://query1.finance.yahoo.com/v1/finance/search?${new URLSearchParams({ q: query, quotesCount: String(Math.max(searchLimit, maxResults)), newsCount: "0", listsCount: "0", enableFuzzyQuery: "true" }).toString()}`;
+      const data = await fetchJson(url);
+      const rows = Array.isArray(data?.quotes) ? data.quotes : [];
+      rows
+        .filter(row => row?.symbol && String(row.quoteType || "").toUpperCase().match(/EQUITY|ETF|MUTUALFUND|FUND|INDEX/))
+        .map(row => ({
+          symbol: row.symbol,
+          name: yahooSearchName(row),
+          quoteType: row.quoteType || "",
+          currency: row.currency || "",
+          exchange: row.exchDisp || row.exchange || "",
+          nameScore: scoreYahooNameMatch(row, asset),
+          searchScore: scoreYahooSearchResult(row, asset),
+          source: `Yahoo search ${query}`
+        }))
+        .sort((a, b) => (scoreYahooLookupCandidate(b, asset) + b.searchScore) - (scoreYahooLookupCandidate(a, asset) + a.searchScore))
+        .slice(0, Math.max(maxResults, 8))
+        .forEach(row => addCandidate(row, row.source));
+    } catch (error) {
+      console.warn("Yahoo asset lookup skipped", query, error);
+    }
+  }
+
+  const ordered = candidates
+    .map(candidate => ({ ...candidate, rankScore: scoreYahooLookupCandidate(candidate, asset) + Number(candidate.searchScore || 0) }))
+    .sort((a, b) => b.rankScore - a.rankScore)
+    .slice(0, Math.max(maxResults * 2, 8));
+
+  const matches = [];
+  for (const candidate of ordered) {
+    try {
+      const quote = await fetchYahooQuoteCandidate(candidate);
+      const age = quoteAgeDays(quote.priceTime);
+      const currency = String(quote.currency || candidate.currency || targetCurrency).toUpperCase();
+      const freshBonus = age == null || age <= 7 ? 30 : -Math.min(30, age);
+      const currencyBonus = currency === targetCurrency ? 80 : -40;
+      const totalScore = Number(candidate.rankScore || 0) + freshBonus + currencyBonus;
+      matches.push({
+        symbol: quote.symbol || candidate.symbol,
+        name: quote.name || candidate.name || quote.symbol || candidate.symbol,
+        currency,
+        price: quote.price,
+        priceTime: quote.priceTime,
+        pulledAt: quote.pulledAt,
+        exchange: quote.exchange || candidate.exchange || "",
+        quoteType: quote.quoteType || candidate.quoteType || quote.raw?.instrumentType || "",
+        assetType: yahooAssetTypeFromQuoteType(quote.quoteType || candidate.quoteType || quote.raw?.instrumentType || ""),
+        source: candidate.source || quote.source || "Yahoo Finance",
+        score: totalScore,
+        ageDays: age
+      });
+    } catch (error) {
+      console.warn("Yahoo asset lookup candidate failed", candidate.symbol, error);
+    }
+  }
+
+  return matches
+    .sort((a, b) => b.score - a.score)
+    .slice(0, maxResults);
 }
 
 async function searchYahooCandidates(asset) {

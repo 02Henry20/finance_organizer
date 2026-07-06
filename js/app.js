@@ -60,7 +60,7 @@ import {
   parseBrokerPositionsFile,
   serializeTransactionsCsv
 } from "./importer.js";
-import { fetchQuote } from "./market.js";
+import { fetchQuote, searchYahooAssetMatches } from "./market.js";
 import { drawAccountBars, drawDonut, drawIncomeExpense, drawNetSeries, drawYearComparison } from "./charts.js";
 
 const VIEW_LABELS = {
@@ -1591,6 +1591,98 @@ function openAssetModal(id = "", accountId = "") {
   openModal("asset");
 }
 
+
+function assetLookupDraft() {
+  const existing = state.assets.find(item => item.id === $("#asset-id")?.value);
+  return {
+    ...(existing || {}),
+    symbol: $("#asset-symbol")?.value || existing?.symbol || "",
+    name: $("#asset-name")?.value || existing?.name || "",
+    wkn: $("#asset-wkn")?.value || existing?.wkn || "",
+    isin: $("#asset-isin")?.value || existing?.isin || "",
+    currency: ($("#asset-currency")?.value || existing?.currency || selectedCurrency()).toUpperCase(),
+    provider: "yahoo"
+  };
+}
+
+function applyYahooAssetMatch(match = {}) {
+  if (!match?.symbol) return;
+  const symbol = $("#asset-symbol");
+  const name = $("#asset-name");
+  const currency = $("#asset-currency");
+  const provider = $("#asset-provider");
+  const type = $("#asset-type");
+  if (symbol) symbol.value = String(match.symbol || "").toUpperCase();
+  if (name && match.name) name.value = match.name;
+  if (currency && match.currency) currency.value = String(match.currency || "").toUpperCase();
+  if (provider) provider.value = "yahoo";
+  if (type && match.assetType && [...type.options].some(option => option.value === match.assetType)) type.value = match.assetType;
+  syncAssetPricingFields();
+}
+
+function yahooAssetMatchLabel(match = {}) {
+  const price = Number(match.price);
+  const priceText = Number.isFinite(price) ? formatCurrency(price, match.currency || selectedCurrency()) : "No price";
+  const ageText = Number.isFinite(Number(match.ageDays)) ? `${Number(match.ageDays).toFixed(1)}d old` : "age unknown";
+  const exchange = match.exchange ? ` · ${match.exchange}` : "";
+  return `${match.symbol || "—"} · ${priceText} · ${ageText}${exchange}`;
+}
+
+function chooseYahooAssetMatch(matches = []) {
+  return new Promise(resolve => {
+    const rows = matches.map((match, index) => `
+      <button class="yahoo-match-option" type="button" data-yahoo-match-index="${index}">
+        <strong>${escapeHtml(match.symbol || "—")}</strong>
+        <span>${escapeHtml(match.name || "Unnamed Yahoo result")}</span>
+        <small>${escapeHtml(yahooAssetMatchLabel(match))}</small>
+      </button>`).join("");
+    const { backdrop, close } = modalDialogShell("Choose Yahoo match", `
+      <p class="muted dialog-copy">Select the Yahoo Finance result to use for this holding. Symbol, name, currency and type are filled into the form.</p>
+      <div class="yahoo-match-list">${rows}</div>
+      <div class="button-row dialog-actions"><button class="secondary-button" data-dialog-cancel type="button">Cancel</button></div>`, { wide: true });
+    const finish = value => { close(); resolve(value); };
+    backdrop.querySelectorAll("[data-yahoo-match-index]").forEach(button => {
+      button.addEventListener("click", () => finish(matches[Number(button.dataset.yahooMatchIndex)] || null));
+    });
+    backdrop.querySelector("[data-dialog-cancel]")?.addEventListener("click", () => finish(null));
+    backdrop.addEventListener("click", event => { if (event.target === backdrop) finish(null); });
+    backdrop.querySelector("[data-yahoo-match-index]")?.focus();
+  });
+}
+
+async function runAssetIsinLookup() {
+  const button = $("#asset-isin-lookup");
+  const draft = assetLookupDraft();
+  const isin = String(draft.isin || "").trim().toUpperCase();
+  if (!isin) {
+    toast("Add an ISIN first", "Enter the holding ISIN, then run the Yahoo search.", "error");
+    return;
+  }
+  toast("Yahoo search triggered", `Searching Yahoo Finance for ${isin}.`);
+  if (button) {
+    button.disabled = true;
+    button.textContent = "…";
+  }
+  try {
+    const matches = await searchYahooAssetMatches(draft, { limit: 5, searchLimit: 12 });
+    if (!matches.length) {
+      toast("No Yahoo match", "Yahoo did not return a usable result for this ISIN.", "error");
+      return;
+    }
+    const selected = matches.length === 1 ? matches[0] : await chooseYahooAssetMatch(matches);
+    if (!selected) return;
+    applyYahooAssetMatch(selected);
+    toast("Yahoo match applied", `${selected.symbol || "Ticker"} filled into the holding form.`);
+  } catch (error) {
+    toast("Yahoo search failed", error.message, "error");
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = "⌕";
+    }
+  }
+}
+
 function positionDelta(asset) {
   const currentValue = assetMarketValue(asset);
   if (positionsPeriod === "today") {
@@ -2968,6 +3060,7 @@ function wireEvents() {
         name: $("#asset-name").value,
         type: $("#asset-type").value,
         provider: $("#asset-provider").value === "manual" ? "manual" : "yahoo",
+        providerSymbol: $("#asset-symbol")?.value || "",
         wkn: $("#asset-wkn")?.value || "",
         isin: $("#asset-isin")?.value || "",
         quantity,
@@ -2988,6 +3081,8 @@ function wireEvents() {
       setBusy(form, false);
     }
   });
+
+  $("#asset-isin-lookup")?.addEventListener("click", runAssetIsinLookup);
 
   $("#delete-asset-button").addEventListener("click", async () => {
     const id = $("#asset-id").value;
