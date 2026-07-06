@@ -1,45 +1,12 @@
-function parseCsvRecords(text) {
-  const rows = [];
-  let row = [];
-  let field = "";
-  let quoted = false;
-  const input = String(text || "").replace(/^\uFEFF/, "");
-  for (let i = 0; i < input.length; i += 1) {
-    const char = input[i];
-    const next = input[i + 1];
-    if (char === '"') {
-      if (quoted && next === '"') {
-        field += '"';
-        i += 1;
-      } else {
-        quoted = !quoted;
-      }
-    } else if (char === "," && !quoted) {
-      row.push(field.trim());
-      field = "";
-    } else if ((char === "\n" || char === "\r") && !quoted) {
-      if (char === "\r" && next === "\n") i += 1;
-      row.push(field.trim());
-      if (row.some(cell => cell !== "")) rows.push(row);
-      row = [];
-      field = "";
-    } else {
-      field += char;
-    }
-  }
-  row.push(field.trim());
-  if (row.some(cell => cell !== "")) rows.push(row);
-  return rows;
+function parseNumber(value) {
+  const text = String(value ?? "").replace(/\s/g, "").replace(/,/g, "").trim();
+  if (!text || text === "-" || text.toUpperCase() === "N/D") return NaN;
+  const number = Number(text);
+  return Number.isFinite(number) ? number : NaN;
 }
 
-function parseCsv(text) {
-  const rows = parseCsvRecords(text);
-  const headers = rows.shift() || [];
-  return rows.map(row => Object.fromEntries(headers.map((header, index) => [header, row[index]])));
-}
-
-function normalizeStooqSymbol(symbol) {
-  return String(symbol || "")
+function cleanTicker(value) {
+  return String(value || "")
     .trim()
     .replace(/\s+/g, "")
     .replace(/:/g, ".")
@@ -47,229 +14,245 @@ function normalizeStooqSymbol(symbol) {
 }
 
 function looksLikeTicker(value) {
-  return /^[A-Z0-9^._-]{1,16}$/i.test(String(value || "").trim());
+  return /^[A-Z0-9._^-]{1,24}$/.test(cleanTicker(value));
 }
 
-function knownStooqSymbols(asset = {}) {
+function isoFromUnixSeconds(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return "";
+  const date = new Date(number * 1000);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+}
+
+function isoFromDateValue(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(text) ? new Date(`${text}T00:00:00Z`) : new Date(text);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+}
+
+function quotePriceTime(data = {}) {
+  return isoFromUnixSeconds(data.last_quote_at)
+    || isoFromUnixSeconds(data.timestamp)
+    || isoFromDateValue(data.datetime)
+    || "";
+}
+
+function addUnique(list, item) {
+  const symbol = cleanTicker(item?.symbol || item);
+  if (!symbol || !looksLikeTicker(symbol)) return;
+  const exchange = String(item?.exchange || "").trim();
+  const micCode = String(item?.micCode || item?.mic_code || "").trim().toUpperCase();
+  const key = [symbol, exchange.toUpperCase(), micCode].join("|");
+  if (list.some(existing => existing.key === key)) return;
+  list.push({ symbol, exchange, micCode, key });
+}
+
+function knownTwelveDataCandidates(asset = {}) {
   const isin = String(asset.isin || "").trim().toUpperCase();
   const wkn = String(asset.wkn || "").trim().toUpperCase();
-  const symbol = normalizeStooqSymbol(asset.symbol);
-  const currency = String(asset.currency || "").toUpperCase();
-  const entries = [];
-  const preferEur = currency === "EUR";
+  const rawSymbol = cleanTicker(asset.symbol || asset.providerSymbol || asset.ticker);
+  const name = String(asset.name || "").toLowerCase();
+  const candidates = [];
 
-  const add = value => {
-    const normalized = normalizeStooqSymbol(value);
-    if (normalized && !entries.includes(normalized)) entries.push(normalized);
-  };
+  const add = item => addUnique(candidates, item);
 
-  if (isin === "US0378331005" || wkn === "865985" || symbol === "AAPL") {
-    if (preferEur) add("APC.DE");
-    add("AAPL.US");
-    if (!preferEur) add("APC.DE");
+  if (isin === "US0378331005" || wkn === "865985" || rawSymbol === "AAPL" || name.includes("apple")) {
+    add({ symbol: "AAPL", exchange: "NASDAQ", micCode: "XNGS" });
+    add("AAPL");
   }
-  if (isin === "US1912161007" || wkn === "850663" || symbol === "KO") {
-    if (preferEur) add("CCC3.DE");
-    add("KO.US");
-    if (!preferEur) add("CCC3.DE");
+  if (isin === "US1912161007" || wkn === "850663" || rawSymbol === "KO" || name.includes("coca-cola") || name.includes("coca cola")) {
+    add({ symbol: "KO", exchange: "NYSE", micCode: "XNYS" });
+    add("KO");
   }
-  if (isin === "DE000SHA0159" || isin === "DE000SHA0100" || wkn === "SHA015" || wkn === "SHA010" || symbol === "SHA" || symbol === "SHA0") {
-    add("SHA0.DE");
+  if (isin === "DE000SHA0159" || isin === "DE000SHA0100" || wkn === "SHA015" || wkn === "SHA010" || rawSymbol === "SHA" || rawSymbol === "SHA0" || name.includes("schaeffler")) {
+    add({ symbol: "SHA0", exchange: "XETRA", micCode: "XETR" });
+    add("SHA0");
   }
-  if (isin === "DE0007100000" || wkn === "710000") add("MBG.DE");
+  if (isin === "DE0007100000" || wkn === "710000" || name.includes("mercedes")) {
+    add({ symbol: "MBG", exchange: "XETRA", micCode: "XETR" });
+    add("MBG");
+  }
 
-  return entries;
+  return candidates;
 }
 
-function stooqSymbolCandidates(asset = {}) {
+function twelveDataQuoteCandidates(asset = {}) {
   const candidates = [];
-  const add = value => {
-    const next = normalizeStooqSymbol(value);
-    if (next && !candidates.includes(next)) candidates.push(next);
-  };
+  const add = item => addUnique(candidates, item);
 
-  knownStooqSymbols(asset).forEach(add);
-  [asset.providerSymbol, asset.stooqSymbol, asset.symbol, asset.ticker].forEach(value => {
-    const normalized = normalizeStooqSymbol(value);
-    if (!normalized || !looksLikeTicker(normalized)) return;
-    add(normalized);
+  knownTwelveDataCandidates(asset).forEach(add);
+
+  const explicitExchange = asset.providerExchange || asset.exchange || asset.lastQuoteExchange || "";
+  const explicitMic = asset.providerMicCode || asset.micCode || asset.lastQuoteMicCode || "";
+  [asset.providerSymbol, asset.twelveDataSymbol, asset.symbol, asset.ticker].forEach(value => {
+    const symbol = cleanTicker(value);
+    if (!symbol || !looksLikeTicker(symbol)) return;
+    add({ symbol, exchange: explicitExchange, micCode: explicitMic });
+    add(symbol);
+    if (String(asset.isin || "").toUpperCase().startsWith("DE")) add({ symbol, exchange: "XETRA", micCode: "XETR" });
   });
 
-  const raw = normalizeStooqSymbol(asset.providerSymbol || asset.stooqSymbol || asset.symbol || asset.ticker);
+  return candidates.map(({ key, ...item }) => item);
+}
+
+function searchQueriesForAsset(asset = {}) {
+  return [asset.isin, asset.wkn, asset.providerSymbol, asset.symbol, asset.name]
+    .map(value => String(value || "").trim())
+    .filter(Boolean)
+    .filter((value, index, list) => list.findIndex(other => other.toLowerCase() === value.toLowerCase()) === index);
+}
+
+function buildTwelveDataUrl(path, params) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value != null && String(value).trim()) query.set(key, String(value).trim());
+  });
+  return `https://api.twelvedata.com/${path}?${query.toString()}`;
+}
+
+async function fetchJson(url) {
+  const response = await fetch(url, { mode: "cors", cache: "no-store" });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
+}
+
+function twelveDataErrorMessage(data, fallback = "Twelve Data returned an error.") {
+  return data?.message || data?.error || data?.status || fallback;
+}
+
+function parseTwelveDataQuote(data, candidate, url) {
+  if (!data || typeof data !== "object") throw new Error("Empty Twelve Data response.");
+  if (data.status === "error" || data.code) throw new Error(twelveDataErrorMessage(data));
+  const price = parseNumber(data.close ?? data.price ?? data.previous_close);
+  if (!Number.isFinite(price) || price <= 0) throw new Error("No usable price in Twelve Data response.");
+
+  const pulledAt = new Date().toISOString();
+  return {
+    provider: "twelvedata",
+    source: "Twelve Data quote",
+    symbol: cleanTicker(data.symbol || candidate.symbol),
+    exchange: data.exchange || candidate.exchange || "",
+    micCode: data.mic_code || candidate.micCode || "",
+    name: data.name || "",
+    price,
+    currency: data.currency || candidate.currency || "",
+    changePercent: Number.isFinite(parseNumber(data.percent_change)) ? parseNumber(data.percent_change) : null,
+    time: pulledAt,
+    pulledAt,
+    priceTime: quotePriceTime(data) || pulledAt,
+    url,
+    raw: data
+  };
+}
+
+async function fetchTwelveDataQuoteCandidate(candidate, apiKey) {
+  const url = buildTwelveDataUrl("quote", {
+    symbol: candidate.symbol,
+    exchange: candidate.exchange,
+    mic_code: candidate.micCode,
+    apikey: apiKey
+  });
+  const data = await fetchJson(url);
+  return parseTwelveDataQuote(data, candidate, url);
+}
+
+function scoreSearchResult(result = {}, asset = {}) {
   const isin = String(asset.isin || "").trim().toUpperCase();
   const wkn = String(asset.wkn || "").trim().toUpperCase();
-  const type = String(asset.type || "").toLowerCase();
+  const wantedSymbol = cleanTicker(asset.providerSymbol || asset.symbol || asset.ticker);
+  const wantedName = String(asset.name || "").toLowerCase();
+  const symbol = cleanTicker(result.symbol);
+  const name = String(result.instrument_name || result.name || "").toLowerCase();
+  const mic = String(result.mic_code || "").toUpperCase();
+  const exchange = String(result.exchange || "").toUpperCase();
+  let score = 0;
+  if (symbol && wantedSymbol && symbol === wantedSymbol) score += 50;
+  if (isin && String(result.isin || "").toUpperCase() === isin) score += 120;
+  if (wkn && String(result.wkn || "").toUpperCase() === wkn) score += 80;
+  if (wantedName && name && (name.includes(wantedName) || wantedName.includes(name))) score += 25;
+  if (mic === "XETR" || exchange.includes("XETRA")) score += 10;
+  if (String(result.currency || "").toUpperCase() === String(asset.currency || "").toUpperCase()) score += 8;
+  if (String(result.type || "").toLowerCase().includes(String(asset.type || "").toLowerCase())) score += 3;
+  return score;
+}
 
-  if (raw && looksLikeTicker(raw) && !raw.includes(".") && !raw.startsWith("^")) {
-    if (isin.startsWith("US")) add(`${raw}.US`);
-    if (isin.startsWith("DE")) {
-      add(`${raw}.DE`);
-      if (/^[A-Z]{2,4}$/.test(raw) && !raw.endsWith("0")) add(`${raw}0.DE`);
+async function searchTwelveDataCandidates(asset, apiKey) {
+  const found = [];
+  for (const query of searchQueriesForAsset(asset).slice(0, 5)) {
+    try {
+      const url = buildTwelveDataUrl("symbol_search", { symbol: query, outputsize: 12, apikey: apiKey });
+      const data = await fetchJson(url);
+      const rows = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+      rows
+        .filter(row => row?.symbol)
+        .sort((a, b) => scoreSearchResult(b, asset) - scoreSearchResult(a, asset))
+        .slice(0, 4)
+        .forEach(row => addUnique(found, {
+          symbol: row.symbol,
+          exchange: row.exchange || "",
+          micCode: row.mic_code || "",
+          currency: row.currency || ""
+        }));
+    } catch (error) {
+      console.warn("Twelve Data symbol search skipped", query, error);
     }
-    if (isin.startsWith("IE") || isin.startsWith("LU") || isin.startsWith("FR")) {
-      add(`${raw}.DE`);
-      if (type === "etf" || type === "fund") {
-        add(`${raw}.UK`);
-        add(`${raw}.NL`);
-        add(`${raw}.PA`);
-      }
-    }
-    add(raw);
   }
-
-  if (wkn && looksLikeTicker(wkn)) add(`${wkn}.DE`);
-  return candidates.map(item => item.toLowerCase());
-}
-
-function stooqCurrencyForSymbol(symbol, fallback = "USD") {
-  const value = String(symbol || "").toUpperCase();
-  if (value.endsWith(".US")) return "USD";
-  if (value.endsWith(".UK")) return "GBP";
-  if (value.endsWith(".CH")) return "CHF";
-  if (value.endsWith(".JP")) return "JPY";
-  if (value.endsWith(".PL")) return "PLN";
-  if (value.endsWith(".DE") || value.endsWith(".NL") || value.endsWith(".FR") || value.endsWith(".IT") || value.endsWith(".ES") || value.endsWith(".BE") || value.endsWith(".AT") || value.endsWith(".PA")) return "EUR";
-  return fallback || "USD";
-}
-
-function stooqDateTime(date, time = "") {
-  const d = String(date || "").trim();
-  const t = String(time || "").trim();
-  if (!d || d === "N/D") return new Date().toISOString();
-  const iso = /^\d{4}-\d{2}-\d{2}$/.test(d)
-    ? `${d}T${/^\d{1,2}:\d{2}/.test(t) ? t : "00:00:00"}`
-    : d;
-  const parsed = new Date(iso);
-  return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
-}
-
-function numberFromStooq(value) {
-  const n = Number(String(value ?? "").replace(/\s/g, "").replace(/,/g, ""));
-  return Number.isFinite(n) ? n : NaN;
-}
-
-function quoteFromStooqRow(row, requestedSymbol, source, url) {
-  if (!row) throw new Error(`${source} empty response`);
-  const resolvedSymbol = String(row.Symbol || requestedSymbol || "").toUpperCase();
-  const close = row.Close;
-  if (!resolvedSymbol || resolvedSymbol === "N/D" || close === "N/D") throw new Error(`${source} not found`);
-  const price = numberFromStooq(close);
-  if (!Number.isFinite(price) || price <= 0) throw new Error(`${source} no usable price`);
-  return {
-    provider: "stooq",
-    symbol: resolvedSymbol,
-    price,
-    currency: stooqCurrencyForSymbol(resolvedSymbol, "USD"),
-    changePercent: Number.isFinite(numberFromStooq(row.Change)) ? numberFromStooq(row.Change) : null,
-    time: stooqDateTime(row.Date, row.Time),
-    source,
-    url
-  };
-}
-
-function parseStooqListCsv(text, requestedSymbol) {
-  const rows = parseCsvRecords(text);
-  if (!rows.length) throw new Error("live empty response");
-  const first = rows[0].map(cell => String(cell || "").trim());
-  const hasHeader = first.some(cell => cell.toLowerCase() === "symbol") || first.some(cell => cell.toLowerCase() === "close");
-  if (hasHeader) {
-    const headers = rows.shift();
-    return rows.map(row => Object.fromEntries(headers.map((header, index) => [header, row[index]])))[0];
-  }
-  const row = first;
-  return {
-    Symbol: row[0] || requestedSymbol,
-    Date: row[1],
-    Time: row[2],
-    Open: row[3],
-    High: row[4],
-    Low: row[5],
-    Close: row[6],
-    Volume: row[7]
-  };
-}
-
-function parseStooqDailyCsv(text, requestedSymbol) {
-  const rows = parseCsv(text).filter(row => row && row.Close && row.Close !== "N/D");
-  const row = rows.at(-1);
-  if (!row) throw new Error("daily not found");
-  return { Symbol: requestedSymbol, ...row };
+  return found.map(({ key, ...item }) => item);
 }
 
 export async function fetchTwelveDataQuote(asset, apiKey) {
-  if (!apiKey) throw new Error("Add a Twelve Data API key in Settings or switch the asset provider to Stooq/manual.");
-  const symbol = encodeURIComponent(asset.symbol);
-  const response = await fetch(`https://api.twelvedata.com/quote?symbol=${symbol}&apikey=${encodeURIComponent(apiKey)}`, { mode: "cors" });
-  if (!response.ok) throw new Error(`Twelve Data request failed: HTTP ${response.status}`);
-  const data = await response.json();
-  if (data.status === "error") throw new Error(data.message || "Twelve Data returned an error.");
-  const price = Number(data.close || data.price || data.previous_close);
-  if (!Number.isFinite(price)) throw new Error("No price in Twelve Data response.");
-  return {
-    provider: "twelvedata",
-    symbol: data.symbol || asset.symbol,
-    price,
-    currency: data.currency || asset.currency,
-    changePercent: Number(data.percent_change),
-    time: data.datetime ? new Date(data.datetime).toISOString() : new Date().toISOString()
-  };
-}
-
-async function fetchStooqLiveQuote(symbol) {
-  const url = `https://stooq.com/q/l/?s=${encodeURIComponent(symbol)}&f=sd2t2ohlcv&e=csv`;
-  const response = await fetch(url, { mode: "cors", cache: "no-store" });
-  if (!response.ok) throw new Error(`live HTTP ${response.status}`);
-  const row = parseStooqListCsv(await response.text(), symbol);
-  return quoteFromStooqRow(row, symbol, "stooq live", url);
-}
-
-async function fetchStooqDailyFallback(symbol) {
-  const url = `https://stooq.com/q/d/l/?s=${encodeURIComponent(symbol)}&i=d`;
-  const response = await fetch(url, { mode: "cors", cache: "no-store" });
-  if (!response.ok) throw new Error(`daily HTTP ${response.status}`);
-  const row = parseStooqDailyCsv(await response.text(), symbol);
-  return quoteFromStooqRow(row, symbol, "stooq daily", url);
-}
-
-export async function fetchStooqQuote(asset) {
-  const candidates = stooqSymbolCandidates(asset);
-  if (!candidates.length) throw new Error("Missing Stooq ticker. Use the Symbol | ticker field, e.g. APC.DE, AAPL.US, CCC3.DE, KO.US or SHA0.DE.");
+  if (!apiKey) throw new Error("Add a Twelve Data API key in Settings or switch the holding provider to Manual.");
 
   const errors = [];
-  for (const symbol of candidates) {
+  const tried = new Set();
+  const tryCandidate = async candidate => {
+    const key = [cleanTicker(candidate.symbol), String(candidate.exchange || "").toUpperCase(), String(candidate.micCode || "").toUpperCase()].join("|");
+    if (tried.has(key)) return null;
+    tried.add(key);
     try {
-      return await fetchStooqLiveQuote(symbol);
-    } catch (liveError) {
-      errors.push(`${symbol.toUpperCase()} live: ${liveError.message}`);
-      try {
-        return await fetchStooqDailyFallback(symbol);
-      } catch (dailyError) {
-        errors.push(`${symbol.toUpperCase()} daily: ${dailyError.message}`);
-      }
+      return await fetchTwelveDataQuoteCandidate(candidate, apiKey);
+    } catch (error) {
+      errors.push(`${candidate.symbol}${candidate.exchange ? ` @ ${candidate.exchange}` : ""}: ${error.message}`);
+      return null;
     }
+  };
+
+  for (const candidate of twelveDataQuoteCandidates(asset)) {
+    const quote = await tryCandidate(candidate);
+    if (quote) return quote;
   }
 
-  throw new Error(`Stooq did not find this holding. Tried: ${candidates.map(item => item.toUpperCase()).join(", ")}. ${errors.slice(0, 4).join(" | ")}`);
+  for (const candidate of await searchTwelveDataCandidates(asset, apiKey)) {
+    const quote = await tryCandidate(candidate);
+    if (quote) return quote;
+  }
+
+  const triedText = [...tried].map(item => item.split("|").filter(Boolean).join(" @ ")).join(", ");
+  throw new Error(`Twelve Data did not find a usable quote for ${asset.name || asset.symbol || "this holding"}.${triedText ? ` Tried: ${triedText}.` : ""}${errors.length ? ` ${errors.slice(0, 5).join(" | ")}` : ""}`);
 }
 
 export async function fetchQuote(asset, settings) {
-  const provider = asset.provider || settings.marketProvider || "manual";
+  const rawProvider = asset.provider || settings.marketProvider || "manual";
+  const provider = rawProvider === "stooq" ? "twelvedata" : rawProvider;
   if (provider === "manual") {
     const price = Number(asset.manualPrice || asset.lastPrice || 0);
     if (!Number.isFinite(price) || price <= 0) throw new Error("Manual asset needs a manual price first.");
+    const pulledAt = new Date().toISOString();
     return {
       provider: "manual",
+      source: "Manual price",
       symbol: asset.symbol,
       price,
       currency: asset.currency,
       changePercent: null,
-      time: new Date().toISOString()
+      time: pulledAt,
+      pulledAt,
+      priceTime: pulledAt
     };
   }
-  if (provider === "stooq") return fetchStooqQuote(asset);
   return fetchTwelveDataQuote(asset, settings.marketApiKeyLocalOnly || "");
 }
-
 
 export async function fetchLatestFxRates(currencies = []) {
   const requested = [...new Set(["EUR", "USD", "GBP", "CHF", "JPY", "KRW", ...currencies].map(code => String(code || "").toUpperCase()).filter(Boolean))];

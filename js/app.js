@@ -620,7 +620,12 @@ function quoteMetaText(asset = null) {
   if (!asset?.lastPriceAt) return "No provider pull yet";
   const source = asset.lastQuoteSource || asset.provider || "provider";
   const symbol = asset.lastProviderSymbol || asset.providerSymbol || asset.symbol || "";
-  return `${source}${symbol ? ` · ${symbol}` : ""} · pulled ${formatDateTime(asset.lastPriceAt)}`;
+  const exchange = asset.lastQuoteExchange ? ` · ${asset.lastQuoteExchange}` : "";
+  const providerPrice = Number.isFinite(Number(asset.lastProviderPrice)) && asset.lastProviderCurrency
+    ? ` · provider ${formatCurrency(Number(asset.lastProviderPrice), asset.lastProviderCurrency)}`
+    : "";
+  const priceTime = asset.lastQuotePriceAt ? ` · price ${formatDateTime(asset.lastQuotePriceAt)}` : "";
+  return `${source}${symbol ? ` · ${symbol}` : ""}${exchange}${providerPrice} · pulled ${formatDateTime(asset.lastPriceAt)}${priceTime}`;
 }
 
 function maskIban(value) {
@@ -1280,7 +1285,7 @@ function renderSettings() {
   $("#setting-currency").value = selectedCurrency();
   $("#setting-theme").value = state.settings.theme || "dark";
   $("#setting-motion").value = state.settings.motion || "on";
-  $("#setting-market-provider").value = state.settings.marketProvider || "twelvedata";
+  $("#setting-market-provider").value = state.settings.marketProvider === "stooq" ? "twelvedata" : (state.settings.marketProvider || "twelvedata");
   $("#setting-market-key").value = getLocalMarketApiKey();
   $("#setting-hide-transfers").value = String(state.settings.hideInternalTransfersInSpending !== false);
   $("#setting-quote-interval").value = String(Number(state.settings.quoteRefreshIntervalMinutes ?? 720) / 60);
@@ -1529,10 +1534,10 @@ function openAssetModal(id = "", accountId = "") {
   $("#asset-wkn").value = asset?.wkn || "";
   $("#asset-isin").value = asset?.isin || "";
   $("#asset-type").value = asset?.type || "stock";
-  $("#asset-provider").value = asset?.provider || state.settings.marketProvider || "manual";
+  $("#asset-provider").value = asset?.provider === "stooq" ? "twelvedata" : (asset?.provider || state.settings.marketProvider || "manual");
   $("#asset-quantity").value = asset?.quantity ?? 1;
   $("#asset-currency").value = asset?.currency || selectedCurrency();
-  const providerValue = asset?.provider || state.settings.marketProvider || "manual";
+  const providerValue = asset?.provider === "stooq" ? "twelvedata" : (asset?.provider || state.settings.marketProvider || "manual");
   $("#asset-manual-price").value = providerValue === "manual" ? asset?.manualPrice ?? asset?.lastPrice ?? 0 : asset?.lastPrice ?? asset?.manualPrice ?? 0;
   $("#asset-buy-price").value = asset?.buyPrice ?? 0;
   $("#asset-cost-basis").value = asset?.costBasis ?? (Number(asset?.quantity || 0) * Number(asset?.buyPrice || 0));
@@ -1726,7 +1731,7 @@ async function refreshAsset(id) {
   try {
     const quote = await fetchQuote(asset, state.settings);
     await updateAssetQuote(id, quote);
-    toast("Price updated", `${quote.symbol || asset.symbol || asset.name}: ${formatCurrency(quote.price, quote.currency || asset.currency)} · ${formatDateTime(quote.time)}`);
+    toast("Price updated", `${quote.symbol || asset.symbol || asset.name}: ${formatCurrency(quote.price, quote.currency || asset.currency)} · pulled ${formatDateTime(quote.pulledAt || quote.time)}`);
   } catch (error) {
     toast("Price refresh failed", error.message, "error");
   }
@@ -2902,7 +2907,7 @@ function wireEvents() {
         symbol: $("#asset-symbol").value,
         name: $("#asset-name").value,
         type: $("#asset-type").value,
-        provider: $("#asset-provider").value,
+        provider: $("#asset-provider").value === "stooq" ? "twelvedata" : $("#asset-provider").value,
         wkn: $("#asset-wkn")?.value || "",
         isin: $("#asset-isin")?.value || "",
         quantity,

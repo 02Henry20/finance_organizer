@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v39-stooq-price-fix";
+const CACHE_NAME = "capito-v40-twelvedata-only";
 const CORE = [
   "./",
   "./index.html",

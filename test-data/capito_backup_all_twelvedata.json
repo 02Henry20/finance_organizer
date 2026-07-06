@@ -1,6 +1,6 @@
 {
   "format": "capito-export-v1",
-  "exportedAt": "2026-07-05T11:20:38",
+  "exportedAt": "2026-07-06T11:25:00",
   "user": {
     "uid": "",
     "email": ""
@@ -9,7 +9,7 @@
     "primaryCurrency": "EUR",
     "theme": "dark",
     "motion": "on",
-    "marketProvider": "manual",
+    "marketProvider": "twelvedata",
     "marketApiKeyLocalOnly": "",
     "autoRefreshQuotes": "on",
     "autoRefreshFx": "on",
@@ -1033,7 +1033,7 @@
       "wkn": "865985",
       "isin": "US0378331005",
       "manualPrice": 148.24,
-      "provider": "manual",
+      "provider": "twelvedata",
       "accountId": "trade_republic",
       "hidden": false,
       "createdAtMs": 1657929600000,
@@ -1042,7 +1042,13 @@
       "lastChangePercent": null,
       "startingPosition": true,
       "startingAt": "2026-07-05",
-      "startingValue": 5.04016
+      "startingValue": 5.04016,
+      "providerSymbol": "AAPL",
+      "lastQuoteExchange": "NASDAQ",
+      "lastQuoteMicCode": "XNGS",
+      "lastQuoteSource": "manual backup baseline; refresh with Twelve Data",
+      "lastProviderSymbol": "AAPL",
+      "lastQuotePriceAt": "2026-07-05T11:20:38"
     },
     {
       "id": "asset_289f641f2f65",
@@ -1056,7 +1062,7 @@
       "wkn": "850663",
       "isin": "US1912161007",
       "manualPrice": 56.2,
-      "provider": "manual",
+      "provider": "twelvedata",
       "accountId": "trade_republic",
       "hidden": false,
       "createdAtMs": 1685404800000,
@@ -1065,21 +1071,27 @@
       "lastChangePercent": null,
       "startingPosition": true,
       "startingAt": "2026-07-05",
-      "startingValue": 281.0
+      "startingValue": 281.0,
+      "providerSymbol": "KO",
+      "lastQuoteExchange": "NYSE",
+      "lastQuoteMicCode": "XNYS",
+      "lastQuoteSource": "manual backup baseline; refresh with Twelve Data",
+      "lastProviderSymbol": "KO",
+      "lastQuotePriceAt": "2026-07-05T11:20:38"
     },
     {
       "id": "asset_0af33e252625",
-      "symbol": "SHA",
+      "symbol": "SHA0",
       "name": "Schaeffler AG",
       "type": "stock",
       "quantity": 119.0,
       "currency": "EUR",
       "costBasis": 581.13,
       "buyPrice": 4.8834,
-      "wkn": "SHA015",
-      "isin": "DE000SHA0159",
+      "wkn": "SHA010",
+      "isin": "DE000SHA0100",
       "manualPrice": 4.8834,
-      "provider": "manual",
+      "provider": "twelvedata",
       "accountId": "trade_republic",
       "hidden": false,
       "createdAtMs": 1662336000000,
@@ -1088,7 +1100,13 @@
       "lastChangePercent": null,
       "startingPosition": true,
       "startingAt": "2026-07-05",
-      "startingValue": 581.1246
+      "startingValue": 581.1246,
+      "providerSymbol": "SHA0",
+      "lastQuoteExchange": "XETRA",
+      "lastQuoteMicCode": "XETR",
+      "lastQuoteSource": "manual backup baseline; refresh with Twelve Data",
+      "lastProviderSymbol": "SHA0",
+      "lastQuotePriceAt": "2026-07-05T11:20:38"
     },
     {
       "id": "asset_0607b8191577",
@@ -1102,7 +1120,7 @@
       "wkn": "515262",
       "isin": "DE0005152623",
       "manualPrice": 134.484,
-      "provider": "manual",
+      "provider": "twelvedata",
       "accountId": "smartbroker",
       "hidden": false,
       "createdAtMs": 1783209600000,
@@ -1111,11 +1129,15 @@
       "lastChangePercent": null,
       "startingPosition": true,
       "startingAt": "2026-07-05",
-      "startingValue": 672.42
+      "startingValue": 672.42,
+      "providerSymbol": "",
+      "lastQuoteSource": "manual backup baseline; refresh with Twelve Data",
+      "lastProviderSymbol": "DEKA-TECHNOLOGIE C",
+      "lastQuotePriceAt": "2026-07-05T11:22:01"
     },
     {
       "id": "asset_a70368fc4b46",
-      "symbol": "MERCEDES-BENZ GRP",
+      "symbol": "MBG",
       "name": "Mercedes-Benz Group AG",
       "type": "stock",
       "quantity": 88.0,
@@ -1125,7 +1147,7 @@
       "wkn": "710000",
       "isin": "DE0007100000",
       "manualPrice": 45.095,
-      "provider": "manual",
+      "provider": "twelvedata",
       "accountId": "smartbroker",
       "hidden": false,
       "createdAtMs": 1783209600000,
@@ -1134,7 +1156,13 @@
       "lastChangePercent": null,
       "startingPosition": true,
       "startingAt": "2026-07-05",
-      "startingValue": 3968.36
+      "startingValue": 3968.36,
+      "providerSymbol": "MBG",
+      "lastQuoteExchange": "XETRA",
+      "lastQuoteMicCode": "XETR",
+      "lastQuoteSource": "manual backup baseline; refresh with Twelve Data",
+      "lastProviderSymbol": "MBG",
+      "lastQuotePriceAt": "2026-07-05T11:22:01"
     },
     {
       "id": "asset_1483545bfdc1",
@@ -1148,7 +1176,7 @@
       "wkn": "DK0ECS",
       "isin": "DE000DK0ECS2",
       "manualPrice": 256.76,
-      "provider": "manual",
+      "provider": "twelvedata",
       "accountId": "smartbroker",
       "hidden": false,
       "createdAtMs": 1783209600000,
@@ -1157,7 +1185,11 @@
       "lastChangePercent": null,
       "startingPosition": true,
       "startingAt": "2026-07-05",
-      "startingValue": 256.76
+      "startingValue": 256.76,
+      "providerSymbol": "",
+      "lastQuoteSource": "manual backup baseline; refresh with Twelve Data",
+      "lastProviderSymbol": "DEKA-UMWELTINVEST",
+      "lastQuotePriceAt": "2026-07-05T11:22:01"
     },
     {
       "id": "asset_6914557217b4",
@@ -1171,7 +1203,7 @@
       "wkn": "DK0ECU",
       "isin": "DE000DK0ECU8",
       "manualPrice": 431.785,
-      "provider": "manual",
+      "provider": "twelvedata",
       "accountId": "smartbroker",
       "hidden": false,
       "createdAtMs": 1783209600000,
@@ -1180,7 +1212,11 @@
       "lastChangePercent": null,
       "startingPosition": true,
       "startingAt": "2026-07-05",
-      "startingValue": 431.785
+      "startingValue": 431.785,
+      "providerSymbol": "",
+      "lastQuoteSource": "manual backup baseline; refresh with Twelve Data",
+      "lastProviderSymbol": "DEKA-GLOBALCHAMPIO",
+      "lastQuotePriceAt": "2026-07-05T11:22:01"
     },
     {
       "id": "asset_2f5e0f0f7548",
@@ -1194,7 +1230,7 @@
       "wkn": "ETFL58",
       "isin": "DE000ETFL581",
       "manualPrice": 43.73,
-      "provider": "manual",
+      "provider": "twelvedata",
       "accountId": "smartbroker",
       "hidden": false,
       "createdAtMs": 1783209600000,
@@ -1203,7 +1239,11 @@
       "lastChangePercent": null,
       "startingPosition": true,
       "startingAt": "2026-07-05",
-      "startingValue": 262.38
+      "startingValue": 262.38,
+      "providerSymbol": "",
+      "lastQuoteSource": "manual backup baseline; refresh with Twelve Data",
+      "lastProviderSymbol": "DEKA MSCI WOR.C.C.",
+      "lastQuotePriceAt": "2026-07-05T11:22:01"
     },
     {
       "id": "asset_c9059c0b7801",
@@ -1217,7 +1257,7 @@
       "wkn": "LYX0CB",
       "isin": "FR0010524777",
       "manualPrice": 46.28,
-      "provider": "manual",
+      "provider": "twelvedata",
       "accountId": "smartbroker",
       "hidden": false,
       "createdAtMs": 1783209600000,
@@ -1226,7 +1266,11 @@
       "lastChangePercent": null,
       "startingPosition": true,
       "startingAt": "2026-07-05",
-      "startingValue": 745.469678
+      "startingValue": 745.469678,
+      "providerSymbol": "",
+      "lastQuoteSource": "manual backup baseline; refresh with Twelve Data",
+      "lastProviderSymbol": "MUF-AMU.MSCI NEW E",
+      "lastQuotePriceAt": "2026-07-05T11:22:01"
     },
     {
       "id": "asset_5a4bca9c763e",
@@ -1240,7 +1284,7 @@
       "wkn": "A0MW0M",
       "isin": "IE00B1XNHC34",
       "manualPrice": 10.088,
-      "provider": "manual",
+      "provider": "twelvedata",
       "accountId": "smartbroker",
       "hidden": false,
       "createdAtMs": 1783209600000,
@@ -1249,7 +1293,11 @@
       "lastChangePercent": null,
       "startingPosition": true,
       "startingAt": "2026-07-05",
-      "startingValue": 690.634901
+      "startingValue": 690.634901,
+      "providerSymbol": "",
+      "lastQuoteSource": "manual backup baseline; refresh with Twelve Data",
+      "lastProviderSymbol": "ISHSII-GL.CL.EN.TR",
+      "lastQuotePriceAt": "2026-07-05T11:22:01"
     },
     {
       "id": "asset_72120f790e18",
@@ -1263,7 +1311,7 @@
       "wkn": "A142N1",
       "isin": "IE00B3WJKG14",
       "manualPrice": 43.185,
-      "provider": "manual",
+      "provider": "twelvedata",
       "accountId": "smartbroker",
       "hidden": false,
       "createdAtMs": 1783209600000,
@@ -1272,7 +1320,11 @@
       "lastChangePercent": null,
       "startingPosition": true,
       "startingAt": "2026-07-05",
-      "startingValue": 2634.215083
+      "startingValue": 2634.215083,
+      "providerSymbol": "",
+      "lastQuoteSource": "manual backup baseline; refresh with Twelve Data",
+      "lastProviderSymbol": "ISHSV-S+500INF.T.S",
+      "lastQuotePriceAt": "2026-07-05T11:22:01"
     },
     {
       "id": "asset_8ef843f714f3",
@@ -1286,7 +1338,7 @@
       "wkn": "A1C9KK",
       "isin": "IE00B4X9L533",
       "manualPrice": 42.712,
-      "provider": "manual",
+      "provider": "twelvedata",
       "accountId": "smartbroker",
       "hidden": false,
       "createdAtMs": 1783209600000,
@@ -1295,7 +1347,11 @@
       "lastChangePercent": null,
       "startingPosition": true,
       "startingAt": "2026-07-05",
-      "startingValue": 1573.534511
+      "startingValue": 1573.534511,
+      "providerSymbol": "",
+      "lastQuoteSource": "manual backup baseline; refresh with Twelve Data",
+      "lastProviderSymbol": "HSBC MSCI WORLD UC",
+      "lastQuotePriceAt": "2026-07-05T11:22:01"
     },
     {
       "id": "asset_33abc6527bc2",
@@ -1309,7 +1365,7 @@
       "wkn": "A2H5CB",
       "isin": "IE00BDR55927",
       "manualPrice": 22.59,
-      "provider": "manual",
+      "provider": "twelvedata",
       "accountId": "smartbroker",
       "hidden": false,
       "createdAtMs": 1783209600000,
@@ -1318,7 +1374,11 @@
       "lastChangePercent": null,
       "startingPosition": true,
       "startingAt": "2026-07-05",
-      "startingValue": 1851.923863
+      "startingValue": 1851.923863,
+      "providerSymbol": "",
+      "lastQuoteSource": "manual backup baseline; refresh with Twelve Data",
+      "lastProviderSymbol": "UBS(I)-U.M.A.S.R.E",
+      "lastQuotePriceAt": "2026-07-05T11:22:01"
     },
     {
       "id": "asset_8bbaad0d0bc6",
@@ -1332,7 +1392,7 @@
       "wkn": "A12GVR",
       "isin": "IE00BTJRMP35",
       "manualPrice": 81.546,
-      "provider": "manual",
+      "provider": "twelvedata",
       "accountId": "smartbroker",
       "hidden": false,
       "createdAtMs": 1783209600000,
@@ -1341,7 +1401,11 @@
       "lastChangePercent": null,
       "startingPosition": true,
       "startingAt": "2026-07-05",
-      "startingValue": 1540.404511
+      "startingValue": 1540.404511,
+      "providerSymbol": "",
+      "lastQuoteSource": "manual backup baseline; refresh with Twelve Data",
+      "lastProviderSymbol": "X(IE)-MSCI EM.MKTS",
+      "lastQuotePriceAt": "2026-07-05T11:22:01"
     },
     {
       "id": "asset_dada1a9f82a9",
@@ -1355,7 +1419,7 @@
       "wkn": "DBX0F1",
       "isin": "LU0489337690",
       "manualPrice": 25.14,
-      "provider": "manual",
+      "provider": "twelvedata",
       "accountId": "smartbroker",
       "hidden": false,
       "createdAtMs": 1783209600000,
@@ -1364,7 +1428,11 @@
       "lastChangePercent": null,
       "startingPosition": true,
       "startingAt": "2026-07-05",
-      "startingValue": 838.609888
+      "startingValue": 838.609888,
+      "providerSymbol": "",
+      "lastQuoteSource": "manual backup baseline; refresh with Twelve Data",
+      "lastProviderSymbol": "XTR.FTSE DEV.EUR.R",
+      "lastQuotePriceAt": "2026-07-05T11:22:01"
     }
   ],
   "meta": {
@@ -1381,7 +1449,8 @@
       "Known current cash balances were set as opening balances so the account setup is usable before transaction import.",
       "Wise EUR/KRW balances were left at zero because no current Wise balance was supplied.",
       "Broker accounts keep zero cash opening balance; portfolio value is represented through holdings.",
-      "All 15 holdings were marked as given/starting positions with startingAt=2026-07-05; startingValue was set to current value from lastPrice/manualPrice × quantity."
+      "All 15 holdings were marked as given/starting positions with startingAt=2026-07-05; startingValue was set to current value from lastPrice/manualPrice × quantity.",
+      "All holdings were changed to provider=twelvedata; API key remains local-only and must be entered in app settings."
     ],
     "summary": {
       "accounts": 11,

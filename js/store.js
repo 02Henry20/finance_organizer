@@ -374,7 +374,7 @@ export async function saveAsset(input) {
     wkn: String(input.wkn || "").trim().toUpperCase(),
     isin: String(input.isin || "").trim().toUpperCase(),
     manualPrice: Number(input.manualPrice || 0),
-    provider: input.provider || state.settings.marketProvider || "manual",
+    provider: (input.provider === "stooq" ? "twelvedata" : (input.provider || state.settings.marketProvider || "manual")),
     providerSymbol: input.providerSymbol == null ? String(existing?.providerSymbol || "").trim().toUpperCase() : String(input.providerSymbol || "").trim().toUpperCase(),
     accountId: input.accountId || "",
     hidden: Boolean(input.hidden),
@@ -390,15 +390,39 @@ export async function deleteAsset(id) {
   await deleteDoc(userDoc("assets", id));
 }
 
+
+function convertQuotePriceToAssetCurrency(value, fromCurrency, toCurrency) {
+  const amount = Number(value);
+  const from = String(fromCurrency || toCurrency || state.settings.primaryCurrency || "EUR").toUpperCase();
+  const to = String(toCurrency || from || state.settings.primaryCurrency || "EUR").toUpperCase();
+  if (!Number.isFinite(amount)) return 0;
+  if (from === to) return amount;
+  const rates = { ...DEFAULT_SETTINGS.fxRates, ...(state.settings.fxRates || {}) };
+  const fromRate = Number(rates[from]);
+  const toRate = Number(rates[to]);
+  if (!Number.isFinite(fromRate) || fromRate <= 0 || !Number.isFinite(toRate) || toRate <= 0) return amount;
+  return amount * fromRate / toRate;
+}
+
 export async function updateAssetQuote(id, quote) {
+  const existing = state.assets.find(asset => asset.id === id);
+  const targetCurrency = String(existing?.currency || quote.currency || state.settings.primaryCurrency || "EUR").toUpperCase();
+  const providerCurrency = String(quote.currency || targetCurrency).toUpperCase();
+  const providerPrice = Number(quote.price);
+  const convertedPrice = convertQuotePriceToAssetCurrency(providerPrice, providerCurrency, targetCurrency);
   await saveDoc("assets", id, {
-    lastPrice: Number(quote.price),
-    lastPriceAt: quote.time || new Date().toISOString(),
+    lastPrice: convertedPrice,
+    lastPriceAt: quote.pulledAt || quote.time || new Date().toISOString(),
+    lastQuotePriceAt: quote.priceTime || quote.datetime || quote.time || "",
     lastChangePercent: Number.isFinite(Number(quote.changePercent)) ? Number(quote.changePercent) : null,
     lastProviderSymbol: quote.symbol || "",
+    lastProviderPrice: Number.isFinite(providerPrice) ? providerPrice : null,
+    lastProviderCurrency: providerCurrency,
     lastQuoteSource: quote.source || quote.provider || "",
-    currency: quote.currency || state.assets.find(asset => asset.id === id)?.currency || state.settings.primaryCurrency,
-    provider: quote.provider || state.assets.find(asset => asset.id === id)?.provider || state.settings.marketProvider
+    lastQuoteExchange: quote.exchange || "",
+    lastQuoteMicCode: quote.micCode || "",
+    currency: targetCurrency,
+    provider: quote.provider === "stooq" ? "twelvedata" : (quote.provider || existing?.provider || state.settings.marketProvider)
   });
 }
 
