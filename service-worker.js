@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v65-reports-layout-category-fix";
+const CACHE_NAME = "capito-v66-data-integrity-repair";
 const CORE = [
   "./",
   "./index.html",

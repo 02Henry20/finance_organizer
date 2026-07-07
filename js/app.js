@@ -36,6 +36,7 @@ import {
 import {
   ACCOUNT_TYPES,
   CATEGORY_COLORS,
+  DEFAULT_CATEGORIES,
   DEFAULT_CATEGORY_COLOR,
   TODAY,
   VALID_CURRENCIES,
@@ -2732,6 +2733,116 @@ async function runSyncRepair() {
   }
 }
 
+
+function repairCategoryTarget(rawCategoryId = "", categories = state.categories) {
+  const raw = String(rawCategoryId || "").trim();
+  const validIds = new Set(categories.map(category => String(category.id || "").trim()).filter(Boolean));
+  if (raw && validIds.has(raw)) return { targetId: raw, mode: raw === rawCategoryId ? "valid" : "trimmed" };
+  if (!raw || raw === "misc") return { targetId: "misc", mode: "misc" };
+
+  const wanted = normalizeCategoryLookup(raw);
+  const loose = categories.find(category => {
+    const candidates = [category.id, category.name, `${category.icon || ""} ${category.name || ""}`].map(normalizeCategoryLookup);
+    return candidates.includes(wanted);
+  });
+  if (loose?.id) return { targetId: loose.id, mode: "normalized" };
+  return { targetId: "misc", mode: "unknown" };
+}
+
+async function ensureMiscCategoryForIntegrity() {
+  if (state.categories.some(category => category.id === "misc")) return state.categories;
+  const fallback = DEFAULT_CATEGORIES.find(category => category.id === "misc") || {
+    id: "misc",
+    name: "Misc | not applicable",
+    group: "Misc",
+    type: "neutral",
+    icon: "?",
+    color: DEFAULT_CATEGORY_COLOR
+  };
+  await saveCategory(fallback);
+  return [...state.categories, fallback];
+}
+
+async function runDataIntegrityRepair() {
+  const button = $("#data-integrity-button");
+  const message = $("#data-integrity-message");
+  if (button?.dataset.busy === "true") return;
+  if (button) {
+    button.dataset.busy = "true";
+    button.disabled = true;
+  }
+  setMessage(message, "Checking category references…");
+
+  try {
+    const categories = await ensureMiscCategoryForIntegrity();
+    let txTrimmed = 0;
+    let txNormalized = 0;
+    let txMoved = 0;
+    const transactionPatches = [];
+
+    for (const tx of state.transactions) {
+      const original = String(tx.categoryId ?? "");
+      const trimmed = original.trim();
+      const repair = repairCategoryTarget(original, categories);
+      if (repair.mode === "valid") continue;
+      if (repair.targetId === trimmed && original === trimmed) continue;
+
+      const patch = { ...tx, categoryId: repair.targetId };
+      if (repair.mode === "trimmed") {
+        txTrimmed += 1;
+        patch.reason = tx.reason || "Data integrity repair: category ID whitespace trimmed.";
+      } else if (repair.mode === "normalized") {
+        txNormalized += 1;
+        patch.reason = `Data integrity repair: category '${trimmed || "empty"}' normalized to '${repair.targetId}'.`;
+      } else {
+        txMoved += 1;
+        patch.review = true;
+        patch.confidence = Math.min(Number(tx.confidence ?? 0.25), 0.25);
+        patch.candidates = [];
+        patch.reason = `Data integrity repair: invalid category '${trimmed || "empty"}' moved to Misc.`;
+      }
+      transactionPatches.push(patch);
+    }
+
+    let ruleNormalized = 0;
+    let ruleMoved = 0;
+    for (const rule of state.rules) {
+      const original = String(rule.categoryId ?? "");
+      const trimmed = original.trim();
+      const repair = repairCategoryTarget(original, categories);
+      if (repair.mode === "valid") continue;
+      if (repair.targetId === trimmed && original === trimmed) continue;
+      if (repair.mode === "normalized" || repair.mode === "trimmed") ruleNormalized += 1;
+      else ruleMoved += 1;
+      await saveRule({ ...rule, categoryId: repair.targetId });
+    }
+
+    if (transactionPatches.length) {
+      setMessage(message, `Repairing ${transactionPatches.length} transactions and ${ruleNormalized + ruleMoved} rules…`);
+      await saveTransactionsBatch(transactionPatches);
+    }
+
+    const accountIds = new Set(state.accounts.map(account => account.id));
+    const missingAccountTransactions = state.transactions.filter(tx => tx.accountId && !accountIds.has(tx.accountId)).length;
+    const assetMissingAccounts = state.assets.filter(asset => asset.accountId && !accountIds.has(asset.accountId)).length;
+    const changed = transactionPatches.length + ruleNormalized + ruleMoved;
+    const summary = changed
+      ? `Fixed ${transactionPatches.length} transactions (${txMoved} moved to Misc, ${txNormalized} normalized, ${txTrimmed} trimmed) and ${ruleNormalized + ruleMoved} rules (${ruleMoved} moved to Misc).${missingAccountTransactions || assetMissingAccounts ? ` Also found ${missingAccountTransactions} transactions and ${assetMissingAccounts} holdings with missing account references; those were reported only.` : ""}`
+      : `No invalid category references found.${missingAccountTransactions || assetMissingAccounts ? ` Found ${missingAccountTransactions} transactions and ${assetMissingAccounts} holdings with missing account references; those were reported only.` : ""}`;
+    setMessage(message, summary);
+    toast(changed ? "Data integrity repaired" : "Data integrity OK", summary);
+    requestRender();
+  } catch (error) {
+    setMessage(message, error.message, true);
+    toast("Data integrity check failed", error.message, "error");
+  } finally {
+    if (button) {
+      button.dataset.busy = "false";
+      button.disabled = false;
+    }
+  }
+}
+
 async function exportTransactionsCsv() {
   const csv = serializeTransactionsCsv(state.transactions, state.categories, state.accounts);
   downloadTextFile(`capito-transactions-${TODAY()}.csv`, csv);
@@ -3349,6 +3460,7 @@ function wireEvents() {
 
   $("#export-button")?.addEventListener("click", exportTransactionsCsv);
   $("#export-json-button")?.addEventListener("click", () => exportBackupJson().catch(error => toast("JSON export failed", error.message, "error")));
+  $("#data-integrity-button")?.addEventListener("click", runDataIntegrityRepair);
   $("#repair-sync-button")?.addEventListener("click", runSyncRepair);
   $$("[data-sync-choice]").forEach(button => button.addEventListener("click", () => runSyncChoice(button.dataset.syncChoice)));
   $("#import-json-file")?.addEventListener("change", event => {

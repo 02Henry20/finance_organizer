@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#111827">
   <meta name="description" content="Capito is a private finance organizer for accounts, transactions, holdings, rules and analytics.">
   <title>Capito</title>
-  <meta name="capito-build" content="capito-v65-reports-layout-category-fix">
+  <meta name="capito-build" content="capito-v66-data-integrity-repair">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16x16.png">
@@ -285,6 +285,8 @@
             <div class="panel-heading"><div><p class="eyebrow">DATA</p><h3>Export | import</h3></div></div>
             <div class="settings-row"><div><strong>Transactions CSV</strong><small>Legacy export for spreadsheets.</small></div><button id="export-button" class="secondary-button compact" type="button">Export CSV</button></div>
             <div class="settings-row"><div><strong>Full JSON backup</strong><small>Accounts, transactions, categories, rules, settings and holdings.</small></div><button id="export-json-button" class="primary-button compact" type="button">Export JSON</button></div>
+            <div class="settings-row data-integrity-row"><div><strong>Data integrity</strong><small>Fix invalid transaction/rule category IDs. Unknown categories are moved to Misc.</small></div><button id="data-integrity-button" class="secondary-button compact" type="button">Check & repair</button></div>
+            <p id="data-integrity-message" class="form-message"></p>
             <div class="settings-row sync-choice-row"><div><strong>Sync troubleshooting</strong><small>Resolve desktop/mobile differences manually. Local data is still available offline through the browser cache.</small></div><div class="sync-choice-actions"><button id="repair-sync-button" class="secondary-button compact" type="button">Check status</button><button class="secondary-button compact" data-sync-choice="local" type="button">Keep local</button><button class="primary-button compact" data-sync-choice="merge" type="button">Merge both</button><button class="secondary-button compact" data-sync-choice="firebase" type="button">Take Firebase</button></div></div>
             <p id="repair-sync-message" class="form-message"></p>
             <div class="settings-row"><div><strong>Session</strong><small>Sign out of this browser.</small></div><button id="sign-out-button" class="ghost-button compact" type="button">Sign out</button></div>
