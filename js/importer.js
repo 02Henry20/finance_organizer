@@ -122,7 +122,7 @@ function findHeaderRow(rows) {
   let best = { index: 0, score: -1 };
   rows.slice(0, 20).forEach((row, index) => {
     const normalized = row.map(normalizeHeader).join(" ");
-    const score = ["date", "datum", "betrag", "amount", "saldo", "description", "verwendungszweck", "buchung", "direction", "completed date"].reduce(
+    const score = ["date", "datum", "betrag", "amount", "saldo", "description", "verwendungszweck", "buchung", "direction", "completed date", "money in out", "fees"].reduce(
       (total, word) => total + (normalized.includes(word) ? 1 : 0), 0
     );
     if (score > best.score) best = { index, score };
@@ -339,10 +339,17 @@ function normalizeWise(headers, rows) {
 function isRevolutNeutral(category = "", description = "") {
   const cat = normalizeText(category);
   const desc = normalizeText(description);
-  return cat.includes("top up") || cat.includes("exchange") || cat.includes("transfer") ||
-    (cat.includes("others") && (desc.includes("instant access savings") || desc.includes("savings") || desc.includes("exchanged") || isOwnName(desc))) ||
-    desc.includes("from instant access savings") || desc.includes("to instant access savings") || desc.includes("exchanged to") || desc.includes("exchanged from") ||
-    desc.includes("payment from anh") || desc.includes("top up") || desc.includes("top-up");
+  const compact = normalizeIdentifier([category, description].join(" "));
+  const transferLike = [
+    "top up", "top-up", "topup", "exchange", "exchanged", "currency exchange", "transfer",
+    "instant access savings", "savings transfer", "deposit", "current account transfer",
+    "payment from anh", "payment to anh", "open banking top-up", "apple pay top-up"
+  ].some(token => desc.includes(token) || cat.includes(token));
+  const own = isOwnName(desc) || compact.includes("anhaohenryluu") || compact.includes("anhhaohenryluu");
+  return transferLike ||
+    (cat.includes("others") && (desc.includes("instant access savings") || desc.includes("savings") || desc.includes("exchanged") || own)) ||
+    desc.includes("from instant access savings") || desc.includes("to instant access savings") ||
+    desc.includes("exchanged to") || desc.includes("exchanged from") || own;
 }
 
 function normalizeRevolut(headers, rows) {
@@ -554,6 +561,27 @@ export async function parseBankFile(file) {
   delimiter = detectDelimiter(text);
   allRows = parseCsvRows(text, delimiter).filter(row => row.length > 1);
   if (!allRows.length) throw new Error("The file does not look like a CSV/TSV bank export.");
+
+  // Revolut consolidated exports can arrive as XLSX or CSV. In CSV form the
+  // transaction table may appear far below account summaries, so scan all rows
+  // before generic header detection.
+  const consolidated = normalizeRevolutConsolidatedRows(allRows, file.name || "Revolut CSV");
+  if (consolidated.rows.length) {
+    return {
+      filename: file.name,
+      delimiter,
+      format: "revolut_consolidated",
+      formatLabel: "Revolut consolidated statement",
+      headers: consolidated.headers,
+      rows: consolidated.rows,
+      openingBalanceHint: Number.isFinite(Number(consolidated.openingBalanceHint)) ? Number(consolidated.openingBalanceHint) : null,
+      openingBalanceDetails: consolidated.openingBalanceDetails || [],
+      rawHeaders: consolidated.headers,
+      rawRows: consolidated.rows,
+      mapping: guessMapping(consolidated.headers)
+    };
+  }
+
   const headerRowIndex = findHeaderRow(allRows);
   const rawHeaders = allRows[headerRowIndex].map((header, index) => header || `Column ${index + 1}`);
   const rawRows = allRows.slice(headerRowIndex + 1);

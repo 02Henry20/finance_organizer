@@ -138,10 +138,16 @@ async function fetchTextWithTimeout(url, timeoutMs = 16000) {
 
 async function fetchJson(url, options = {}) {
   const errors = [];
-  const timeoutMs = Number(options.timeoutMs || 16000);
+  const timeoutMs = Math.max(5000, Number(options.timeoutMs || 16000));
+  const deadline = Date.now() + timeoutMs;
   for (const endpoint of yahooProxyUrls(url, options)) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      errors.push(`${endpoint.name}: timeout`);
+      break;
+    }
     try {
-      const text = await fetchTextWithTimeout(endpoint.url, timeoutMs);
+      const text = await fetchTextWithTimeout(endpoint.url, Math.max(1200, remaining));
       const data = JSON.parse(text);
       if (data?.chart?.error) throw new Error(data.chart.error.description || data.chart.error.code || "Yahoo error");
       return data;
@@ -149,7 +155,7 @@ async function fetchJson(url, options = {}) {
       errors.push(`${endpoint.name}: ${error.name === "AbortError" ? "timeout" : error.message}`);
     }
   }
-  throw new Error(errors.join(" | "));
+  throw new Error(errors.join(" | ") || `Request timed out after ${Math.round(timeoutMs / 1000)}s`);
 }
 
 function yahooChartUrl(symbol, range = "5d", interval = "1d") {
@@ -203,12 +209,12 @@ function parseYahooChartQuote(data, candidate, url) {
   };
 }
 
-async function fetchYahooQuoteCandidate(candidate) {
+async function fetchYahooQuoteCandidate(candidate, options = {}) {
   const errors = [];
   for (const [range, interval] of [["5d", "1d"], ["1mo", "1d"]]) {
     const url = yahooChartUrl(candidate.symbol, range, interval);
     try {
-      return parseYahooChartQuote(await fetchJson(url), candidate, url);
+      return parseYahooChartQuote(await fetchJson(url, { timeoutMs: options.timeoutMs }), candidate, url);
     } catch (error) {
       errors.push(`${range}/${interval}: ${error.message}`);
     }
@@ -329,11 +335,12 @@ function yahooSearchRowToMatch(row = {}, asset = {}, source = "Yahoo search") {
   };
 }
 
-export async function searchYahooAssetMatches(asset = {}, { limit = 5, searchLimit = 5, validateQuotes = false } = {}) {
+export async function searchYahooAssetMatches(asset = {}, { limit = 5, searchLimit = 5, validateQuotes = false, query = "", skipKnownFallback = false, timeoutMs = 30000 } = {}) {
   const maxResults = Math.max(1, Math.min(Number(limit) || 5, 5));
   const isin = String(asset.isin || "").trim().toUpperCase();
   const wkn = String(asset.wkn || "").trim().toUpperCase();
   const targetCurrency = String(asset.currency || "EUR").toUpperCase();
+  const searchQuery = String(query || isin || asset.name || asset.symbol || "").trim();
   const apiRows = [];
   const seenSymbols = new Set();
   const addMatch = match => {
@@ -343,29 +350,24 @@ export async function searchYahooAssetMatches(asset = {}, { limit = 5, searchLim
     apiRows.push({ ...match, symbol });
   };
 
-  // Keep this lookup fast: one Yahoo search request by ISIN, max 5 rows.
-  if (isin) {
-    const url = `https://query1.finance.yahoo.com/v1/finance/search?${new URLSearchParams({ q: isin, quotesCount: String(Math.max(1, Math.min(Number(searchLimit) || maxResults, 5))), newsCount: "0", listsCount: "0", enableFuzzyQuery: "true" }).toString()}`;
+  if (searchQuery) {
+    const url = `https://query1.finance.yahoo.com/v1/finance/search?${new URLSearchParams({ q: searchQuery, quotesCount: String(Math.max(1, Math.min(Number(searchLimit) || maxResults, 5))), newsCount: "0", listsCount: "0", enableFuzzyQuery: "true" }).toString()}`;
     try {
-      const data = await fetchJson(url, { timeoutMs: 7000, fast: true });
+      const data = await fetchJson(url, { timeoutMs, fast: true });
       const rows = Array.isArray(data?.quotes) ? data.quotes : [];
       rows
         .filter(row => row?.symbol && String(row.quoteType || "").toUpperCase().match(/EQUITY|ETF|MUTUALFUND|FUND|INDEX/))
         .slice(0, maxResults)
-        .map(row => yahooSearchRowToMatch(row, asset, `Yahoo ISIN search ${isin}`))
+        .map(row => yahooSearchRowToMatch(row, asset, `Yahoo search ${searchQuery}`))
         .sort((a, b) => Number(b.exactIdentifierMatch) - Number(a.exactIdentifierMatch) || b.score - a.score)
         .forEach(addMatch);
     } catch (error) {
-      console.warn("Yahoo ISIN lookup failed", isin, error);
+      console.warn("Yahoo asset lookup failed", searchQuery, error);
+      throw error;
     }
   }
 
-  // If Yahoo search explicitly includes the ISIN in one result, use that immediately.
-  const exactApiMatches = apiRows.filter(match => match.exactIdentifierMatch).slice(0, 1);
-  if (exactApiMatches.length) return exactApiMatches;
-
-  // Fast fallback for known holdings. Does not call the slow chart API.
-  if (!apiRows.length) {
+  if (!skipKnownFallback && !apiRows.length) {
     (YAHOO_KNOWN_BY_ISIN[isin] || []).slice(0, maxResults).forEach(symbol => addMatch({
       symbol,
       name: asset.name || symbol,
@@ -407,7 +409,7 @@ export async function searchYahooAssetMatches(asset = {}, { limit = 5, searchLim
   const matches = [];
   for (const candidate of ordered.slice(0, maxResults)) {
     try {
-      const quote = await fetchYahooQuoteCandidate(candidate);
+      const quote = await fetchYahooQuoteCandidate(candidate, { timeoutMs });
       const age = quoteAgeDays(quote.priceTime);
       const currency = String(quote.currency || candidate.currency || targetCurrency).toUpperCase();
       matches.push({
@@ -432,12 +434,13 @@ export async function searchYahooAssetMatches(asset = {}, { limit = 5, searchLim
   return matches.slice(0, maxResults);
 }
 
-async function searchYahooCandidates(asset) {
+
+async function searchYahooCandidates(asset, options = {}) {
   const found = [];
   for (const query of searchQueriesForAsset(asset).slice(0, 5)) {
     try {
       const url = `https://query1.finance.yahoo.com/v1/finance/search?${new URLSearchParams({ q: query, quotesCount: "12", newsCount: "0", listsCount: "0", enableFuzzyQuery: "true" }).toString()}`;
-      const data = await fetchJson(url);
+      const data = await fetchJson(url, { timeoutMs: options.timeoutMs });
       const rows = Array.isArray(data?.quotes) ? data.quotes : [];
       rows
         .filter(row => row?.symbol)
@@ -451,7 +454,7 @@ async function searchYahooCandidates(asset) {
   return found.map(({ key, ...item }) => item);
 }
 
-export async function fetchYahooQuote(asset, { maxAgeDays = 7, targetCurrency = "EUR" } = {}) {
+export async function fetchYahooQuote(asset, { maxAgeDays = 7, targetCurrency = "EUR", timeoutMs = 30000 } = {}) {
   const errors = [];
   const tried = new Set();
   let bestFallback = null;
@@ -462,7 +465,7 @@ export async function fetchYahooQuote(asset, { maxAgeDays = 7, targetCurrency = 
     if (!symbol || tried.has(symbol)) return null;
     tried.add(symbol);
     try {
-      const quote = await fetchYahooQuoteCandidate({ ...candidate, symbol });
+      const quote = await fetchYahooQuoteCandidate({ ...candidate, symbol }, { timeoutMs });
       const age = quoteAgeDays(quote.priceTime);
       const fresh = age == null || age <= maxAgeDays;
       const targetMatch = String(quote.currency || "").toUpperCase() === target;
@@ -483,7 +486,7 @@ export async function fetchYahooQuote(asset, { maxAgeDays = 7, targetCurrency = 
     const quote = await tryCandidate(candidate);
     if (quote) return quote;
   }
-  for (const candidate of await searchYahooCandidates(asset)) {
+  for (const candidate of await searchYahooCandidates(asset, { timeoutMs })) {
     const quote = await tryCandidate(candidate);
     if (quote) return quote;
   }
@@ -512,7 +515,7 @@ export async function fetchQuote(asset, settings) {
       priceTime: pulledAt
     };
   }
-  return fetchYahooQuote(asset, { maxAgeDays: 7, targetCurrency: asset.currency || settings.primaryCurrency || "EUR" });
+  return fetchYahooQuote(asset, { maxAgeDays: 7, targetCurrency: asset.currency || settings.primaryCurrency || "EUR", timeoutMs: Math.max(5, Math.min(120, Number(settings.quoteRequestTimeoutSeconds ?? 30))) * 1000 });
 }
 
 export async function fetchLatestFxRates(currencies = []) {

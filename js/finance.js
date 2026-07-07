@@ -14,6 +14,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   autoRefreshQuotes: "on",
   autoRefreshFx: "on",
   quoteRefreshIntervalMinutes: 720,
+  quoteRequestTimeoutSeconds: 30,
   portfolioComparisonMode: "rolling",
   portfolioComparisonDays: 30,
   portfolioComparisonDate: "",

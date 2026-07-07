@@ -118,6 +118,7 @@ let importSkippedPage = 1;
 let positionsPage = 1;
 let accountTransactionsPage = 1;
 let activePositionsAccountId = "";
+let assetModalReturnPositionsAccountId = "";
 let activeAccountTransactionsId = "";
 let positionsPeriod = "basis";
 let positionsUnit = "absolute";
@@ -1326,6 +1327,8 @@ function renderSettings() {
   $("#setting-market-provider").value = providerSetting;
   $("#setting-hide-transfers").value = String(state.settings.hideInternalTransfersInSpending !== false);
   $("#setting-quote-interval").value = String(Number(state.settings.quoteRefreshIntervalMinutes ?? 720) / 60);
+  const quoteTimeout = $("#setting-quote-timeout");
+  if (quoteTimeout) quoteTimeout.value = String(Number(state.settings.quoteRequestTimeoutSeconds ?? 30));
   const deltaBars = $("#setting-account-delta-bars");
   if (deltaBars) deltaBars.value = String(state.settings.showAccountDeltaBars !== false);
   setCompareMode(compareMode);
@@ -1370,6 +1373,7 @@ async function saveSettingsFromForm({ silent = true } = {}) {
     motion: $("#setting-motion").value,
     marketProvider: $("#setting-market-provider").value === "manual" ? "manual" : "yahoo",
     quoteRefreshIntervalMinutes: Math.max(0.6, Number($("#setting-quote-interval").value || 12) * 60),
+    quoteRequestTimeoutSeconds: Math.max(5, Math.min(120, Number($("#setting-quote-timeout")?.value || 30))),
     portfolioComparisonMode: comparisonMode,
     portfolioComparisonDays: comparisonMode === "rolling" ? Number($("#setting-compare-days").value || 30) : Number(state.settings.portfolioComparisonDays || 30),
     portfolioComparisonDate: comparisonMode === "date" ? $("#setting-compare-date").value || "" : "",
@@ -1429,7 +1433,9 @@ function currentModalType() {
 
 function closeModal() {
   const modalType = currentModalType();
-  if (modalType === "asset" && activePositionsAccountId) {
+  if (modalType === "asset" && assetModalReturnPositionsAccountId) {
+    activePositionsAccountId = assetModalReturnPositionsAccountId;
+    assetModalReturnPositionsAccountId = "";
     renderPositionsModal();
     openModal("positions");
     return;
@@ -1438,6 +1444,7 @@ function closeModal() {
   $$(`[data-modal]`).forEach(modal => modal.hidden = true);
   document.body.style.overflow = "";
   activePositionsAccountId = "";
+  assetModalReturnPositionsAccountId = "";
   activeAccountTransactionsId = "";
 }
 
@@ -1573,6 +1580,8 @@ function syncAssetPricingFields() {
 
 
 function openAssetModal(id = "", accountId = "") {
+  const returnFromPositions = currentModalType() === "positions" && activePositionsAccountId ? activePositionsAccountId : "";
+  assetModalReturnPositionsAccountId = returnFromPositions || (activePositionsAccountId && accountId ? accountId : "");
   const asset = id ? state.assets.find(item => item.id === id) : null;
   const defaultBroker = accountId || asset?.accountId || state.accounts.find(item => !item.hidden && item.type === "broker")?.id || visibleAccounts()[0]?.id || "";
   $("#asset-id").value = asset?.id || "";
@@ -1665,6 +1674,15 @@ function chooseYahooAssetMatch(matches = []) {
   });
 }
 
+function quoteRequestTimeoutMs() {
+  const seconds = Number(state.settings.quoteRequestTimeoutSeconds ?? 30);
+  return Math.max(5, Math.min(120, Number.isFinite(seconds) ? seconds : 30)) * 1000;
+}
+
+function exactSingleYahooMatch(matches = []) {
+  return matches.length === 1 && Boolean(matches[0]?.exactIdentifierMatch) ? matches[0] : null;
+}
+
 async function runAssetIsinLookup() {
   const button = $("#asset-isin-lookup");
   const draft = assetLookupDraft();
@@ -1673,23 +1691,37 @@ async function runAssetIsinLookup() {
     toast("Add an ISIN first", "Enter the holding ISIN, then run the Yahoo search.", "error");
     return;
   }
-  toast("Yahoo ISIN lookup started", `Searching Yahoo Finance for ${isin}. Max 5 results.`);
+  const timeoutMs = quoteRequestTimeoutMs();
+  toast("Yahoo ISIN lookup started", `Searching Yahoo Finance for ${isin}. Max 5 results · ${Math.round(timeoutMs / 1000)}s timeout.`);
   if (button) {
     button.disabled = true;
     button.textContent = "…";
   }
   try {
-    const matches = await searchYahooAssetMatches(draft, { limit: 5, searchLimit: 5, validateQuotes: false });
-    if (!matches.length) {
-      toast("No Yahoo match", "Yahoo did not return a usable result for this ISIN.", "error");
+    const isinMatches = await searchYahooAssetMatches(draft, { query: isin, limit: 5, searchLimit: 5, validateQuotes: false, skipKnownFallback: true, timeoutMs });
+    const selectedByIsin = exactSingleYahooMatch(isinMatches);
+    if (selectedByIsin) {
+      applyYahooAssetMatch(selectedByIsin);
+      toast("Exact ISIN match applied", `${selectedByIsin.symbol || "Ticker"} filled into the holding form.`);
       return;
     }
-    const exactMatches = matches.filter(match => match.exactIdentifierMatch);
-    const selected = exactMatches.length === 1
-      ? exactMatches[0]
-      : matches.length === 1
-        ? matches[0]
-        : await chooseYahooAssetMatch(matches);
+
+    const reason = isinMatches.length
+      ? `Yahoo returned ${isinMatches.length} result${isinMatches.length === 1 ? "" : "s"}, but not one single 100% ISIN match.`
+      : "Yahoo returned no result for this ISIN.";
+    const assetName = String(draft.name || "").trim();
+    if (!assetName) {
+      toast("No exact ISIN match", `${reason} Add an asset name to continue with a name search.`, "error");
+      return;
+    }
+
+    toast("No exact ISIN match", `${reason} Searching by asset name: ${assetName}.`);
+    const nameMatches = await searchYahooAssetMatches(draft, { query: assetName, limit: 5, searchLimit: 5, validateQuotes: false, skipKnownFallback: true, timeoutMs });
+    if (!nameMatches.length) {
+      toast("No Yahoo name match", "Yahoo did not return a usable result for the asset name.", "error");
+      return;
+    }
+    const selected = await chooseYahooAssetMatch(nameMatches);
     if (!selected) return;
     applyYahooAssetMatch(selected);
     toast("Yahoo match applied", `${selected.symbol || "Ticker"} filled into the holding form.`);
@@ -1702,6 +1734,7 @@ async function runAssetIsinLookup() {
     }
   }
 }
+
 
 function positionDelta(asset) {
   const currentValue = assetMarketValue(asset);
@@ -1905,7 +1938,12 @@ async function refreshAsset(id) {
     await updateAssetQuote(id, quote);
     toast("Price updated", `${quote.symbol || asset.symbol || asset.name}: ${formatCurrency(quote.price, quote.currency || asset.currency)} · pulled ${formatDateTime(quote.pulledAt || quote.time)}`);
   } catch (error) {
-    toast("Price refresh failed", error.message, "error");
+    const timeoutSeconds = Math.round(quoteRequestTimeoutMs() / 1000);
+    const message = String(error?.message || "");
+    const copy = /timeout|timed out/i.test(message)
+      ? `Yahoo did not respond within ${timeoutSeconds}s. You can increase the timeout in Settings.`
+      : message;
+    toast("Price refresh failed", copy, "error");
   }
 }
 

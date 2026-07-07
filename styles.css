@@ -2657,3 +2657,49 @@ td .category-pill .category-pill-text,
   width: 104px;
   white-space: nowrap;
 }
+
+/* v47: position update controls bigger but always one-line */
+.positions-table .positions-updated-header,
+.positions-table td.position-update-cell {
+  width: 154px !important;
+  min-width: 154px !important;
+}
+.positions-table td.position-update-cell {
+  white-space: nowrap !important;
+  overflow: visible !important;
+  padding-left: 7px !important;
+  padding-right: 7px !important;
+}
+.position-update-inline {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 6px !important;
+  white-space: nowrap !important;
+  flex-wrap: nowrap !important;
+  width: max-content !important;
+  max-width: 100% !important;
+}
+.positions-table td.position-update-cell .quote-age {
+  min-width: 68px !important;
+  min-height: 26px !important;
+  padding: 4px 8px !important;
+  font-size: .7rem !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+  flex: 0 0 auto !important;
+}
+.positions-table td.position-update-cell .tiny-icon-button {
+  display: inline-grid !important;
+  place-items: center !important;
+  width: 26px !important;
+  min-width: 26px !important;
+  height: 26px !important;
+  min-height: 26px !important;
+  margin-left: 0 !important;
+  padding: 0 !important;
+  font-size: .82rem !important;
+  line-height: 1 !important;
+  vertical-align: middle !important;
+  flex: 0 0 auto !important;
+}

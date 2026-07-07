@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#111827">
   <meta name="description" content="Capito is a private finance organizer for accounts, transactions, holdings, rules and analytics.">
   <title>Capito</title>
-  <meta name="capito-build" content="capito-v46-wise-revolut-import">
+  <meta name="capito-build" content="capito-v47-revolut-xlsx-timeouts">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16x16.png">
@@ -264,6 +264,7 @@
               <label class="field"><span>Balance graph trend bars</span><select id="setting-account-delta-bars"><option value="true">Show delta overlay</option><option value="false">Current balances only</option></select><small class="field-help">Uses the same comparison period and shows previous balance vs current balance in the balances chart.</small></label>
               <label class="field"><span>Default market provider</span><select id="setting-market-provider"><option value="yahoo">Yahoo Finance</option><option value="manual">Manual prices only</option></select></label>
               <label class="field"><span>Price and FX refresh interval</span><input id="setting-quote-interval" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="12"><small class="field-help">Hours. Example: 0.01 hours ≈ 36 seconds.</small></label>
+              <label class="field"><span>Position search / refresh timeout</span><input id="setting-quote-timeout" type="number" min="5" max="120" step="1" inputmode="numeric" placeholder="30"><small class="field-help">Seconds per Yahoo search or price refresh. Default: 30.</small></label>
               <label class="field"><span>Hide internal transfers from spending</span><select id="setting-hide-transfers"><option value="true">Yes</option><option value="false">No</option></select></label>
               <p id="settings-message" class="form-message" aria-live="polite"></p>
             </form>
