@@ -2787,37 +2787,30 @@ button[aria-busy="true"]::after {
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--red) 14%, transparent);
 }
 
-/* v56: reports category flow controls and rule-lock affordance */
+/* v57: compact report flow buttons, transaction flow filter and rule-lock affordance */
 .report-category-heading {
   gap: 12px;
   align-items: flex-start;
 }
-.report-category-actions {
-  display: flex;
-  align-items: end;
-  justify-content: flex-end;
-  gap: 10px;
-  flex-wrap: wrap;
+ .report-category-actions {
+ display: flex;
+ align-items: center;
+ justify-content: flex-end;
+ gap: 8px;
+ flex-wrap: nowrap;
+ min-width: 0;
 }
 .report-category-mode.compact-segments {
-  min-height: 38px;
+ min-height: 30px;
+ width: auto;
+ flex: 0 0 auto;
 }
 .report-category-mode .segment-button {
-  min-height: 34px;
-  padding: 0 12px;
-  font-size: .74rem;
-}
-.report-flow-filter {
-  min-width: 132px;
-  margin: 0;
-}
-.report-flow-filter span {
-  font-size: .62rem;
-}
-.report-flow-filter select {
-  min-height: 36px;
-  padding: 8px 28px 8px 10px;
-  font-size: .74rem;
+ min-height: 28px;
+ padding: 0 8px;
+ font-size: .66rem;
+ line-height: 1;
+ min-width: 34px;
 }
 .report-mobile-recalc-button {
   align-self: end;
@@ -2845,18 +2838,27 @@ button[aria-busy="true"]::after {
   }
   .report-category-heading {
     display: grid;
-    gap: 12px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 8px;
   }
   .report-category-actions {
-    justify-content: flex-start;
+    justify-content: flex-end;
+    align-items: start;
+    gap: 6px;
+    flex-wrap: nowrap;
   }
   .report-category-mode {
-    width: 100%;
+    width: auto;
   }
   .report-category-mode .segment-button {
-    flex: 1;
+    flex: 0 0 auto;
+    min-width: 30px;
+    min-height: 26px;
+    padding: 0 7px;
+    font-size: .62rem;
   }
-  .report-flow-filter {
-    min-width: 150px;
+  #report-period-pill {
+    display: none;
   }
 }

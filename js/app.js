@@ -926,8 +926,6 @@ function fillReportControls() {
     button.classList.toggle("active", active);
     button.setAttribute("aria-pressed", String(active));
   });
-  const flowFilter = $("#report-flow-filter");
-  if (flowFilter) flowFilter.value = reportsCategoryMode;
 }
 
 function renderReports() {
@@ -1062,6 +1060,7 @@ function renderTransactions() {
   const categoryFilter = $("#tx-category-filter").value || "all";
   const reviewFilter = $("#tx-review-filter").value || "all";
   const currencyFilter = $("#tx-currency-filter")?.value || "all";
+  const flowFilter = $("#tx-flow-filter")?.value || "both";
   const minAmount = absoluteAmountFilterValue("#tx-min-amount");
   const maxAmount = absoluteAmountFilterValue("#tx-max-amount");
   const dateFrom = $("#tx-date-from")?.value || "";
@@ -1071,6 +1070,8 @@ function renderTransactions() {
   if (accountFilter !== "all") rows = rows.filter(tx => tx.accountId === accountFilter);
   if (categoryFilter !== "all") rows = rows.filter(tx => tx.categoryId === categoryFilter);
   if (currencyFilter !== "all") rows = rows.filter(tx => (tx.currency || selectedCurrency()) === currencyFilter);
+  if (flowFilter === "incoming") rows = rows.filter(tx => Number(tx.amount || 0) > 0);
+  if (flowFilter === "outcoming") rows = rows.filter(tx => Number(tx.amount || 0) < 0);
   if (minAmount != null) rows = rows.filter(tx => Math.abs(Number(tx.amount || 0)) >= minAmount);
   if (maxAmount != null) rows = rows.filter(tx => Math.abs(Number(tx.amount || 0)) <= maxAmount);
   if (dateFrom) rows = rows.filter(tx => String(tx.date || "") >= dateFrom);
@@ -3024,7 +3025,7 @@ function wireEvents() {
     importPage = 1;
     renderImportPreview();
   });
-  ["#tx-search", "#tx-account-filter", "#tx-category-filter", "#tx-currency-filter", "#tx-min-amount", "#tx-max-amount", "#tx-date-from", "#tx-date-to", "#tx-review-filter"].forEach(selector => $(selector)?.addEventListener("input", event => {
+  ["#tx-search", "#tx-account-filter", "#tx-category-filter", "#tx-currency-filter", "#tx-flow-filter", "#tx-min-amount", "#tx-max-amount", "#tx-date-from", "#tx-date-to", "#tx-review-filter"].forEach(selector => $(selector)?.addEventListener("input", event => {
     if (["tx-min-amount", "tx-max-amount"].includes(event.currentTarget?.id)) normalizeAbsoluteAmountFilterInput(event.currentTarget);
     txPage = 1;
     renderTransactions();
@@ -3039,6 +3040,7 @@ function wireEvents() {
     $("#tx-account-filter").value = "all";
     $("#tx-category-filter").value = "all";
     $("#tx-currency-filter").value = "all";
+    if ($("#tx-flow-filter")) $("#tx-flow-filter").value = "both";
     $("#tx-min-amount").value = "";
     $("#tx-max-amount").value = "";
     $("#tx-date-from").value = "";
@@ -3088,10 +3090,6 @@ function wireEvents() {
     reportsCategoryMode = ["income", "outcome", "combined"].includes(button.dataset.reportCategoryMode) ? button.dataset.reportCategoryMode : "combined";
     renderReports();
   }));
-  $("#report-flow-filter")?.addEventListener("change", event => {
-    reportsCategoryMode = ["income", "outcome", "combined"].includes(event.target.value) ? event.target.value : "combined";
-    renderReports();
-  });
   $$("[data-position-period]").forEach(button => button.addEventListener("click", () => {
     positionsPeriod = button.dataset.positionPeriod === "today" ? "today" : "basis";
     renderPositionsModal();

@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#111827">
   <meta name="description" content="Capito is a private finance organizer for accounts, transactions, holdings, rules and analytics.">
   <title>Capito</title>
-  <meta name="capito-build" content="capito-v56-reports-flow-rule-lock">
+  <meta name="capito-build" content="capito-v57-plot-buttons-tx-flow-filter">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16x16.png">
@@ -142,7 +142,7 @@
             <div class="chart-wrap"><canvas id="report-net-chart"></canvas><div class="chart-empty" data-empty-for="report-net-chart">No monthly net flow yet.</div></div>
           </article>
           <article class="chart-card surface-card">
-            <div class="panel-heading report-category-heading"><div><p class="eyebrow">CATEGORY FLOW</p><h3 id="report-spending-title">Category split</h3></div><div class="report-category-actions"><div class="segmented-control compact-segments report-category-mode" role="group" aria-label="Category flow mode"><button class="segment-button" data-report-category-mode="income" type="button" aria-pressed="false">Income</button><button class="segment-button" data-report-category-mode="outcome" type="button" aria-pressed="false">Outcome</button><button class="segment-button active" data-report-category-mode="combined" type="button" aria-pressed="true">Combined</button></div><label class="field compact-field report-flow-filter"><span>Filter</span><select id="report-flow-filter"><option value="income">Incoming</option><option value="outcome">Outcoming</option><option value="combined" selected>Both</option></select></label><span id="report-period-pill" class="metric-tag">Current month</span></div></div>
+            <div class="panel-heading report-category-heading"><div><p class="eyebrow">CATEGORY FLOW</p><h3 id="report-spending-title">Category split</h3></div><div class="report-category-actions"><div class="segmented-control compact-segments report-category-mode" role="group" aria-label="Category flow mode"><button class="segment-button" data-report-category-mode="income" type="button" aria-pressed="false">In</button><button class="segment-button" data-report-category-mode="outcome" type="button" aria-pressed="false">Out</button><button class="segment-button active" data-report-category-mode="combined" type="button" aria-pressed="true">Both</button></div><span id="report-period-pill" class="metric-tag">Current month</span></div></div>
             <div class="chart-wrap"><canvas id="report-category-chart"></canvas><div class="chart-empty" data-empty-for="report-category-chart">No category flow in this period.</div></div>
           </article>
           <article class="chart-card surface-card">
@@ -162,6 +162,7 @@
               <label class="field"><span>Account</span><select id="tx-account-filter"></select></label>
               <label class="field"><span>Category</span><select id="tx-category-filter"></select></label>
               <label class="field"><span>Currency</span><select id="tx-currency-filter"><option value="all">All currencies</option></select></label>
+              <label class="field"><span>Flow</span><select id="tx-flow-filter"><option value="both">Both</option><option value="incoming">Incoming</option><option value="outcoming">Outcoming</option></select></label>
               <div class="form-grid two amount-filter-grid"><label class="field"><span>Min abs. amount</span><input id="tx-min-amount" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Any"></label><label class="field"><span>Max abs. amount</span><input id="tx-max-amount" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Any"></label></div>
               <div class="form-grid date-filter-grid"><label class="field"><span>From date</span><input id="tx-date-from" type="date"></label><label class="field"><span>To date</span><input id="tx-date-to" type="date"></label></div>
               <label class="field"><span>Status</span><select id="tx-review-filter"><option value="all">All</option><option value="review">Needs review</option><option value="clean">Clean</option></select></label>
