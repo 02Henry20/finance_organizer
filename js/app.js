@@ -49,6 +49,7 @@ import {
   monthKey,
   normalizeText,
   parseMoney,
+  ruleMatchesTransaction,
   shouldIgnoreTransactionInStats
 } from "./finance.js";
 import {
@@ -166,6 +167,31 @@ function setMessage(el, text, error = false) {
 
 function setBusy(form, busy) {
   form.querySelectorAll("button,input,select,textarea").forEach(control => { control.disabled = busy; });
+}
+
+function setButtonBusy(button, busy, busyLabel = "Working…") {
+  if (!button) return;
+  if (busy) {
+    button.dataset.originalText = button.dataset.originalText || button.textContent;
+    button.textContent = busyLabel;
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+  } else {
+    button.textContent = button.dataset.originalText || button.textContent;
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
+    delete button.dataset.originalText;
+  }
+}
+
+async function withButtonBusy(button, busyLabel, task) {
+  if (!button || button.disabled) return undefined;
+  setButtonBusy(button, true, busyLabel);
+  try {
+    return await task();
+  } finally {
+    setButtonBusy(button, false);
+  }
 }
 
 async function bootAuth() {
@@ -1301,11 +1327,12 @@ function renderRules() {
     const wrapper = document.createElement("section");
     wrapper.className = "rule-group";
     wrapper.innerHTML = `<div class="rule-group-heading"><strong><span class="category-color-dot" style="--cat-color:${safeColor(group.cat?.color)}"></span>${escapeHtml(group.cat?.icon || "?")} ${escapeHtml(group.cat?.name || "Misc")}</strong><small>${escapeHtml(group.cat?.group || "Misc")}</small></div>`;
-    for (const rule of group.rules.sort((a, b) => String(a.label || "").localeCompare(String(b.label || "")))) {
+    for (const rule of group.rules.sort((a, b) => Number(b.priority || 0) - Number(a.priority || 0) || String(a.label || "").localeCompare(String(b.label || "")))) {
       const row = document.createElement("div");
       row.className = "settings-row rule-row";
       const sensitivity = rule.caseSensitive ? "case-sensitive" : "case-insensitive";
-      row.innerHTML = `<div><strong>${escapeHtml(rule.label)}</strong><small>${sensitivity}: ${(rule.keywords || []).map(escapeHtml).join(", ")}</small></div><button class="ghost-button compact icon-only-action" data-edit-rule="${escapeHtml(rule.id)}" type="button" title="Edit rule" aria-label="Edit rule">✎</button>`;
+      const priority = Number(rule.priority || 0);
+      row.innerHTML = `<div><strong>${escapeHtml(rule.label)}</strong><small>Priority ${priority} · ${sensitivity}: ${(rule.keywords || []).map(escapeHtml).join(", ")}</small></div><button class="ghost-button compact icon-only-action" data-edit-rule="${escapeHtml(rule.id)}" type="button" title="Edit rule" aria-label="Edit rule">✎</button>`;
       wrapper.append(row);
     }
     rulesList.append(wrapper);
@@ -1893,30 +1920,87 @@ function openCategoryModal(id = "") {
   openModal("category");
 }
 
-async function reapplyRulesToReviewQueue(rulesOverride = state.rules) {
+function buildCategorizedTransaction(tx, rulesOverride = state.rules) {
+  const result = categorizeTransaction(tx, rulesOverride, state.categories, state.accounts);
+  return {
+    ...tx,
+    categoryId: result.categoryId,
+    confidence: result.confidence,
+    review: result.review,
+    reason: result.reason,
+    candidates: result.candidates || [],
+    matchedAccountId: result.matchedAccountId || tx.matchedAccountId || "",
+    transferMatchedAccountId: result.transferMatchedAccountId || result.matchedAccountId || tx.transferMatchedAccountId || "",
+    transferSourceAccountId: result.transferSourceAccountId || tx.transferSourceAccountId || "",
+    transferTargetAccountId: result.transferTargetAccountId || tx.transferTargetAccountId || "",
+    internalTransfer: Boolean(result.internalTransfer || tx.internalTransfer),
+    excludeFromStats: Boolean(result.excludeFromStats || shouldIgnoreTransactionInStats(tx))
+  };
+}
+
+function transactionChangedByCategorization(tx, next) {
+  return ["categoryId", "review", "reason", "confidence", "internalTransfer", "excludeFromStats", "transferSourceAccountId", "transferTargetAccountId"]
+    .some(key => JSON.stringify(tx[key] ?? null) !== JSON.stringify(next[key] ?? null));
+}
+
+function transactionsAffectedByRuleChange(oldRule, newRule) {
+  return state.transactions.filter(tx => {
+    if (tx.review || tx.categoryId === "misc") return true;
+    if (oldRule && ruleMatchesTransaction(oldRule, tx)) return true;
+    if (newRule && ruleMatchesTransaction(newRule, tx)) return true;
+    if (oldRule?.label && String(tx.reason || "").includes(oldRule.label)) return true;
+    if (newRule?.label && String(tx.reason || "").includes(newRule.label)) return true;
+    return false;
+  });
+}
+
+async function reapplyRulesToRows(rows, rulesOverride = state.rules, { onProgress = null } = {}) {
   const updates = [];
-  for (const tx of state.transactions) {
-    const result = categorizeTransaction(tx, rulesOverride, state.categories, state.accounts);
-    const next = {
-      ...tx,
-      categoryId: result.categoryId,
-      confidence: result.confidence,
-      review: result.review,
-      reason: result.reason,
-      candidates: result.candidates || [],
-      matchedAccountId: result.matchedAccountId || tx.matchedAccountId || "",
-      transferMatchedAccountId: result.transferMatchedAccountId || result.matchedAccountId || tx.transferMatchedAccountId || "",
-      transferSourceAccountId: result.transferSourceAccountId || tx.transferSourceAccountId || "",
-      transferTargetAccountId: result.transferTargetAccountId || tx.transferTargetAccountId || "",
-      internalTransfer: Boolean(result.internalTransfer || tx.internalTransfer),
-      excludeFromStats: Boolean(result.excludeFromStats || shouldIgnoreTransactionInStats(tx))
-    };
-    const changed = ["categoryId", "review", "reason", "internalTransfer", "excludeFromStats", "transferSourceAccountId", "transferTargetAccountId"]
-      .some(key => JSON.stringify(tx[key] ?? null) !== JSON.stringify(next[key] ?? null));
-    if (changed) updates.push(next);
+  const source = Array.isArray(rows) ? rows : [];
+  for (let index = 0; index < source.length; index += 1) {
+    const tx = source[index];
+    const next = buildCategorizedTransaction(tx, rulesOverride);
+    if (transactionChangedByCategorization(tx, next)) updates.push(next);
+    if (onProgress && (index % 10 === 0 || index === source.length - 1)) {
+      await onProgress(index + 1, source.length, updates.length);
+    }
   }
   if (updates.length) await saveTransactionsBatch(updates);
   return updates.length;
+}
+
+async function reapplyRulesAfterRuleChange(oldRule, newRule, rulesOverride = state.rules) {
+  return reapplyRulesToRows(transactionsAffectedByRuleChange(oldRule, newRule), rulesOverride);
+}
+
+async function reapplyAllRulesWithProgress() {
+  const button = $("#rules-reapply-all");
+  const wrap = $("#rules-progress");
+  const bar = $("#rules-progress-bar");
+  const label = $("#rules-progress-label");
+  const percent = $("#rules-progress-percent");
+  if (!button || button.disabled) return;
+  wrap.hidden = false;
+  bar.value = 0;
+  label.textContent = "Reapplying rules…";
+  percent.textContent = "0%";
+  await withButtonBusy(button, "Running…", async () => {
+    const changed = await reapplyRulesToRows(state.transactions, state.rules, {
+      onProgress: async (done, total, changedCount) => {
+        const pct = total ? Math.round(done / total * 100) : 100;
+        bar.value = pct;
+        percent.textContent = `${pct}%`;
+        label.textContent = `Checked ${done} / ${total} transactions · ${changedCount} changed`;
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+    });
+    bar.value = 100;
+    percent.textContent = "100%";
+    label.textContent = `Done · ${changed} transactions changed`;
+    toast("Rules reapplied", changed ? `${changed} transactions updated.` : "No transactions changed.");
+    requestRender();
+    setTimeout(() => { wrap.hidden = true; }, 1800);
+  });
 }
 
 function openRuleModal(id = "") {
@@ -1925,7 +2009,9 @@ function openRuleModal(id = "") {
   $("#rule-label").value = rule?.label || "";
   $("#rule-category").value = rule?.categoryId || "misc";
   $("#rule-keywords").value = (rule?.keywords || []).join(", ");
+  $("#rule-priority").value = String(Number(rule?.priority || 0));
   $("#rule-case-sensitive").value = String(Boolean(rule?.caseSensitive));
+  setMessage($("#rule-message"), "");
   $("#delete-rule-button").hidden = !rule;
   openModal("rule");
 }
@@ -2873,6 +2959,7 @@ function wireEvents() {
     panel?.classList.toggle("is-folded");
     updateRulesFoldState();
   }));
+  $("#rules-reapply-all")?.addEventListener("click", () => reapplyAllRulesWithProgress().catch(error => toast("Rule run failed", error.message, "error")));
   window.addEventListener("resize", updateRulesFoldState);
 
   $$("[data-report-mode]").forEach(button => button.addEventListener("click", () => {
@@ -3164,36 +3251,65 @@ function wireEvents() {
 
   $("#category-form").addEventListener("submit", async event => {
     event.preventDefault();
-    await saveCategory({
-      id: $("#category-id").value || undefined,
-      name: $("#category-name").value,
-      group: state.categories.find(cat => cat.id === $("#category-id").value)?.group || "Custom",
-      icon: $("#category-icon").value,
-      type: $("#category-type").value,
-      color: $("#category-color").value
-    });
-    toast("Category saved");
-    closeModal();
+    const form = event.currentTarget;
+    if (form.dataset.busy === "true") return;
+    form.dataset.busy = "true";
+    setBusy(form, true);
+    try {
+      await saveCategory({
+        id: $("#category-id").value || undefined,
+        name: $("#category-name").value,
+        group: state.categories.find(cat => cat.id === $("#category-id").value)?.group || "Custom",
+        icon: $("#category-icon").value,
+        type: $("#category-type").value,
+        color: $("#category-color").value
+      });
+      toast("Category saved");
+      closeModal();
+    } catch (error) {
+      toast("Category save failed", error.message, "error");
+    } finally {
+      form.dataset.busy = "false";
+      setBusy(form, false);
+    }
   });
 
   $("#rule-form").addEventListener("submit", async event => {
     event.preventDefault();
-    const ruleInput = {
-      id: $("#rule-id").value || undefined,
-      label: $("#rule-label").value,
-      categoryId: $("#rule-category").value,
-      keywords: $("#rule-keywords").value,
-      caseSensitive: $("#rule-case-sensitive").value === "true"
-    };
-    const savedId = await saveRule(ruleInput);
-    const keywords = String(ruleInput.keywords || "").split(",").map(item => item.trim()).filter(Boolean);
-    const nextRule = { ...ruleInput, id: savedId, keywords };
-    const nextRules = state.rules.some(rule => rule.id === savedId)
-      ? state.rules.map(rule => rule.id === savedId ? nextRule : rule)
-      : [...state.rules, nextRule];
-    const reapplied = await reapplyRulesToReviewQueue(nextRules);
-    toast("Rule saved", reapplied ? `${reapplied} past transactions rechecked.` : "No past transactions changed.");
-    closeModal();
+    const form = event.currentTarget;
+    if (form.dataset.busy === "true") return;
+    form.dataset.busy = "true";
+    setBusy(form, true);
+    setMessage($("#rule-message"), "Saving rule and rechecking affected transactions…");
+    try {
+      const oldRule = state.rules.find(rule => rule.id === $("#rule-id").value) || null;
+      const ruleInput = {
+        id: $("#rule-id").value || undefined,
+        label: $("#rule-label").value,
+        categoryId: $("#rule-category").value,
+        keywords: $("#rule-keywords").value,
+        priority: parseMoney($("#rule-priority").value) || 0,
+        caseSensitive: $("#rule-case-sensitive").value === "true"
+      };
+      const savedId = await saveRule(ruleInput);
+      const keywords = String(ruleInput.keywords || "").split(",").map(item => item.trim()).filter(Boolean);
+      const nextRule = { ...ruleInput, id: savedId, keywords };
+      const nextRules = state.rules.some(rule => rule.id === savedId)
+        ? state.rules.map(rule => rule.id === savedId ? nextRule : rule)
+        : [...state.rules, nextRule];
+      const affected = transactionsAffectedByRuleChange(oldRule, nextRule).length;
+      setMessage($("#rule-message"), `Rule saved. Rechecking ${affected} affected transactions…`);
+      const reapplied = await reapplyRulesAfterRuleChange(oldRule, nextRule, nextRules);
+      toast("Rule saved", reapplied ? `${reapplied} affected transactions updated.` : "No affected transactions changed.");
+      requestRender();
+      closeModal();
+    } catch (error) {
+      setMessage($("#rule-message"), error.message, true);
+      toast("Rule save failed", error.message, "error");
+    } finally {
+      form.dataset.busy = "false";
+      setBusy(form, false);
+    }
   });
 
   $("#delete-rule-button").addEventListener("click", async () => {
@@ -3201,10 +3317,12 @@ function wireEvents() {
     if (!id) return;
     const ok = await confirmDialog({ title: "Delete rule", message: "Delete this keyword rule and recategorize past transactions?", confirmLabel: "Delete rule", danger: true });
     if (!ok) return;
+    const oldRule = state.rules.find(rule => rule.id === id) || null;
     const nextRules = state.rules.filter(rule => rule.id !== id);
     await deleteRule(id);
-    const reapplied = await reapplyRulesToReviewQueue(nextRules);
-    toast("Rule deleted", reapplied ? `${reapplied} past transactions rechecked.` : "");
+    const reapplied = await reapplyRulesAfterRuleChange(oldRule, null, nextRules);
+    toast("Rule deleted", reapplied ? `${reapplied} affected transactions updated.` : "");
+    requestRender();
     closeModal();
   });
 
@@ -3253,8 +3371,8 @@ function wireEvents() {
     resetImportFlow("Import reset.");
   });
 
-  $("#commit-positions-import-button")?.addEventListener("click", async () => {
-    $("#commit-import-button")?.click();
+  $("#commit-positions-import-button")?.addEventListener("click", async event => {
+    await withButtonBusy(event.currentTarget, "Importing…", async () => $("#commit-import-button")?.click());
   });
 
   $("#import-file").addEventListener("change", async event => {
@@ -3281,30 +3399,33 @@ function wireEvents() {
     resetImportFlow("Import reset.");
   });
 
-  $("#commit-import-button").addEventListener("click", async () => {
+  $("#commit-import-button").addEventListener("click", async event => {
     if (!activePreview?.transactions?.length && !brokerPreview?.positions?.length) return;
-    try {
-      let txCount = 0;
-      let positionCount = 0;
-      if (activePreview?.transactions?.length) {
-        const importAccount = state.accounts.find(account => account.id === $("#import-account")?.value);
-        const openingHint = Number(activeParsedFile?.openingBalanceHint);
-        if (importAccount && Number.isFinite(openingHint)) {
-          await saveAccount({ ...importAccount, openingBalance: openingHint });
+    await withButtonBusy(event.currentTarget, "Importing…", async () => {
+      setMessage($("#import-message"), "Import is running…");
+      try {
+        let txCount = 0;
+        let positionCount = 0;
+        if (activePreview?.transactions?.length) {
+          const importAccount = state.accounts.find(account => account.id === $("#import-account")?.value);
+          const openingHint = Number(activeParsedFile?.openingBalanceHint);
+          if (importAccount && Number.isFinite(openingHint)) {
+            await saveAccount({ ...importAccount, openingBalance: openingHint });
+          }
+          await saveTransactionsBatch(activePreview.transactions);
+          txCount = activePreview.transactions.length;
         }
-        await saveTransactionsBatch(activePreview.transactions);
-        txCount = activePreview.transactions.length;
+        if (brokerPreview?.positions?.length) {
+          for (const asset of brokerPreview.positions) await saveAsset(asset);
+          positionCount = brokerPreview.positions.length;
+        }
+        toast("Import complete", `${txCount} transactions and ${positionCount} positions saved.`);
+        resetImportFlow("Import complete.");
+      } catch (error) {
+        toast("Import save failed", error.message, "error");
+        setMessage($("#import-message"), error.message, true);
       }
-      if (brokerPreview?.positions?.length) {
-        for (const asset of brokerPreview.positions) await saveAsset(asset);
-        positionCount = brokerPreview.positions.length;
-      }
-      toast("Import complete", `${txCount} transactions and ${positionCount} positions saved.`);
-      resetImportFlow("Import complete.");
-    } catch (error) {
-      toast("Import save failed", error.message, "error");
-      setMessage($("#import-message"), error.message, true);
-    }
+    });
   });
 
   window.addEventListener("resize", () => requestRender());

@@ -268,34 +268,58 @@ export function sortByDateDesc(entries) {
   return [...entries].sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")) || String(b.createdAtMs || "").localeCompare(String(a.createdAtMs || "")));
 }
 
+export function rulePriority(rule = {}) {
+  const value = Number(rule.priority ?? 0);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function keywordMatchesText(keyword, rawText, { caseSensitive = false } = {}) {
+  const rawKeyword = String(keyword || "").trim();
+  if (!rawKeyword) return false;
+  if (caseSensitive) {
+    const compactRaw = String(rawText || "").replace(/[^A-Za-z0-9äöüÄÖÜ€$%+\-.]/g, "");
+    const compactKeyword = rawKeyword.replace(/[^A-Za-z0-9äöüÄÖÜ€$%+\-.]/g, "");
+    return Boolean(
+      String(rawText || "").includes(rawKeyword) ||
+      (compactKeyword && compactRaw.includes(compactKeyword))
+    );
+  }
+  const normalizedText = normalizeText(rawText);
+  const normalizedKeyword = normalizeText(rawKeyword);
+  const compactText = normalizeIdentifier(rawText);
+  const compactKeyword = normalizeIdentifier(rawKeyword);
+  return Boolean(
+    (normalizedKeyword && normalizedText.includes(normalizedKeyword)) ||
+    (compactKeyword && compactText.includes(compactKeyword))
+  );
+}
+
+export function ruleMatchesTransaction(rule = {}, tx = {}) {
+  const rawText = [tx.description, tx.counterparty, tx.rawText, tx.note, tx.reason].filter(Boolean).join(" ");
+  const rawKeywords = (rule.keywords || []).map(value => String(value || "").trim()).filter(Boolean);
+  return rawKeywords.some(keyword => keywordMatchesText(keyword, rawText, { caseSensitive: Boolean(rule.caseSensitive) }));
+}
+
 export function categorizeTransaction(tx, rules = DEFAULT_RULES, categories = DEFAULT_CATEGORIES, accounts = []) {
   const rawText = [tx.description, tx.counterparty, tx.rawText, tx.note].filter(Boolean).join(" ");
-  const normalizedText = normalizeText(rawText);
   const categoryMap = new Map(categories.map(cat => [cat.id, cat]));
   const detectedTransfer = detectInternalTransfer(tx, accounts);
   if (detectedTransfer) return detectedTransfer;
   const matches = [];
 
-  const compactText = normalizeIdentifier(rawText);
   for (const rule of rules) {
     const rawKeywords = (rule.keywords || []).map(value => String(value || "").trim()).filter(Boolean);
     if (!rawKeywords.length) continue;
-    const matched = rawKeywords.filter(keyword => {
-      const normalizedKeyword = normalizeText(keyword);
-      const compactKeyword = normalizeIdentifier(keyword);
-      return Boolean(
-        (normalizedKeyword && normalizedText.includes(normalizedKeyword)) ||
-        (compactKeyword && compactText.includes(compactKeyword))
-      );
-    });
+    const matched = rawKeywords.filter(keyword => keywordMatchesText(keyword, rawText, { caseSensitive: Boolean(rule.caseSensitive) }));
     if (!matched.length) continue;
     const exactPhraseBonus = matched.some(item => normalizeText(item).includes(" ")) ? 12 : 0;
     const compactBonus = matched.some(item => normalizeIdentifier(item).length >= 8) ? 4 : 0;
-    const score = matched.length * 18 + exactPhraseBonus + compactBonus;
-    matches.push({ rule, score, matched });
+    const priority = rulePriority(rule);
+    const score = matched.length * 18 + exactPhraseBonus + compactBonus + Math.max(0, priority) * 8;
+    matches.push({ rule, score, matched, priority });
   }
 
-  matches.sort((a, b) => b.score - a.score);
+  matches.sort((a, b) => b.priority - a.priority || b.score - a.score || String(a.rule.label || "").localeCompare(String(b.rule.label || "")));
   if (!matches.length) {
     return {
       categoryId: "misc",
@@ -307,7 +331,7 @@ export function categorizeTransaction(tx, rules = DEFAULT_RULES, categories = DE
   }
 
   const top = matches[0];
-  const challengers = matches.filter(item => item.rule.categoryId !== top.rule.categoryId && top.score - item.score <= 15);
+  const challengers = matches.filter(item => item !== top && item.rule.categoryId !== top.rule.categoryId && item.priority === top.priority && top.score - item.score <= 15);
   const topCategory = categoryMap.get(top.rule.categoryId);
   const signMismatch = topCategory?.type === "income" && Number(tx.amount) < 0;
 
@@ -318,11 +342,12 @@ export function categorizeTransaction(tx, rules = DEFAULT_RULES, categories = DE
       review: true,
       reason: signMismatch
         ? `Rule '${top.rule.label}' looked like income but the amount is negative.`
-        : `Ambiguous: ${[top, ...challengers].map(item => categoryMap.get(item.rule.categoryId)?.name || item.rule.categoryId).join(" | ")}`,
+        : `Ambiguous: ${[top, ...challengers].map(item => categoryMap.get(item.rule.categoryId)?.name || item.rule.categoryId).join(" | ")}. Increase rule priority to resolve.`,
       candidates: [top, ...challengers].map(item => ({
         categoryId: item.rule.categoryId,
         categoryName: categoryMap.get(item.rule.categoryId)?.name || item.rule.categoryId,
         score: item.score,
+        priority: item.priority,
         keywords: item.matched
       }))
     };
@@ -333,7 +358,7 @@ export function categorizeTransaction(tx, rules = DEFAULT_RULES, categories = DE
     confidence: Math.min(0.99, top.score / 125),
     review: false,
     reason: `Matched rule '${top.rule.label}'.`,
-    candidates: [{ categoryId: top.rule.categoryId, categoryName: topCategory?.name || top.rule.categoryId, score: top.score, keywords: top.matched }]
+    candidates: [{ categoryId: top.rule.categoryId, categoryName: topCategory?.name || top.rule.categoryId, score: top.score, priority: top.priority, keywords: top.matched }]
   };
 }
 

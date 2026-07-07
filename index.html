@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#111827">
   <meta name="description" content="Capito is a private finance organizer for accounts, transactions, holdings, rules and analytics.">
   <title>Capito</title>
-  <meta name="capito-build" content="capito-v49-revolut-consolidated-fix">
+  <meta name="capito-build" content="capito-v50-rule-priority-busy-icons">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16x16.png">
@@ -232,8 +232,9 @@
             <div id="categories-list" class="settings-list rules-scroll-list"></div>
           </article>
           <article id="rules-panel" class="surface-card table-card rules-panel">
-            <div class="panel-heading"><div><p class="eyebrow">AUTO CATEGORIZATION</p><h3>Rules by target category</h3></div><div class="rules-heading-actions"><button id="rules-fold-toggle" class="ghost-button compact mobile-fold-button" type="button" aria-expanded="false">Show</button><button class="primary-button compact" data-open-modal="rule" type="button">Add</button></div></div>
+            <div class="panel-heading"><div><p class="eyebrow">AUTO CATEGORIZATION</p><h3>Rules by target category</h3></div><div class="rules-heading-actions"><button id="rules-fold-toggle" class="ghost-button compact mobile-fold-button" type="button" aria-expanded="false">Show</button><button id="rules-reapply-all" class="secondary-button compact desktop-only-tools" type="button">↻ Rules</button><button class="primary-button compact" data-open-modal="rule" type="button">Add</button></div></div>
             <label class="field rules-search"><span>Search rules</span><input id="rule-search" type="search" placeholder="Label, keyword, category"></label>
+            <div id="rules-progress" class="rules-progress" hidden><div><span id="rules-progress-label">Reapplying rules…</span><b id="rules-progress-percent">0%</b></div><progress id="rules-progress-bar" max="100" value="0"></progress></div>
             <div id="rules-list" class="settings-list rules-scroll-list"></div>
           </article>
         </div>
@@ -399,7 +400,8 @@
         <label class="field"><span>Label</span><input id="rule-label" placeholder="Groceries at REWE"></label>
         <label class="field"><span>Category</span><select id="rule-category"></select></label>
         <label class="field"><span>Keywords | phrases</span><input id="rule-keywords" placeholder="rewe, edeka, grocery"></label>
-        <label class="field"><span>Case sensitive</span><select id="rule-case-sensitive"><option value="false">No</option><option value="true">Yes</option></select></label>
+        <div class="form-grid two"><label class="field"><span>Priority</span><input id="rule-priority" type="number" step="1" min="0" max="999" placeholder="0"></label><label class="field"><span>Case sensitive</span><select id="rule-case-sensitive"><option value="false">No</option><option value="true">Yes</option></select></label></div>
+        <p id="rule-message" class="form-message" aria-live="polite"></p>
         <div class="button-row"><button class="primary-button" type="submit">Save rule</button><button id="delete-rule-button" class="danger-button" type="button" hidden>Delete</button></div>
       </form>
     </section>
