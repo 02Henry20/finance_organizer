@@ -62,7 +62,7 @@ import {
   serializeTransactionsCsv
 } from "./importer.js";
 import { fetchQuote, searchYahooAssetMatches } from "./market.js";
-import { drawAccountBars, drawDonut, drawIncomeExpense, drawMovementBars, drawNetSeries, drawYearComparison } from "./charts.js";
+import { drawAccountBars, drawDonut, drawIncomeExpense, drawMultiLineSeries, drawNetSeries, drawYearComparison } from "./charts.js";
 
 const VIEW_LABELS = {
   overview: ["COMMAND CENTER", "Overview"],
@@ -622,23 +622,75 @@ function reportAccountTotalAt(account, asOfDate = "") {
   return account.type === "debt" ? Math.abs(total) : total;
 }
 
-function reportAccountMovementRows(startDate, endDate, type = "asset") {
-  const previousDate = dayBefore(startDate);
-  const rows = visibleAccounts()
-    .filter(account => type === "debt" ? account.type === "debt" : !["debt", "hidden"].includes(account.type))
-    .map(account => {
-      const start = reportAccountTotalAt(account, previousDate);
-      const end = reportAccountTotalAt(account, endDate);
-      return {
-        id: account.id,
-        name: account.name || account.id || "Account",
-        start,
-        end,
-        value: end - start
-      };
+function endOfMonthDate(dateString) {
+  const date = new Date(`${String(dateString || TODAY()).slice(0, 7)}-01T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return String(dateString || TODAY()).slice(0, 10);
+  date.setUTCMonth(date.getUTCMonth() + 1, 0);
+  return date.toISOString().slice(0, 10);
+}
+
+function addDaysIso(dateString, offset) {
+  const date = new Date(`${dateString}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return dateString;
+  date.setUTCDate(date.getUTCDate() + offset);
+  return date.toISOString().slice(0, 10);
+}
+
+function reportPeriodPoints(startDate, endDate) {
+  const points = new Set();
+  const dayCount = daysBetween(startDate, endDate);
+  if (dayCount <= 45) {
+    for (let i = 0; i < dayCount; i += 1) points.add(addDaysIso(startDate, i));
+  } else {
+    points.add(startDate);
+    let cursor = String(startDate || TODAY()).slice(0, 7);
+    const endMonth = String(endDate || TODAY()).slice(0, 7);
+    while (cursor <= endMonth) {
+      const monthEndDate = endOfMonthDate(`${cursor}-01`);
+      if (monthEndDate >= startDate && monthEndDate <= endDate) points.add(monthEndDate);
+      cursor = shiftMonth(cursor, 1);
+    }
+    points.add(endDate);
+  }
+  return [...points].filter(date => date >= startDate && date <= endDate).sort();
+}
+
+function reportPointLabel(dateString, dense = false) {
+  const date = new Date(`${dateString}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return dateString;
+  return new Intl.DateTimeFormat(undefined, dense ? { month: "short", year: "2-digit" } : { month: "short", day: "numeric" }).format(date);
+}
+
+function reportBrokerHoldingsAt(account, asOfDate = "") {
+  return holdingsForAccount(account.id).reduce((sum, asset) => sum + reportAssetValueAt(asset, account, asOfDate), 0);
+}
+
+function reportDebtBalanceAt(account, asOfDate = "") {
+  const row = calculatePortfolioSnapshot(state, asOfDate).accountRows.find(item => item.id === account.id);
+  return Math.abs(Number(row?.balance?.converted || 0));
+}
+
+function reportAccountProgressionRows(startDate, endDate, type = "holdings") {
+  const dates = reportPeriodPoints(startDate, endDate);
+  const dense = dates.length > 45 || reportsMode === "year";
+  const accounts = visibleAccounts()
+    .filter(account => {
+      if (type === "debt") return account.type === "debt";
+      return ["broker", "asset"].includes(account.type) && holdingsForAccount(account.id).length > 0;
     })
-    .filter(row => Math.abs(row.value) > 0.005 || Math.abs(row.end) > 0.005 || Math.abs(row.start) > 0.005);
-  return rows.sort((a, b) => Math.abs(b.value) - Math.abs(a.value) || String(a.name || "").localeCompare(String(b.name || "")));
+    .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+  const series = accounts.map(account => ({
+    id: account.id,
+    name: account.name || account.id || "Account"
+  }));
+  const rows = dates.map(date => {
+    const values = {};
+    accounts.forEach(account => {
+      values[account.id] = type === "debt" ? reportDebtBalanceAt(account, date) : reportBrokerHoldingsAt(account, date);
+    });
+    return { date, label: reportPointLabel(date, dense), values };
+  });
+  return { rows, series };
 }
 
 function daysBetween(start, end) {
@@ -986,8 +1038,8 @@ function renderReports() {
   const compareSummary = summarizeTransactions(compareRows);
   const categoryRows = categoryFlowForRange(bounds.start, bounds.end, reportsCategoryMode);
   const compareCategoryRows = categoryFlowForRange(compareBounds.start, compareBounds.end, reportsCategoryMode);
-  const assetMovementRows = reportAccountMovementRows(bounds.start, bounds.end, "asset");
-  const debtMovementRows = reportAccountMovementRows(bounds.start, bounds.end, "debt");
+  const assetProgressionRows = reportAccountProgressionRows(bounds.start, bounds.end, "holdings");
+  const debtProgressionRows = reportAccountProgressionRows(bounds.start, bounds.end, "debt");
   const days = daysBetween(bounds.start, bounds.end);
   const compareDays = daysBetween(compareBounds.start, compareBounds.end);
   const topCategory = categoryRows[0];
@@ -1044,13 +1096,13 @@ function renderReports() {
   const periodLabel = bounds.label;
   const assetsTitle = $("#report-assets-title");
   const debtTitle = $("#report-debt-title");
-  if (assetsTitle) assetsTitle.textContent = `Asset movement · ${periodLabel}`;
-  if (debtTitle) debtTitle.textContent = `Debt movement · ${periodLabel}`;
+  if (assetsTitle) assetsTitle.textContent = `Broker holdings · ${periodLabel}`;
+  if (debtTitle) debtTitle.textContent = `Debt progression · ${periodLabel}`;
 
   drawIncomeExpense($("#report-cashflow-chart"), trendRows, currency);
   drawNetSeries($("#report-net-chart"), trendRows);
-  drawMovementBars($("#report-asset-movement-chart"), assetMovementRows, currency);
-  drawMovementBars($("#report-debt-movement-chart"), debtMovementRows, currency);
+  drawMultiLineSeries($("#report-asset-movement-chart"), assetProgressionRows, currency, { zeroBased: true });
+  drawMultiLineSeries($("#report-debt-movement-chart"), debtProgressionRows, currency, { zeroBased: true });
   drawDonut($("#report-category-chart"), categoryRows, currency, { centerLabel: flowCenterLabels[reportsCategoryMode] || "flow" });
   drawYearComparison($("#report-yoy-chart"), yoyRows, currency, { currentLabel: selectedYear, previousLabel: reportsCompareYear });
 }

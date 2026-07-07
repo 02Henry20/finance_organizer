@@ -406,3 +406,78 @@ export function drawMovementBars(canvas, rows, currency = "EUR", options = {}) {
   });
 }
 
+
+export function drawMultiLineSeries(canvas, payload, currency = "EUR", options = {}) {
+  const rows = Array.isArray(payload?.rows) ? payload.rows : [];
+  const series = Array.isArray(payload?.series) ? payload.series : [];
+  const available = rows.length > 0 && series.length > 0 && rows.some(row => series.some(item => Number.isFinite(Number(row.values?.[item.id]))));
+  setEmpty(canvas, !available);
+  if (!available) return;
+  const { ctx, width, height, colors: c } = prepare(canvas);
+  const mobile = width < 520;
+  const palette = [c.accent, c.primary, c.yellow, c.violet, c.green, c.red, "#69d2ff", "#d19dff", "#ffb86b", c.text];
+  const legendRows = Math.min(3, Math.ceil(series.length / (mobile ? 2 : 4)) || 1);
+  const area = {
+    left: mobile ? 52 : 60,
+    right: width - 14,
+    top: 18,
+    bottom: height - (mobile ? 42 + legendRows * 13 : 44 + legendRows * 14)
+  };
+  if (area.bottom < area.top + 60) area.bottom = height - 40;
+  const allValues = rows.flatMap(row => series.map(item => Number(row.values?.[item.id])).filter(Number.isFinite));
+  const maxValue = Math.max(...allValues.map(value => Math.abs(value)), 1);
+  const [rawMin, rawMax] = options.zeroBased ? [0, Math.max(...allValues, 0) * 1.12 || 1] : extent(allValues, 0.14);
+  const yMin = options.zeroBased ? 0 : rawMin;
+  const yMax = options.zeroBased ? Math.max(rawMax, maxValue * 0.08, 1) : rawMax;
+  const y = scale(yMin, yMax, area.bottom, area.top);
+  const x = index => area.left + (rows.length <= 1 ? 0.5 : index / (rows.length - 1)) * (area.right - area.left);
+  const moneyCompact = new Intl.NumberFormat(undefined, { style: "currency", currency, notation: "compact", maximumFractionDigits: 1 });
+
+  drawGrid(ctx, area, yMin, yMax, y, c, value => moneyCompact.format(value));
+  series.forEach((item, seriesIndex) => {
+    const points = rows
+      .map((row, index) => ({ x: x(index), y: y(Number(row.values?.[item.id])), value: Number(row.values?.[item.id]) }))
+      .filter(point => Number.isFinite(point.value));
+    if (!points.length) return;
+    ctx.save();
+    ctx.strokeStyle = palette[seriesIndex % palette.length];
+    ctx.lineWidth = mobile ? 2 : 2.5;
+    ctx.beginPath();
+    points.forEach((point, index) => index ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y));
+    ctx.stroke();
+    if (rows.length <= 14) {
+      points.forEach(point => {
+        ctx.beginPath();
+        ctx.fillStyle = palette[seriesIndex % palette.length];
+        ctx.arc(point.x, point.y, mobile ? 2.5 : 3, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+    ctx.restore();
+  });
+  drawLabels(ctx, rows.map(row => row.label || row.date), area, x, c);
+
+  ctx.save();
+  ctx.font = `${mobile ? 10 : 11}px Inter, system-ui`;
+  ctx.textBaseline = "middle";
+  let legendX = area.left;
+  let legendY = height - (legendRows * (mobile ? 13 : 14));
+  const maxLegendX = width - 12;
+  series.forEach((item, index) => {
+    const label = fitText(ctx, item.name || "Account", mobile ? 78 : 118);
+    const widthNeeded = Math.min(mobile ? 96 : 140, 22 + ctx.measureText(label).width);
+    if (legendX + widthNeeded > maxLegendX && legendX > area.left) {
+      legendX = area.left;
+      legendY += mobile ? 13 : 14;
+    }
+    ctx.fillStyle = palette[index % palette.length];
+    roundedRect(ctx, legendX, legendY - 4, 10, 4, 2);
+    ctx.fill();
+    ctx.fillStyle = c.text;
+    ctx.textAlign = "left";
+    ctx.fillText(label, legendX + 14, legendY);
+    legendX += widthNeeded + (mobile ? 4 : 8);
+  });
+  ctx.restore();
+}
+

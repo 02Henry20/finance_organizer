@@ -2864,7 +2864,7 @@ button[aria-busy="true"]::after {
 }
 
 
-/* v58: reports movement plots and tighter selectors */
+/* v59: reports progression line plots and tighter category selector */
 .report-mode-control .segment-button,
 .reports-toolbar .compact-field input,
 .reports-toolbar .compact-field select {
@@ -2961,5 +2961,80 @@ button[aria-busy="true"]::after {
   .reports-grid .chart-card:has(#report-debt-movement-chart) .chart-wrap {
     min-height: 218px !important;
     height: 218px !important;
+  }
+}
+
+
+/* v59: multiline progression charts and no-wrap category selector */
+.report-category-heading {
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  column-gap: 6px !important;
+  align-items: start !important;
+}
+.report-category-heading h3 {
+  font-size: clamp(.96rem, 1.3vw, 1.1rem) !important;
+  line-height: 1.1 !important;
+}
+.report-category-actions {
+  min-width: 108px !important;
+  max-width: 112px !important;
+}
+.report-category-mode.compact-segments {
+  display: inline-flex !important;
+  flex-wrap: nowrap !important;
+  min-width: 104px !important;
+  max-width: 108px !important;
+  gap: 2px !important;
+  padding: 3px !important;
+}
+.report-category-mode .segment-button {
+  width: 31px !important;
+  min-width: 31px !important;
+  max-width: 31px !important;
+  min-height: 25px !important;
+  padding: 0 !important;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  overflow-wrap: normal !important;
+  line-height: 1 !important;
+  font-size: .58rem !important;
+}
+.reports-grid .chart-card:has(#report-asset-movement-chart) .chart-wrap,
+.reports-grid .chart-card:has(#report-debt-movement-chart) .chart-wrap {
+  min-height: 280px !important;
+  height: 280px !important;
+}
+
+@media (max-width: 680px) {
+  .report-category-heading {
+    grid-template-columns: minmax(0, 1fr) 100px !important;
+    column-gap: 4px !important;
+  }
+  .report-category-heading h3 {
+    font-size: .92rem !important;
+    max-width: calc(100vw - 176px) !important;
+  }
+  .report-category-actions {
+    min-width: 98px !important;
+    max-width: 100px !important;
+  }
+  .report-category-mode.compact-segments {
+    min-width: 96px !important;
+    max-width: 96px !important;
+    gap: 1px !important;
+    padding: 3px !important;
+  }
+  .report-category-mode .segment-button {
+    width: 28px !important;
+    min-width: 28px !important;
+    max-width: 28px !important;
+    min-height: 23px !important;
+    font-size: .52rem !important;
+    letter-spacing: -.01em !important;
+  }
+  .reports-grid .chart-card:has(#report-asset-movement-chart) .chart-wrap,
+  .reports-grid .chart-card:has(#report-debt-movement-chart) .chart-wrap {
+    min-height: 250px !important;
+    height: 250px !important;
   }
 }
