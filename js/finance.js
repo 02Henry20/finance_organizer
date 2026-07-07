@@ -273,52 +273,100 @@ export function rulePriority(rule = {}) {
   return Number.isFinite(value) ? value : 0;
 }
 
+function applyRuleTextCase(value, { caseSensitive = false, mode = "plain" } = {}) {
+  let text = String(value ?? "").normalize("NFKC").replace(/ß/g, "ss");
+  if (mode === "german") {
+    text = text
+      .replace(/Ä/g, "Ae")
+      .replace(/Ö/g, "Oe")
+      .replace(/Ü/g, "Ue")
+      .replace(/ä/g, "ae")
+      .replace(/ö/g, "oe")
+      .replace(/ü/g, "ue");
+  }
+  if (mode === "strip") {
+    text = text.normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+  }
+  if (!caseSensitive) text = text.toLocaleLowerCase();
+  return text;
+}
+
+function ruleTokensFor(value, { caseSensitive = false, mode = "plain" } = {}) {
+  const text = applyRuleTextCase(value, { caseSensitive, mode });
+  return text.match(/[\p{L}\p{N}]+/gu) || [];
+}
+
+function uniqueRuleTokenVariants(value, { caseSensitive = false } = {}) {
+  const seen = new Set();
+  const variants = [];
+  for (const mode of ["plain", "strip", "german"]) {
+    const tokens = ruleTokensFor(value, { caseSensitive, mode });
+    const key = tokens.join("\u0001");
+    if (!tokens.length || seen.has(key)) continue;
+    seen.add(key);
+    variants.push(tokens);
+  }
+  return variants;
+}
+
 function normalizeRuleMask(value, { caseSensitive = false } = {}) {
-  let text = String(value ?? "")
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/ß/g, "ss");
-  if (!caseSensitive) text = text.toLowerCase();
-  return text
-    .replace(/[^A-Za-z0-9]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return uniqueRuleTokenVariants(value, { caseSensitive })[0]?.join(" ") || "";
+}
+
+function tokenSequenceMatch(textTokens, keywordTokens) {
+  if (!textTokens.length || !keywordTokens.length || keywordTokens.length > textTokens.length) return false;
+  for (let start = 0; start <= textTokens.length - keywordTokens.length; start += 1) {
+    let ok = true;
+    for (let offset = 0; offset < keywordTokens.length; offset += 1) {
+      if (textTokens[start + offset] !== keywordTokens[offset]) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) return true;
+  }
+  return false;
 }
 
 function keywordMatchInfo(keyword, rawText, { caseSensitive = false } = {}) {
   const rawKeyword = String(keyword || "").trim();
   if (!rawKeyword) return null;
 
-  const text = normalizeRuleMask(rawText, { caseSensitive });
-  const mask = normalizeRuleMask(rawKeyword, { caseSensitive });
-  if (!text || !mask) return null;
+  const keywordVariants = uniqueRuleTokenVariants(rawKeyword, { caseSensitive });
+  const textVariants = uniqueRuleTokenVariants(rawText, { caseSensitive });
+  if (!keywordVariants.length || !textVariants.length) return null;
 
-  const keywordTokens = mask.split(" ").filter(Boolean);
-  const textTokens = text.split(" ").filter(Boolean);
-  if (!keywordTokens.length || !textTokens.length) return null;
+  let best = null;
+  for (const keywordTokens of keywordVariants) {
+    for (const textTokens of textVariants) {
+      if (keywordTokens.length > 1) {
+        // Multi-token rules match token sequences only.
+        // "Board Game Cafe" matches "Board Game Cafe" and "Board-Game Cafe",
+        // but deliberately does NOT match "BoardGameCafe".
+        if (!tokenSequenceMatch(textTokens, keywordTokens)) continue;
+        const phraseLength = keywordTokens.join(" ").length;
+        const info = { keyword: rawKeyword, mode: "phrase", strength: 72 + keywordTokens.length * 9 + phraseLength * 0.35 };
+        if (!best || info.strength > best.strength) best = info;
+        continue;
+      }
 
-  // Multi-word rules are true phrase masks after trimming only.
-  // "Board Game Cafe" matches "Board Game Cafe", but deliberately does NOT match "BoardGameCafe".
-  if (keywordTokens.length > 1) {
-    const phrase = keywordTokens.join(" ");
-    const paddedText = ` ${text} `;
-    const paddedPhrase = ` ${phrase} `;
-    if (!paddedText.includes(paddedPhrase)) return null;
-    return { keyword: rawKeyword, mode: "phrase", strength: 70 + keywordTokens.length * 8 + phrase.length * 0.35 };
+      const token = keywordTokens[0];
+      if (textTokens.includes(token)) {
+        const info = { keyword: rawKeyword, mode: "word", strength: 54 + Math.min(18, token.length) };
+        if (!best || info.strength > best.strength) best = info;
+        continue;
+      }
+
+      // Merchant names often append legal/plural suffixes, e.g. mcdonald -> mcdonalds.
+      // Keep this to longer keywords only so short words like "CU" or "Bake" do not overmatch arbitrary compounds.
+      if (token.length >= 5 && textTokens.some(item => item.startsWith(token))) {
+        const info = { keyword: rawKeyword, mode: "prefix", strength: 38 + Math.min(12, token.length) };
+        if (!best || info.strength > best.strength) best = info;
+      }
+    }
   }
 
-  const token = keywordTokens[0];
-  if (textTokens.includes(token)) {
-    return { keyword: rawKeyword, mode: "word", strength: 52 + Math.min(16, token.length) };
-  }
-
-  // Merchant names often append legal/plural suffixes, e.g. mcdonald -> mcdonalds.
-  // Keep this to longer keywords only so short words like "Bake" do not overmatch arbitrary compounds.
-  if (token.length >= 5 && textTokens.some(item => item.startsWith(token))) {
-    return { keyword: rawKeyword, mode: "prefix", strength: 38 + Math.min(12, token.length) };
-  }
-
-  return null;
+  return best;
 }
 
 function keywordMatchesText(keyword, rawText, { caseSensitive = false } = {}) {
@@ -371,16 +419,13 @@ export function categorizeTransaction(tx, rules = DEFAULT_RULES, categories = DE
   const top = matches[0];
   const challengers = matches.filter(item => item !== top && item.rule.categoryId !== top.rule.categoryId && item.priority === top.priority && Math.abs(top.score - item.score) <= 0.001);
   const topCategory = categoryMap.get(top.rule.categoryId);
-  const signMismatch = topCategory?.type === "income" && Number(tx.amount) < 0;
 
-  if (challengers.length || signMismatch) {
+  if (challengers.length) {
     return {
       categoryId: "misc",
       confidence: 0.48,
       review: true,
-      reason: signMismatch
-        ? `Rule '${top.rule.label}' looked like income but the amount is negative.`
-        : `Ambiguous: ${[top, ...challengers].map(item => categoryMap.get(item.rule.categoryId)?.name || item.rule.categoryId).join(" | ")}. Increase rule priority to resolve.`,
+      reason: `Ambiguous: ${[top, ...challengers].map(item => categoryMap.get(item.rule.categoryId)?.name || item.rule.categoryId).join(" | ")}. Increase rule priority to resolve.`,
       candidates: [top, ...challengers].map(item => ({
         categoryId: item.rule.categoryId,
         categoryName: categoryMap.get(item.rule.categoryId)?.name || item.rule.categoryId,
