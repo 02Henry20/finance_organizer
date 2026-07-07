@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#111827">
   <meta name="description" content="Capito is a private finance organizer for accounts, transactions, holdings, rules and analytics.">
   <title>Capito</title>
-  <meta name="capito-build" content="capito-v63-reports-recalc-selector-mobile">
+  <meta name="capito-build" content="capito-v64-mobile-reports-accounts-tools">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16x16.png">
@@ -110,7 +110,7 @@
 
       <section class="view" data-view-section="reports">
         <div class="surface-card reports-toolbar">
-          <div class="report-title-block"><div class="report-title-row"><button id="report-recalc-button" data-report-recalc class="secondary-button compact report-recalc-desktop-button desktop-only-tools" type="button">↻ Recalc</button><div class="report-title-copy"><p class="eyebrow">Reports</p><h3>Period analysis</h3></div></div><small id="report-recalc-status" class="muted report-recalc-status"></small></div>
+          <div class="report-title-block"><div class="report-title-row"><button id="report-recalc-button" data-report-recalc class="secondary-button compact report-recalc-desktop-button desktop-only-tools" type="button">↻ Recalc</button></div><small id="report-recalc-status" class="muted report-recalc-status"></small></div>
           <div class="report-controls">
             <div class="segmented-control report-mode-control" role="group" aria-label="Report period mode">
               <button class="segment-button active" data-report-mode="month" type="button" aria-pressed="true">Month</button>
@@ -253,8 +253,8 @@
       <section class="view" data-view-section="settings">
         <div class="settings-layout">
           <article class="surface-card settings-card mobile-only mobile-settings-nav">
-            <div class="panel-heading"><div><p class="eyebrow">MOBILE TOOLS</p><h3>Import & rules</h3></div></div>
-            <div class="mobile-tool-actions"><button class="secondary-button" data-go-view="import" type="button">Import</button><button class="secondary-button" data-go-view="rules" type="button">Rules</button></div>
+            <div class="panel-heading"><div><p class="eyebrow">QUICK TOOLS</p><h3>Manage data</h3></div></div>
+            <div class="mobile-tool-actions"><button class="secondary-button" data-go-view="import" type="button">Import</button><button class="secondary-button" data-go-view="rules" type="button">Rules</button><button class="secondary-button" data-open-modal="account" type="button">Account</button></div>
           </article>
           <article class="surface-card settings-card">
             <div class="panel-heading"><div><p class="eyebrow">APP SETTINGS</p><h3>Preferences</h3></div></div>

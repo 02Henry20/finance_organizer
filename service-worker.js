@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v63-reports-recalc-selector-mobile";
+const CACHE_NAME = "capito-v64-mobile-reports-accounts-tools";
 const CORE = [
   "./",
   "./index.html",

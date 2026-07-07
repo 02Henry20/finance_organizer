@@ -3334,3 +3334,168 @@ button[aria-busy="true"]::after {
     font-size: .92rem !important;
   }
 }
+
+
+/* v64: mobile reports/account layout + quick account tool */
+.report-title-copy { display: none !important; }
+
+@media (min-width: 921px) {
+  section[data-view-section="reports"] .reports-toolbar {
+    grid-template-columns: minmax(148px, 180px) minmax(0, 1fr) !important;
+    align-items: end !important;
+  }
+  section[data-view-section="reports"] .report-title-block {
+    min-width: 0 !important;
+    justify-content: flex-end !important;
+  }
+  section[data-view-section="reports"] .report-title-row {
+    align-items: flex-end !important;
+    height: 46px !important;
+  }
+  section[data-view-section="reports"] .report-recalc-desktop-button.desktop-only-tools {
+    min-width: 124px !important;
+    height: 42px !important;
+    min-height: 42px !important;
+    padding: 0 18px !important;
+    border-radius: 16px !important;
+    font-size: .88rem !important;
+    font-weight: 900 !important;
+    align-self: flex-end !important;
+  }
+  section[data-view-section="reports"] .reports-toolbar .report-mode-control,
+  section[data-view-section="reports"] .reports-toolbar .compact-field input,
+  section[data-view-section="reports"] .reports-toolbar .compact-field select {
+    height: 42px !important;
+    min-height: 42px !important;
+    font-size: .84rem !important;
+  }
+  section[data-view-section="reports"] .reports-toolbar .report-mode-control {
+    padding: 4px !important;
+    border-radius: 17px !important;
+  }
+  section[data-view-section="reports"] .reports-toolbar .report-mode-control .segment-button {
+    height: 32px !important;
+    min-height: 32px !important;
+    font-size: .8rem !important;
+    border-radius: 13px !important;
+  }
+}
+
+@media (max-width: 920px) {
+  section[data-view-section="reports"] .report-title-block {
+    display: none !important;
+  }
+  section[data-view-section="reports"] .reports-toolbar {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    grid-template-areas: "report-controls" !important;
+    gap: 10px !important;
+    padding: 14px !important;
+  }
+  section[data-view-section="reports"] .report-controls {
+    grid-area: report-controls !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    gap: 9px !important;
+    width: 100% !important;
+    margin-top: 0 !important;
+    align-items: end !important;
+  }
+  section[data-view-section="reports"] .report-mode-control {
+    grid-column: 1 / -1 !important;
+    grid-row: 1 !important;
+    width: 100% !important;
+    max-width: none !important;
+  }
+  section[data-view-section="reports"] #report-month-field,
+  section[data-view-section="reports"] #report-year-field {
+    grid-column: 1 !important;
+    grid-row: 2 !important;
+  }
+  section[data-view-section="reports"] .report-mobile-recalc-button {
+    grid-column: 2 !important;
+    grid-row: 2 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    min-height: 44px !important;
+    height: 44px !important;
+    width: 100% !important;
+    font-size: .94rem !important;
+    font-weight: 900 !important;
+  }
+  section[data-view-section="reports"] #report-compare-field {
+    grid-column: 1 / -1 !important;
+    grid-row: 3 !important;
+  }
+  .mobile-tool-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+  }
+  .mobile-tool-actions .secondary-button {
+    min-width: 0 !important;
+    min-height: 40px !important;
+    padding: 8px 6px !important;
+    border-radius: 14px !important;
+    font-size: .74rem !important;
+    white-space: nowrap !important;
+  }
+  .accounts-page-toolbar .add-account-main-button {
+    display: none !important;
+  }
+  .accounts-page-toolbar:has(#hidden-accounts-toggle[hidden]) {
+    display: none !important;
+  }
+  .accounts-page-toolbar .accounts-toolbar-actions {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+  }
+  .account-title-block .account-meta-line,
+  .account-title-block .account-identifier,
+  .account-title-block .account-reference-preview,
+  .account-title-block .account-note-preview {
+    display: none !important;
+  }
+  .account-card-header {
+    margin-bottom: 10px !important;
+    align-items: center !important;
+  }
+  .account-value-row {
+    margin-top: 8px !important;
+  }
+}
+
+@media (max-width: 680px) {
+  section[data-view-section="overview"] .chart-card:has(#income-expense-chart),
+  section[data-view-section="overview"] .chart-card:has(#net-series-chart),
+  section[data-view-section="overview"] .chart-card:has(#category-donut-chart),
+  section[data-view-section="reports"] .chart-card:has(#report-cashflow-chart),
+  section[data-view-section="reports"] .chart-card:has(#report-net-chart) {
+    padding: 13px !important;
+    border-radius: 22px !important;
+  }
+  section[data-view-section="overview"] .chart-card:has(#income-expense-chart) .chart-wrap,
+  section[data-view-section="overview"] .chart-card:has(#net-series-chart) .chart-wrap,
+  section[data-view-section="reports"] .chart-card:has(#report-cashflow-chart) .chart-wrap,
+  section[data-view-section="reports"] .chart-card:has(#report-net-chart) .chart-wrap {
+    min-height: 205px !important;
+    height: 205px !important;
+  }
+  section[data-view-section="overview"] .chart-card:has(#category-donut-chart) .chart-wrap {
+    min-height: 190px !important;
+    height: 190px !important;
+  }
+  section[data-view-section="overview"] .chart-card:has(#income-expense-chart) canvas,
+  section[data-view-section="overview"] .chart-card:has(#net-series-chart) canvas,
+  section[data-view-section="overview"] .chart-card:has(#category-donut-chart) canvas,
+  section[data-view-section="reports"] .chart-card:has(#report-cashflow-chart) canvas,
+  section[data-view-section="reports"] .chart-card:has(#report-net-chart) canvas {
+    max-height: 100% !important;
+  }
+  section[data-view-section="overview"] .chart-card .panel-heading,
+  section[data-view-section="reports"] .chart-card:has(#report-cashflow-chart) .panel-heading,
+  section[data-view-section="reports"] .chart-card:has(#report-net-chart) .panel-heading {
+    margin-bottom: 8px !important;
+  }
+}
