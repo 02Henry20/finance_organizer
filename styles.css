@@ -3229,3 +3229,108 @@ button[aria-busy="true"]::after {
     gap: 0 !important;
   }
 }
+
+/* v63: force desktop Reports recalc visible, align top selector heights, improve mobile Recalc button */
+@media (min-width: 921px) {
+  section[data-view-section="reports"] .reports-toolbar {
+    display: grid !important;
+    grid-template-columns: minmax(230px, auto) minmax(0, 1fr) !important;
+    align-items: end !important;
+    gap: 18px !important;
+  }
+
+  section[data-view-section="reports"] .reports-toolbar > div:first-child,
+  section[data-view-section="reports"] .reports-toolbar > .report-title-block {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    grid-column: 1 !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    justify-content: flex-end !important;
+    min-width: 230px !important;
+    margin: 0 !important;
+  }
+
+  section[data-view-section="reports"] .report-title-row {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 10px !important;
+    min-width: 0 !important;
+  }
+
+  section[data-view-section="reports"] .report-recalc-desktop-button.desktop-only-tools {
+    display: inline-flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    align-items: center !important;
+    justify-content: center !important;
+    min-width: 86px !important;
+    height: 34px !important;
+    min-height: 34px !important;
+    padding: 0 11px !important;
+    font-size: .74rem !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+  }
+
+  section[data-view-section="reports"] .reports-toolbar .report-controls {
+    grid-column: 2 !important;
+    justify-self: end !important;
+    align-items: end !important;
+    margin-left: 0 !important;
+  }
+
+  section[data-view-section="reports"] .reports-toolbar .report-mode-control {
+    height: 36px !important;
+    min-height: 36px !important;
+    align-self: end !important;
+    padding: 3px !important;
+    border-radius: 15px !important;
+  }
+
+  section[data-view-section="reports"] .reports-toolbar .report-mode-control .segment-button {
+    height: 28px !important;
+    min-height: 28px !important;
+    padding: 0 11px !important;
+    border-radius: 11px !important;
+    font-size: .74rem !important;
+    line-height: 1 !important;
+  }
+
+  section[data-view-section="reports"] .reports-toolbar .compact-field input,
+  section[data-view-section="reports"] .reports-toolbar .compact-field select {
+    height: 36px !important;
+    min-height: 36px !important;
+    padding: 7px 10px !important;
+    font-size: .78rem !important;
+    line-height: 1.1 !important;
+  }
+}
+
+@media (max-width: 920px) {
+  section[data-view-section="reports"] .report-mobile-recalc-button {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    width: 100% !important;
+    min-height: 42px !important;
+    height: 42px !important;
+    padding: 0 12px !important;
+    font-size: .88rem !important;
+    font-weight: 860 !important;
+    line-height: 1 !important;
+    letter-spacing: -.01em !important;
+    white-space: nowrap !important;
+  }
+}
+
+@media (max-width: 680px) {
+  section[data-view-section="reports"] .report-mobile-recalc-button {
+    min-height: 44px !important;
+    height: 44px !important;
+    font-size: .92rem !important;
+  }
+}
