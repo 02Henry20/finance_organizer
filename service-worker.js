@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v45-yahoo-isin-fast";
+const CACHE_NAME = "capito-v46-wise-revolut-import";
 const CORE = [
   "./",
   "./index.html",

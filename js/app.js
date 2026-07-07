@@ -2025,17 +2025,14 @@ function updateImportFileLabel() {
 }
 
 async function parseUnifiedImportFile(file) {
-  const isSpreadsheet = /\.(xlsx|xls)$/i.test(file.name || "");
   let bank = null;
   let broker = null;
   const errors = [];
-  if (!isSpreadsheet) {
-    try {
-      const parsedBank = await parseBankFile(file);
-      if (parsedBank?.rows?.length) bank = parsedBank;
-    } catch (error) {
-      errors.push(error.message || "Bank parser failed");
-    }
+  try {
+    const parsedBank = await parseBankFile(file);
+    if (parsedBank?.rows?.length) bank = parsedBank;
+  } catch (error) {
+    errors.push(error.message || "Bank parser failed");
   }
   try {
     const parsedBroker = await parseBrokerPositionsFile(file);
@@ -2135,7 +2132,8 @@ function renderImportPreview() {
     const tr = document.createElement("tr");
     tr.classList.toggle("is-selected-row", selected);
     tr.classList.toggle("is-ignored-row", shouldIgnoreTransactionInStats(tx));
-    tr.innerHTML = `<td class="select-col desktop-only-tools"><input class="import-select-checkbox" data-select-import-tx="${escapeHtml(id)}" type="checkbox" ${selected ? "checked" : ""} aria-label="Select import row"></td><td>${escapeHtml(tx.date)}</td><td class="description-cell"><strong>${escapeHtml(tx.description)}</strong><small class="muted table-ellipsis">${escapeHtml(tx.reason || "")}</small>${transactionFlagsHtml(tx)}</td><td class="${tx.amount >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(tx.amount, tx.currency)}</td><td>${categoryPill(cat, { review: tx.review })}</td><td>${tx.review ? "Needs review" : "Prepared"}</td>`;
+    const ignored = shouldIgnoreTransactionInStats(tx);
+    tr.innerHTML = `<td class="select-col desktop-only-tools"><input class="import-select-checkbox" data-select-import-tx="${escapeHtml(id)}" type="checkbox" ${selected ? "checked" : ""} aria-label="Select import row"></td><td>${escapeHtml(tx.date)}</td><td class="description-cell"><strong>${escapeHtml(tx.description)}</strong><small class="muted table-ellipsis">${escapeHtml(tx.reason || "")}</small>${transactionFlagsHtml(tx)}</td><td class="${tx.amount >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(tx.amount, tx.currency)}</td><td>${categoryPill(cat, { review: tx.review })}</td><td>${tx.review ? "Needs review" : "Prepared"}</td><td><select class="import-stats-select" data-import-ignore="${escapeHtml(id)}" aria-label="Spending statistics"><option value="false" ${ignored ? "" : "selected"}>Include</option><option value="true" ${ignored ? "selected" : ""}>Ignore</option></select></td>`;
     tbody.append(tr);
   }
   tbody.querySelectorAll("[data-select-import-tx]").forEach(box => box.addEventListener("change", event => {
@@ -2143,6 +2141,17 @@ function renderImportPreview() {
     if (event.currentTarget.checked) importSelectedIds.add(id);
     else importSelectedIds.delete(id);
     renderImportPreview();
+  }));
+  tbody.querySelectorAll("[data-import-ignore]").forEach(select => select.addEventListener("change", event => {
+    const id = event.currentTarget.dataset.importIgnore;
+    const tx = activePreview?.transactions?.find(item => (item.id || item.externalId) === id);
+    if (!tx) return;
+    tx.excludeFromStats = event.currentTarget.value === "true";
+    if (tx.excludeFromStats) {
+      tx.reason = `${tx.reason || ""}${tx.reason ? " " : ""}Manually ignored for spending statistics.`.trim();
+    }
+    renderImportPreview();
+    updateUnifiedImportSummary();
   }));
   updateImportSelectionUi();
   renderFilteredImportPreview();
@@ -2270,6 +2279,7 @@ function updateUnifiedImportSummary() {
   const txCount = activePreview?.transactions?.length || 0;
   const txSkipped = activePreview?.skipped?.length || 0;
   const reviewCount = activePreview?.transactions?.filter(tx => tx.review).length || 0;
+  const ignoredCount = activePreview?.transactions?.filter(tx => shouldIgnoreTransactionInStats(tx)).length || 0;
   const posCount = brokerPreview?.positions?.length || 0;
   const posSkipped = brokerPreview?.skipped?.length || 0;
   const hasAnything = txCount > 0 || posCount > 0;
@@ -2281,7 +2291,7 @@ function updateUnifiedImportSummary() {
   const resetButton = $("#reset-import-button");
   if (resetButton) resetButton.disabled = !(activeParsedFile || brokerParsedFile);
   const parts = [];
-  if (activeParsedFile) parts.push(`${activeParsedFile.formatLabel || "Bank export"}: ${txCount} transactions, ${reviewCount} review, ${txSkipped} duplicates/skipped${Number.isFinite(Number(activeParsedFile.openingBalanceHint)) ? `, opening ${formatCurrency(Number(activeParsedFile.openingBalanceHint), selectedCurrency())}` : ""}`);
+  if (activeParsedFile) parts.push(`${activeParsedFile.formatLabel || "Bank export"}: ${txCount} transactions, ${reviewCount} review, ${ignoredCount} ignored stats, ${txSkipped} duplicates/skipped${Number.isFinite(Number(activeParsedFile.openingBalanceHint)) ? `, opening ${formatCurrency(Number(activeParsedFile.openingBalanceHint), selectedCurrency())}` : ""}`);
   if (brokerParsedFile) parts.push(`${brokerParsedFile.formatLabel || "Broker export"}: ${posCount} positions, ${posSkipped} skipped`);
   const balanceSummary = importBalanceSummaryHtml();
   const balanceBox = $("#import-balance-summary");

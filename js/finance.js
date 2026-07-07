@@ -103,7 +103,8 @@ export const DEFAULT_RULES = Object.freeze([
   { id: "r_gifts", label: "Gifts and family", categoryId: "gifts_family", keywords: ["geschenk", "gift", "birthday", "bday", "mama", "papa", "family", "familie", "flowers", "blumen"] },
   { id: "r_donations", label: "Donations", categoryId: "donations", keywords: ["donation", "spende", "charity", "ngo", "unicef", "rotes kreuz", "red cross"] },
   { id: "r_taxes", label: "Taxes", categoryId: "taxes", keywords: ["steuer", "tax", "finanzamt", "taxfix", "elster", "solidaritätszuschlag"] },
-  { id: "r_bank_fees", label: "Bank fees", categoryId: "bank_fees", keywords: ["kontoführung", "kontofuehrung", "account fee", "gebühr", "fee", "entgelt", "overdraft", "zinsbelastung", "foreign transaction"] }
+  { id: "r_bank_fees", label: "Bank fees", categoryId: "bank_fees", keywords: ["kontoführung", "kontofuehrung", "account fee", "gebühr", "fee", "entgelt", "overdraft", "zinsbelastung", "foreign transaction", "wise fee", "revolut fee", "fee split"] },
+  { id: "r_wise_revolut_internal", label: "Wise/Revolut internal transfers", categoryId: "transfer", keywords: ["wise currency conversion", "wise top-up", "wise self-transfer", "revolut internal", "revolut top-up", "revolut product transfer", "instant access savings", "exchanged to eur", "exchanged from", "money_added", "conversion"] }
 ]);
 
 export const DEFAULT_ACCOUNTS = Object.freeze([

@@ -10,12 +10,20 @@ const FIELD_ALIASES = {
   counterparty: ["counterparty", "payee", "payer", "name", "auftraggeber", "empfänger", "empfaenger", "begünstigter", "beguenstigter", "zahlungspflichtiger", "merchant"],
   iban: ["iban", "account", "konto", "gegenkonto", "kontonummer iban", "kontonummer/iban"],
   currency: ["currency", "währung", "waehrung", "ccy"],
-  category: ["category", "kategorie"]
+  category: ["category", "kategorie"],
+  excludeFromStats: ["exclude from stats", "ignore in stats", "ignore in spending", "ignore in spending statistics", "statistics", "spending stats"],
+  note: ["note", "notes", "import note", "metadata", "transfer info"],
+  accountKey: ["account key", "account ledger", "ledger", "product account", "provider account"],
+  fee: ["fee", "fees", "total fees"],
+  externalId: ["external id", "transaction id", "transferwise id", "id"],
+  categoryOverride: ["category override", "category id", "forced category"]
 };
 
 export const RECOGNIZED_BANK_FORMATS = [
-  "Wise CSV: ID, Direction, Created/Finished on, Source/Target amount and currency",
-  "Revolut CSV: Type, Product, Completed Date, Description, Amount, Fee, Currency, Balance",
+  "Wise currency CSV: TransferWise ID, Date Time, Amount, Running Balance, Total fees",
+  "Wise legacy CSV: ID, Direction, Created/Finished on, Source/Target amount and currency",
+  "Revolut consolidated XLSX: Date, Description, Category, Money in/out, Balance, Fees",
+  "Revolut CSV: Type, Product, Started/Completed Date, Description, Amount, Fee, Currency, State, Balance",
   "Sparkasse CSV: Buchungstag, Buchungstext, Verwendungszweck, Begünstigter/Zahlungspflichtiger, Betrag, Währung",
   "Trade Republic CSV: datetime/date, type, asset_class, name, symbol, shares, amount, fee, tax, currency, transaction_id",
   "Generic CSV/TSV: date + amount/debit/credit + description/counterparty + currency"
@@ -125,11 +133,17 @@ function findHeaderRow(rows) {
 function detectBankFormat(headers) {
   const has = value => headers.map(normalizeHeader).includes(normalizeHeader(value));
   const normalizedJoined = headers.map(normalizeHeader).join("|");
+  if (has("TransferWise ID") && has("Date Time") && has("Amount") && has("Running Balance") && has("Total fees")) {
+    return { id: "wise_statement", label: "Wise currency statement CSV" };
+  }
   if (has("ID") && has("Direction") && normalizedJoined.includes("source amount after fees") && normalizedJoined.includes("target amount after fees")) {
-    return { id: "wise", label: "Wise CSV" };
+    return { id: "wise", label: "Wise legacy CSV" };
   }
   if (has("Type") && has("Product") && has("Completed Date") && has("Amount") && has("Fee") && has("Currency")) {
     return { id: "revolut", label: "Revolut CSV" };
+  }
+  if (has("Date") && has("Description") && has("Category") && normalizedJoined.includes("money in out") && has("Balance")) {
+    return { id: "revolut_consolidated", label: "Revolut consolidated statement" };
   }
   if (has("Auftragskonto") && has("Buchungstag") && has("Verwendungszweck") && has("Betrag") && (has("Waehrung") || has("Währung"))) {
     return { id: "sparkasse", label: "Sparkasse CSV" };
@@ -144,6 +158,131 @@ function money(value) {
   return parseMoney(value) ?? 0;
 }
 
+function truthy(value) {
+  const text = String(value ?? "").trim().toLowerCase();
+  return ["1", "true", "yes", "y", "ja", "ignore", "ignored", "exclude", "excluded"].includes(text);
+}
+
+function amountWithFeeSplitRows({ date, movement, fee = 0, currency, counterparty, description, balance = "", externalId, excludeFromStats, note, accountKey, categoryId = "" }) {
+  const rows = [];
+  const feeAmount = Math.abs(Number(fee || 0));
+  const move = Number(movement || 0);
+  const shouldSplitFee = Boolean(excludeFromStats && feeAmount > 0 && move !== 0);
+  const neutralMovement = shouldSplitFee ? move + feeAmount : move;
+  rows.push([date, neutralMovement, currency, counterparty, description, balance, externalId, excludeFromStats ? "true" : "false", note, accountKey, categoryId]);
+  if (shouldSplitFee) {
+    rows.push([date, -feeAmount, currency, "Bank fee", `${description} · Fee`, "", `${externalId}_fee`, "false", `Fee split from ignored transfer. Original movement ${move} ${currency}.`, accountKey, "bank_fees"]);
+  }
+  return rows;
+}
+
+function parseWiseDate(value) {
+  const text = String(value || "").trim();
+  const match = text.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})(?:\s+(.*))?$/);
+  if (match) {
+    const day = match[1].padStart(2, "0");
+    const month = match[2].padStart(2, "0");
+    const year = match[3].length === 2 ? `20${match[3]}` : match[3];
+    return `${year}-${month}-${day}`;
+  }
+  return parseDateValue(value);
+}
+
+function parseExcelSerialDate(value) {
+  const number = Number(value);
+  if (Number.isFinite(number) && number > 20000 && number < 70000) return parseDateValue(number);
+  return parseDateValue(value);
+}
+
+function firstNativeMoney(value, currency = "") {
+  if (value == null || value === "") return 0;
+  const text = String(value).replace(/â‚¬/g, "€").replace(/−/g, "-");
+  const preferred = String(currency || "").toUpperCase();
+  const escaped = preferred.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (preferred && preferred !== "EUR") {
+    const pattern = new RegExp(`([+-]?\\d[\\d,.]*)\\s*${escaped}\\b`, "i");
+    const match = text.match(pattern);
+    if (match) return money(match[1]);
+  }
+  if (preferred === "EUR") {
+    const match = text.match(/([+-]?\s*(?:€|EUR|â‚¬)\s*\d[\d,.]*|[+-]?\s*\d[\d,.]*\s*(?:€|EUR|â‚¬))/i);
+    if (match) return money(match[1]);
+  }
+  const generic = text.match(/[+-]?\s*\d[\d,.]*/);
+  return generic ? money(generic[0]) : money(text);
+}
+
+function isOwnName(text = "") {
+  const normalized = normalizeIdentifier(text);
+  return normalized.includes("anhhao") || normalized.includes("henryluu") || normalized.includes("anhaohenryluu");
+}
+
+function isWiseIgnoredMovement(row, i) {
+  const details = normalizeText(row[i.detailsType]);
+  const description = normalizeText(row[i.description]);
+  const transactionType = normalizeText(row[i.transactionType]);
+  const exchangeFrom = String(row[i.exchangeFrom] || "").trim().toUpperCase();
+  const exchangeTo = String(row[i.exchangeTo] || "").trim().toUpperCase();
+  const ownCounterparty = isOwnName([row[i.description], row[i.payer], row[i.payee]].join(" "));
+  if (details.includes("conversion") || description.includes("converted")) return { ignore: true, reason: "Wise currency conversion; excluded from spending statistics." };
+  if (details.includes("money_added") || description.includes("topped up") || description.includes("top up")) return { ignore: true, reason: "Wise top-up; excluded from spending statistics." };
+  if (ownCounterparty && exchangeFrom && exchangeTo && exchangeFrom !== exchangeTo) return { ignore: true, reason: "Wise self-transfer with currency exchange; excluded from spending statistics." };
+  if (ownCounterparty && details.includes("transfer")) return { ignore: true, reason: "Wise self-transfer; excluded from spending statistics." };
+  if (transactionType === "credit" && (description.includes("refund") || description.includes("reversal"))) return { ignore: true, reason: "Wise refund/reversal; excluded from spending statistics." };
+  return { ignore: false, reason: "" };
+}
+
+function normalizeWiseStatement(headers, rows) {
+  const idx = headerIndex(headers);
+  const i = {
+    id: idx("TransferWise ID"), date: idx("Date"), dateTime: idx("Date Time"), amount: idx("Amount"), currency: idx("Currency"), description: idx("Description"), reference: idx("Payment Reference"),
+    balance: idx("Running Balance"), exchangeFrom: idx("Exchange From"), exchangeTo: idx("Exchange To"), rate: idx("Exchange Rate"), payer: idx("Payer Name"), payee: idx("Payee Name"), merchant: idx("Merchant"),
+    note: idx("Note"), fees: idx("Total fees"), exchangeToAmount: idx("Exchange To Amount"), transactionType: idx("Transaction Type"), detailsType: idx("Transaction Details Type")
+  };
+  const outHeaders = ["Date", "Amount", "Currency", "Counterparty", "Description", "Balance", "External ID", "Exclude From Stats", "Note", "Account Key", "Category Override"];
+  const outRows = [];
+  const sorted = [...rows].sort((a, b) => String(a[i.dateTime] || a[i.date]).localeCompare(String(b[i.dateTime] || b[i.date])));
+  for (const row of sorted) {
+    const currency = String(row[i.currency] || "EUR").toUpperCase();
+    const movement = money(row[i.amount]);
+    if (!Number.isFinite(Number(movement))) continue;
+    const fee = money(row[i.fees]);
+    const date = parseWiseDate(row[i.dateTime] || row[i.date]);
+    const detailsType = String(row[i.detailsType] || "").trim();
+    const txType = String(row[i.transactionType] || "").trim();
+    const ignored = isWiseIgnoredMovement(row, i);
+    const counterparty = row[i.merchant] || row[i.payee] || row[i.payer] || (ignored.ignore ? "Wise internal" : "Wise");
+    const meta = [
+      row[i.reference] ? `Ref ${row[i.reference]}` : "",
+      detailsType ? `Details ${detailsType}` : "",
+      txType ? `Type ${txType}` : "",
+      row[i.exchangeFrom] || row[i.exchangeTo] ? `FX ${row[i.exchangeFrom] || "?"} → ${row[i.exchangeTo] || "?"}${row[i.rate] ? ` @ ${row[i.rate]}` : ""}` : "",
+      Number(fee || 0) ? `Total fees ${fee} ${currency} · informational; not subtracted again` : "",
+      ignored.reason
+    ].filter(Boolean).join(" · ");
+    const description = [row[i.description], meta].filter(Boolean).join(" · ");
+    const accountKey = `wise:${currency}`;
+    const categoryOverride = ignored.ignore ? "transfer" : "";
+    outRows.push(...amountWithFeeSplitRows({
+      date,
+      movement,
+      fee,
+      currency,
+      counterparty,
+      description,
+      balance: row[i.balance],
+      externalId: row[i.id] || [date, movement, description, row[i.balance]].join("|"),
+      excludeFromStats: ignored.ignore,
+      note: meta,
+      accountKey,
+      categoryId: categoryOverride
+    }));
+  }
+  const first = sorted.find(row => row[i.balance] !== undefined && row[i.balance] !== "" && row[i.amount] !== undefined && row[i.amount] !== "");
+  const openingBalanceHint = first ? money(first[i.balance]) - money(first[i.amount]) : null;
+  return { headers: outHeaders, rows: outRows, openingBalanceHint, openingBalanceDetails: [{ product: `wise:${String(first?.[i.currency] || "").toUpperCase()}`, value: openingBalanceHint }] };
+}
+
 function normalizeWise(headers, rows) {
   const idx = headerIndex(headers);
   const i = {
@@ -153,8 +292,8 @@ function normalizeWise(headers, rows) {
     targetAmount: idx("Target amount after fees"), targetCurrency: idx("Target currency"), rate: idx("Exchange rate"),
     reference: idx("Reference"), category: idx("Category"), note: idx("Note")
   };
-  const outHeaders = ["Date", "Amount", "Currency", "Counterparty", "Description", "Balance", "External ID"];
-  const outRows = rows.map(row => {
+  const outHeaders = ["Date", "Amount", "Currency", "Counterparty", "Description", "Balance", "External ID", "Exclude From Stats", "Note", "Account Key", "Category Override"];
+  const outRows = rows.flatMap(row => {
     const direction = String(row[i.direction] || "").toUpperCase();
     const sourceAmount = money(row[i.sourceAmount]);
     const sourceFee = money(row[i.sourceFee]);
@@ -171,50 +310,171 @@ function normalizeWise(headers, rows) {
       amount = targetAmount || sourceAmount;
       currency = targetCurrency || sourceCurrency || "EUR";
     }
+    const isNeutral = direction === "NEUTRAL" || sourceCurrency !== targetCurrency || normalizeText(row[i.category]).includes("transfer");
     const description = [
-      row[i.category],
-      row[i.reference],
-      row[i.note],
+      row[i.category], row[i.reference], row[i.note],
       direction === "OUT" ? `Wise transfer to ${row[i.targetName] || "target"}` : direction === "IN" ? `Wise transfer from ${row[i.sourceName] || "source"}` : "Wise balance transaction",
-      row[i.rate] ? `FX ${row[i.rate]}` : ""
+      row[i.rate] ? `FX ${row[i.rate]}` : "",
+      isNeutral ? "Wise transfer/conversion; excluded from spending statistics." : ""
     ].filter(Boolean).join(" · ");
     const counterparty = direction === "OUT" ? row[i.targetName] : row[i.sourceName];
-    return [row[i.finished] || row[i.created], amount, currency, counterparty, description, "", row[i.id]];
+    return amountWithFeeSplitRows({
+      date: row[i.finished] || row[i.created],
+      movement: amount,
+      fee: sourceFee,
+      currency,
+      counterparty,
+      description,
+      balance: "",
+      externalId: row[i.id],
+      excludeFromStats: isNeutral,
+      note: description,
+      accountKey: `wise:${currency}`,
+      categoryId: isNeutral ? "transfer" : ""
+    });
   });
   return { headers: outHeaders, rows: outRows };
+}
+
+function isRevolutNeutral(category = "", description = "") {
+  const cat = normalizeText(category);
+  const desc = normalizeText(description);
+  return cat.includes("top up") || cat.includes("exchange") || cat.includes("transfer") ||
+    (cat.includes("others") && (desc.includes("instant access savings") || desc.includes("savings") || desc.includes("exchanged") || isOwnName(desc))) ||
+    desc.includes("from instant access savings") || desc.includes("to instant access savings") || desc.includes("exchanged to") || desc.includes("exchanged from") ||
+    desc.includes("payment from anh") || desc.includes("top up") || desc.includes("top-up");
 }
 
 function normalizeRevolut(headers, rows) {
   const idx = headerIndex(headers);
   const i = { type: idx("Type"), product: idx("Product"), started: idx("Started Date"), completed: idx("Completed Date"), description: idx("Description"), amount: idx("Amount"), fee: idx("Fee"), currency: idx("Currency"), state: idx("State"), balance: idx("Balance") };
-  const outHeaders = ["Date", "Amount", "Currency", "Counterparty", "Description", "Balance", "External ID"];
-  const completedRows = rows.filter(row => String(row[i.state] || "").toUpperCase() === "COMPLETED");
+  const outHeaders = ["Date", "Amount", "Currency", "Counterparty", "Description", "Balance", "External ID", "Exclude From Stats", "Note", "Account Key", "Category Override"];
+  const allowedRows = rows.filter(row => ["COMPLETED", "PENDING"].includes(String(row[i.state] || "").toUpperCase()));
 
   const openingByProduct = new Map();
-  for (const row of completedRows) {
+  for (const row of allowedRows.filter(row => String(row[i.state] || "").toUpperCase() === "COMPLETED")) {
     const product = String(row[i.product] || "Current");
+    const currency = String(row[i.currency] || "EUR").toUpperCase();
+    const key = `revolut:${product}:${currency}`;
     const balance = money(row[i.balance]);
-    if (openingByProduct.has(product) || balance == null) continue;
+    if (openingByProduct.has(key) || balance == null) continue;
     const netAmount = money(row[i.amount]) - money(row[i.fee]);
-    openingByProduct.set(product, balance - netAmount);
+    openingByProduct.set(key, balance - netAmount);
   }
-  const openingBalanceHint = [...openingByProduct.values()]
-    .reduce((sum, value) => sum + (Number.isFinite(Number(value)) ? Number(value) : 0), 0);
+  const openingBalanceHint = [...openingByProduct.values()].reduce((sum, value) => sum + (Number.isFinite(Number(value)) ? Number(value) : 0), 0);
 
-  const outRows = completedRows.map(row => {
+  const outRows = allowedRows.flatMap(row => {
     const baseAmount = money(row[i.amount]);
     const fee = money(row[i.fee]);
-    const amount = baseAmount - fee;
-    const description = [row[i.product], row[i.type], row[i.description], fee ? `Fee ${row[i.fee]} ${row[i.currency] || ""}` : ""].filter(Boolean).join(" · ");
-    const id = [row[i.product], row[i.completed] || row[i.started], row[i.description], row[i.amount], row[i.fee], row[i.currency]].join("|");
-    return [row[i.completed] || row[i.started], amount, row[i.currency], row[i.description], description, row[i.balance], id];
+    const movement = baseAmount - fee;
+    const currency = String(row[i.currency] || "EUR").toUpperCase();
+    const product = String(row[i.product] || "Current");
+    const state = String(row[i.state] || "").toUpperCase();
+    const neutral = isRevolutNeutral(row[i.type], row[i.description]);
+    const note = [product, row[i.type], state, fee ? `Fee ${fee} ${currency}` : "", neutral ? "Revolut internal/top-up/exchange; excluded from spending statistics." : ""].filter(Boolean).join(" · ");
+    const description = [product, row[i.type], row[i.description], state === "PENDING" ? "Pending" : "", fee ? `Fee ${fee} ${currency}` : ""].filter(Boolean).join(" · ");
+    const id = [product, row[i.completed] || row[i.started], row[i.description], row[i.amount], row[i.fee], currency, state].join("|");
+    return amountWithFeeSplitRows({
+      date: row[i.started] || row[i.completed],
+      movement,
+      fee,
+      currency,
+      counterparty: row[i.description],
+      description,
+      balance: row[i.balance],
+      externalId: id,
+      excludeFromStats: neutral,
+      note,
+      accountKey: `revolut:${product}:${currency}`,
+      categoryId: neutral ? "transfer" : ""
+    });
   });
-  return {
-    headers: outHeaders,
-    rows: outRows,
-    openingBalanceHint,
-    openingBalanceDetails: [...openingByProduct.entries()].map(([product, value]) => ({ product, value }))
-  };
+  return { headers: outHeaders, rows: outRows, openingBalanceHint, openingBalanceDetails: [...openingByProduct.entries()].map(([product, value]) => ({ product, value })) };
+}
+
+function accountLineBefore(rows, index) {
+  for (let i = index - 1; i >= Math.max(0, index - 8); i -= 1) {
+    const text = String(rows[i]?.[0] || "");
+    if (/Personal Account|Savings/i.test(text)) return text;
+  }
+  return "Revolut Account";
+}
+
+function currencyFromAccountLine(line, fallback = "EUR") {
+  const match = String(line || "").match(/\(([^)]+)\)/);
+  return String(match?.[1] || fallback).trim().toUpperCase();
+}
+
+function productFromAccountLine(line) {
+  return /savings|deposit|instant access/i.test(String(line || "")) ? "Deposit" : "Current";
+}
+
+function normalizeRevolutConsolidatedRows(rows, filename = "") {
+  const outHeaders = ["Date", "Amount", "Currency", "Counterparty", "Description", "Balance", "External ID", "Exclude From Stats", "Note", "Account Key", "Category Override"];
+  const outRows = [];
+  const openingDetails = [];
+  for (let h = 0; h < rows.length; h += 1) {
+    const header = rows[h].map(cleanText);
+    const isTransaction = header[0] === "Date" && header[1] === "Description" && header[2] === "Category" && normalizeText(header[3]).includes("money in out");
+    const isInterest = header[0] === "Date" && header[1] === "Description" && normalizeText(header[3]).includes("gross interest") && normalizeText(header[7]).includes("net interest");
+    if (!isTransaction && !isInterest) continue;
+    const accountLine = accountLineBefore(rows, h);
+    const currency = currencyFromAccountLine(accountLine, "EUR");
+    const product = productFromAccountLine(accountLine);
+    const accountKey = `revolut:${product}:${currency}`;
+    for (let r = h + 1; r < rows.length; r += 1) {
+      const row = rows[r];
+      const first = cleanText(row[0]);
+      if (!first) continue;
+      if (first === "---------" || /Transaction statement/i.test(first) || (first === "Date" && cleanText(row[1]) === "Description")) break;
+      if (/^Total$/i.test(first)) break;
+      const date = parseExcelSerialDate(row[0]);
+      if (!date) continue;
+      if (isTransaction) {
+        const category = row[2] || "";
+        const rawMovement = row[3];
+        const movement = firstNativeMoney(rawMovement, currency);
+        if (!Number.isFinite(Number(movement))) continue;
+        const fee = Math.abs(firstNativeMoney(row[7], currency));
+        const balance = firstNativeMoney(row[4], currency);
+        const neutral = isRevolutNeutral(category, row[1]);
+        const note = [accountKey, category, fee ? `Fee ${fee} ${currency}` : "", neutral ? "Revolut top-up/internal product transfer/currency exchange; excluded from spending statistics." : "", `Source ${filename}`].filter(Boolean).join(" · ");
+        outRows.push(...amountWithFeeSplitRows({
+          date,
+          movement,
+          fee,
+          currency,
+          counterparty: row[1] || "Revolut",
+          description: [accountLine, category, row[1], fee ? `Fee ${fee} ${currency}` : ""].filter(Boolean).join(" · "),
+          balance: Number.isFinite(Number(balance)) ? balance : "",
+          externalId: [`revolut-xlsx`, accountKey, date, row[1], rawMovement, row[4]].join("|"),
+          excludeFromStats: neutral,
+          note,
+          accountKey,
+          categoryId: neutral ? "transfer" : ""
+        }));
+      } else if (isInterest) {
+        const movement = firstNativeMoney(row[7] || row[3], currency);
+        const fee = Math.abs(firstNativeMoney(row[6], currency));
+        if (!Number.isFinite(Number(movement))) continue;
+        outRows.push(...amountWithFeeSplitRows({
+          date,
+          movement,
+          fee,
+          currency,
+          counterparty: "Revolut Savings",
+          description: [accountLine, row[1], "Interest"].filter(Boolean).join(" · "),
+          balance: "",
+          externalId: [`revolut-interest`, accountKey, date, row[1], row[7]].join("|"),
+          excludeFromStats: false,
+          note: [accountKey, "Savings interest", fee ? `Fee ${fee} ${currency}` : ""].filter(Boolean).join(" · "),
+          accountKey,
+          categoryId: "income_dividend"
+        }));
+      }
+    }
+  }
+  return { headers: outHeaders, rows: outRows, openingBalanceHint: null, openingBalanceDetails: openingDetails };
 }
 
 function normalizeSparkasse(headers, rows) {
@@ -256,17 +516,43 @@ function normalizeTradeRepublic(headers, rows) {
 }
 
 function normalizeBankRows(headers, rows, format) {
+  if (format.id === "wise_statement") return normalizeWiseStatement(headers, rows);
   if (format.id === "wise") return normalizeWise(headers, rows);
   if (format.id === "revolut") return normalizeRevolut(headers, rows);
+  if (format.id === "revolut_consolidated") return normalizeRevolutConsolidatedRows([headers, ...rows]);
   if (format.id === "sparkasse") return normalizeSparkasse(headers, rows);
   if (format.id === "trade_republic") return normalizeTradeRepublic(headers, rows);
   return { headers, rows };
 }
 
 export async function parseBankFile(file) {
+  const isSpreadsheet = /\.(xlsx|xls)$/i.test(file.name || "");
+  let allRows;
+  let delimiter = "";
+  if (isSpreadsheet) {
+    allRows = (await rowsFromXlsx(file)).filter(row => row.length > 1 || row.some(cell => String(cell || "").trim()));
+    const revolut = normalizeRevolutConsolidatedRows(allRows, file.name || "Revolut XLSX");
+    if (revolut.rows.length) {
+      return {
+        filename: file.name,
+        delimiter: "xlsx",
+        format: "revolut_consolidated",
+        formatLabel: "Revolut consolidated XLSX",
+        headers: revolut.headers,
+        rows: revolut.rows,
+        openingBalanceHint: Number.isFinite(Number(revolut.openingBalanceHint)) ? Number(revolut.openingBalanceHint) : null,
+        openingBalanceDetails: revolut.openingBalanceDetails || [],
+        rawHeaders: revolut.headers,
+        rawRows: revolut.rows,
+        mapping: guessMapping(revolut.headers)
+      };
+    }
+    throw new Error("The spreadsheet does not look like a supported Revolut consolidated statement.");
+  }
+
   const text = await file.text();
-  const delimiter = detectDelimiter(text);
-  const allRows = parseCsvRows(text, delimiter).filter(row => row.length > 1);
+  delimiter = detectDelimiter(text);
+  allRows = parseCsvRows(text, delimiter).filter(row => row.length > 1);
   if (!allRows.length) throw new Error("The file does not look like a CSV/TSV bank export.");
   const headerRowIndex = findHeaderRow(allRows);
   const rawHeaders = allRows[headerRowIndex].map((header, index) => header || `Column ${index + 1}`);
@@ -460,6 +746,29 @@ function buildReferenceFundingRows(tx, account, referenceAccount, acceptedRows, 
   return [deduction];
 }
 
+function resolveImportAccountId(accountKey = "", currency = "", context = {}) {
+  const fallback = context.accountId;
+  const key = normalizeIdentifier(accountKey);
+  if (!key) return fallback;
+  const wantedCurrency = String(currency || "").toUpperCase();
+  const accounts = context.accounts || [];
+  const exact = accounts.find(account => normalizeIdentifier(account.id) === key || normalizeIdentifier(account.name) === key);
+  if (exact) return exact.id;
+  const scored = accounts.map(account => {
+    const haystack = normalizeIdentifier([account.id, account.name, account.institution, account.type, account.currency, ...(account.transferAliases || [])].join(" "));
+    let score = 0;
+    if (haystack.includes(key) || key.includes(haystack)) score += 100;
+    for (const part of key.match(/[a-z0-9]{3,}/g) || []) if (haystack.includes(part)) score += 18;
+    if (wantedCurrency && String(account.currency || "").toUpperCase() === wantedCurrency) score += 15;
+    if (key.includes("wise") && normalizeIdentifier([account.name, account.institution].join(" ")).includes("wise")) score += 30;
+    if (key.includes("revolut") && normalizeIdentifier([account.name, account.institution].join(" ")).includes("revolut")) score += 30;
+    if (key.includes("deposit") && normalizeIdentifier([account.name, account.type].join(" ")).match(/deposit|savings|saving/)) score += 20;
+    if (key.includes("current") && normalizeIdentifier([account.name, account.type].join(" ")).match(/current|checking|giro/)) score += 12;
+    return { account, score };
+  }).sort((a, b) => b.score - a.score);
+  return scored[0]?.score >= 40 ? scored[0].account.id : fallback;
+}
+
 export function rowToTransaction(row, mapping, context) {
   const get = field => mapping[field] == null ? "" : row[mapping[field]];
   const date = parseDateValue(get("date"));
@@ -471,11 +780,17 @@ export function rowToTransaction(row, mapping, context) {
   const description = descriptionParts.join(" · ").trim() || "Imported transaction";
   const counterparty = get("counterparty") || "";
   const currency = (get("currency") || context.currency || "EUR").toUpperCase().slice(0, 3);
+  const accountKey = get("accountKey");
+  const accountId = resolveImportAccountId(accountKey, currency, context);
+  const forcedIgnore = truthy(get("excludeFromStats"));
+  const note = get("note") || "";
+  const categoryOverride = String(row[mapping.categoryOverride] || "").trim();
+  const suppliedExternalId = get("externalId") || "";
 
   if (!date || amount == null) return null;
 
   const base = {
-    accountId: context.accountId,
+    accountId,
     date,
     amount,
     currency,
@@ -485,27 +800,30 @@ export function rowToTransaction(row, mapping, context) {
     raw: row,
     source: context.formatLabel ? `import:${context.formatLabel}` : "import",
     importBatchId: context.importBatchId,
-    createdAtMs: Date.now()
+    createdAtMs: Date.now(),
+    note
   };
   const categorization = categorizeTransaction(base, context.rules, context.categories, context.accounts || []);
-  const id = transactionHash(base);
+  const id = transactionHash({ ...base, description: suppliedExternalId ? `${description} ${suppliedExternalId}` : description });
   const groupId = categorization.internalTransfer ? `it_${id}` : "";
+  const nextCategoryId = categoryOverride || categorization.categoryId;
+  const ignoredReason = forcedIgnore ? "Excluded from spending statistics by import rule." : "";
   const tx = {
     ...base,
     id,
-    externalId: id,
-    categoryId: categorization.categoryId,
-    confidence: categorization.confidence,
-    review: categorization.review,
-    reason: categorization.reason,
+    externalId: suppliedExternalId || id,
+    categoryId: nextCategoryId,
+    confidence: categoryOverride ? 0.98 : categorization.confidence,
+    review: categoryOverride ? false : categorization.review,
+    reason: [categorization.reason, ignoredReason, accountKey ? `Ledger ${accountKey}` : ""].filter(Boolean).join(" "),
     candidates: categorization.candidates,
     matchedAccountId: categorization.matchedAccountId || "",
     transferMatchedAccountId: categorization.transferMatchedAccountId || categorization.matchedAccountId || "",
     transferSourceAccountId: categorization.transferSourceAccountId || "",
     transferTargetAccountId: categorization.transferTargetAccountId || "",
-    internalTransfer: Boolean(categorization.internalTransfer),
-    excludeFromStats: Boolean(categorization.excludeFromStats),
-    note: ""
+    internalTransfer: Boolean(categorization.internalTransfer || forcedIgnore || nextCategoryId === "transfer"),
+    excludeFromStats: Boolean(forcedIgnore || categorization.excludeFromStats),
+    note
   };
   return categorization.internalTransfer ? withInternalTransferFields(tx, categorization, groupId) : tx;
 }

@@ -2640,3 +2640,20 @@ td .category-pill .category-pill-text,
   line-height: 1 !important;
   vertical-align: middle !important;
 }
+
+/* v46 Wise/Revolut import controls */
+.import-stats-select {
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 9px;
+  background: var(--surface-2);
+  color: var(--muted-strong);
+  font-size: .74rem;
+  font-weight: 820;
+}
+.import-preview-table th:last-child,
+.import-preview-table td:last-child {
+  width: 104px;
+  white-space: nowrap;
+}
