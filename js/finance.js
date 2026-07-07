@@ -273,25 +273,56 @@ export function rulePriority(rule = {}) {
   return Number.isFinite(value) ? value : 0;
 }
 
-function keywordMatchesText(keyword, rawText, { caseSensitive = false } = {}) {
+function normalizeRuleMask(value, { caseSensitive = false } = {}) {
+  let text = String(value ?? "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ß/g, "ss");
+  if (!caseSensitive) text = text.toLowerCase();
+  return text
+    .replace(/[^A-Za-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function keywordMatchInfo(keyword, rawText, { caseSensitive = false } = {}) {
   const rawKeyword = String(keyword || "").trim();
-  if (!rawKeyword) return false;
-  if (caseSensitive) {
-    const compactRaw = String(rawText || "").replace(/[^A-Za-z0-9äöüÄÖÜ€$%+\-.]/g, "");
-    const compactKeyword = rawKeyword.replace(/[^A-Za-z0-9äöüÄÖÜ€$%+\-.]/g, "");
-    return Boolean(
-      String(rawText || "").includes(rawKeyword) ||
-      (compactKeyword && compactRaw.includes(compactKeyword))
-    );
+  if (!rawKeyword) return null;
+
+  const text = normalizeRuleMask(rawText, { caseSensitive });
+  const mask = normalizeRuleMask(rawKeyword, { caseSensitive });
+  if (!text || !mask) return null;
+
+  const keywordTokens = mask.split(" ").filter(Boolean);
+  const textTokens = text.split(" ").filter(Boolean);
+  if (!keywordTokens.length || !textTokens.length) return null;
+
+  // Multi-word rules are true phrase masks after trimming only.
+  // "Board Game Cafe" matches "Board Game Cafe", but deliberately does NOT match "BoardGameCafe".
+  if (keywordTokens.length > 1) {
+    const phrase = keywordTokens.join(" ");
+    const paddedText = ` ${text} `;
+    const paddedPhrase = ` ${phrase} `;
+    if (!paddedText.includes(paddedPhrase)) return null;
+    return { keyword: rawKeyword, mode: "phrase", strength: 70 + keywordTokens.length * 8 + phrase.length * 0.35 };
   }
-  const normalizedText = normalizeText(rawText);
-  const normalizedKeyword = normalizeText(rawKeyword);
-  const compactText = normalizeIdentifier(rawText);
-  const compactKeyword = normalizeIdentifier(rawKeyword);
-  return Boolean(
-    (normalizedKeyword && normalizedText.includes(normalizedKeyword)) ||
-    (compactKeyword && compactText.includes(compactKeyword))
-  );
+
+  const token = keywordTokens[0];
+  if (textTokens.includes(token)) {
+    return { keyword: rawKeyword, mode: "word", strength: 52 + Math.min(16, token.length) };
+  }
+
+  // Merchant names often append legal/plural suffixes, e.g. mcdonald -> mcdonalds.
+  // Keep this to longer keywords only so short words like "Bake" do not overmatch arbitrary compounds.
+  if (token.length >= 5 && textTokens.some(item => item.startsWith(token))) {
+    return { keyword: rawKeyword, mode: "prefix", strength: 38 + Math.min(12, token.length) };
+  }
+
+  return null;
+}
+
+function keywordMatchesText(keyword, rawText, { caseSensitive = false } = {}) {
+  return Boolean(keywordMatchInfo(keyword, rawText, { caseSensitive }));
 }
 
 export function ruleMatchesTransaction(rule = {}, tx = {}) {
@@ -310,12 +341,19 @@ export function categorizeTransaction(tx, rules = DEFAULT_RULES, categories = DE
   for (const rule of rules) {
     const rawKeywords = (rule.keywords || []).map(value => String(value || "").trim()).filter(Boolean);
     if (!rawKeywords.length) continue;
-    const matched = rawKeywords.filter(keyword => keywordMatchesText(keyword, rawText, { caseSensitive: Boolean(rule.caseSensitive) }));
-    if (!matched.length) continue;
-    const exactPhraseBonus = matched.some(item => normalizeText(item).includes(" ")) ? 12 : 0;
-    const compactBonus = matched.some(item => normalizeIdentifier(item).length >= 8) ? 4 : 0;
+    const seenMasks = new Set();
+    const infos = [];
+    for (const keyword of rawKeywords) {
+      const mask = normalizeRuleMask(keyword, { caseSensitive: Boolean(rule.caseSensitive) });
+      if (!mask || seenMasks.has(mask)) continue;
+      seenMasks.add(mask);
+      const info = keywordMatchInfo(keyword, rawText, { caseSensitive: Boolean(rule.caseSensitive) });
+      if (info) infos.push(info);
+    }
+    if (!infos.length) continue;
+    const matched = infos.map(info => info.keyword);
     const priority = rulePriority(rule);
-    const score = matched.length * 18 + exactPhraseBonus + compactBonus + Math.max(0, priority) * 8;
+    const score = infos.reduce((sum, info) => sum + info.strength, 0) + matched.length * 10 + Math.max(0, priority) * 8;
     matches.push({ rule, score, matched, priority });
   }
 
@@ -331,7 +369,7 @@ export function categorizeTransaction(tx, rules = DEFAULT_RULES, categories = DE
   }
 
   const top = matches[0];
-  const challengers = matches.filter(item => item !== top && item.rule.categoryId !== top.rule.categoryId && item.priority === top.priority && top.score - item.score <= 15);
+  const challengers = matches.filter(item => item !== top && item.rule.categoryId !== top.rule.categoryId && item.priority === top.priority && Math.abs(top.score - item.score) <= 0.001);
   const topCategory = categoryMap.get(top.rule.categoryId);
   const signMismatch = topCategory?.type === "income" && Number(tx.amount) < 0;
 

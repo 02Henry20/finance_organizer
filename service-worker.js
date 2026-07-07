@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v50-rule-priority-busy-icons";
+const CACHE_NAME = "capito-v51-rule-matching-fix";
 const CORE = [
   "./",
   "./index.html",
