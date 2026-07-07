@@ -2183,6 +2183,22 @@ td .category-pill .category-pill-text,
   white-space: nowrap;
   font-weight: 820;
 }
+
+.import-balance-note {
+  display: grid;
+  gap: 4px;
+  padding-top: 4px;
+  color: var(--muted-strong);
+  font-size: .82rem;
+}
+.import-balance-note > strong {
+  color: var(--primary);
+  font-size: .82rem;
+}
+.import-balance-note span {
+  overflow-wrap: anywhere;
+  font-weight: 760;
+}
 .import-filtered-card {
   margin-top: 16px;
 }

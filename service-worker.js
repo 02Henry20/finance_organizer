@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v66-data-integrity-repair";
+const CACHE_NAME = "capito-v67-import-balance-fix";
 const CORE = [
   "./",
   "./index.html",

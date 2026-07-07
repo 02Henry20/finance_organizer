@@ -177,6 +177,13 @@ function truthy(value) {
   return ["1", "true", "yes", "y", "ja", "ignore", "ignored", "exclude", "excluded"].includes(text);
 }
 
+function finiteNumberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+
 function amountWithFeeSplitRows({ date, movement, fee = 0, currency, counterparty, description, balance = "", externalId, excludeFromStats, note, accountKey, categoryId = "" }) {
   const rows = [];
   const feeAmount = Math.abs(Number(fee || 0));
@@ -649,7 +656,7 @@ export async function parseBankFile(file) {
         formatLabel: "Revolut consolidated XLSX",
         headers: revolut.headers,
         rows: revolut.rows,
-        openingBalanceHint: Number.isFinite(Number(revolut.openingBalanceHint)) ? Number(revolut.openingBalanceHint) : null,
+        openingBalanceHint: finiteNumberOrNull(revolut.openingBalanceHint),
         openingBalanceDetails: revolut.openingBalanceDetails || [],
         rawHeaders: revolut.headers,
         rawRows: revolut.rows,
@@ -676,7 +683,7 @@ export async function parseBankFile(file) {
       formatLabel: "Revolut consolidated statement",
       headers: consolidated.headers,
       rows: consolidated.rows,
-      openingBalanceHint: Number.isFinite(Number(consolidated.openingBalanceHint)) ? Number(consolidated.openingBalanceHint) : null,
+      openingBalanceHint: finiteNumberOrNull(consolidated.openingBalanceHint),
       openingBalanceDetails: consolidated.openingBalanceDetails || [],
       rawHeaders: consolidated.headers,
       rawRows: consolidated.rows,
@@ -696,7 +703,7 @@ export async function parseBankFile(file) {
     formatLabel: format.label,
     headers: normalized.headers,
     rows: normalized.rows,
-    openingBalanceHint: Number.isFinite(Number(normalized.openingBalanceHint)) ? Number(normalized.openingBalanceHint) : null,
+    openingBalanceHint: finiteNumberOrNull(normalized.openingBalanceHint),
     openingBalanceDetails: normalized.openingBalanceDetails || [],
     rawHeaders,
     rawRows,

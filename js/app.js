@@ -2400,6 +2400,10 @@ function renderMapping() {
   }));
 }
 
+function hasImportOpeningHint(value) {
+  return value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
+}
+
 function updateImportFileLabel() {
   const label = $("#import-file-label");
   const title = $("#import-file-title");
@@ -2414,7 +2418,7 @@ function updateImportFileLabel() {
   }
   title.textContent = activeParsedFile?.filename || brokerParsedFile?.filename || "Selected file";
   const parts = [];
-  if (activeParsedFile) parts.push(`${activeParsedFile.formatLabel || "Bank export"} · ${activeParsedFile.rows.length} rows${Number.isFinite(Number(activeParsedFile.openingBalanceHint)) ? ` · opening ${formatCurrency(Number(activeParsedFile.openingBalanceHint), selectedCurrency())}` : ""}`);
+  if (activeParsedFile) parts.push(`${activeParsedFile.formatLabel || "Bank export"} · ${activeParsedFile.rows.length} rows${hasImportOpeningHint(activeParsedFile.openingBalanceHint) ? ` · statement opening hint ${formatCurrency(Number(activeParsedFile.openingBalanceHint), selectedCurrency())}` : ""}`);
   if (brokerParsedFile) parts.push(`${brokerParsedFile.formatLabel || "Broker positions"} · ${brokerParsedFile.positions.length} positions`);
   detail.textContent = `${parts.join(" · ")}; click to replace`;
 }
@@ -2686,13 +2690,13 @@ function updateUnifiedImportSummary() {
   const resetButton = $("#reset-import-button");
   if (resetButton) resetButton.disabled = !(activeParsedFile || brokerParsedFile);
   const parts = [];
-  if (activeParsedFile) parts.push(`${activeParsedFile.formatLabel || "Bank export"}: ${txCount} transactions, ${reviewCount} review, ${ignoredCount} ignored stats, ${txSkipped} duplicates/skipped${Number.isFinite(Number(activeParsedFile.openingBalanceHint)) ? `, opening ${formatCurrency(Number(activeParsedFile.openingBalanceHint), selectedCurrency())}` : ""}`);
+  if (activeParsedFile) parts.push(`${activeParsedFile.formatLabel || "Bank export"}: ${txCount} transactions, ${reviewCount} review, ${ignoredCount} ignored stats, ${txSkipped} duplicates/skipped${hasImportOpeningHint(activeParsedFile.openingBalanceHint) ? `, statement opening hint ${formatCurrency(Number(activeParsedFile.openingBalanceHint), selectedCurrency())}` : ""}`);
   if (brokerParsedFile) parts.push(`${brokerParsedFile.formatLabel || "Broker export"}: ${posCount} positions, ${posSkipped} skipped`);
   const balanceSummary = importBalanceSummaryHtml();
   const balanceBox = $("#import-balance-summary");
   if (balanceBox) {
     balanceBox.hidden = !balanceSummary;
-    balanceBox.innerHTML = balanceSummary ? `<strong>Balance after import</strong><div class="import-balance-list">${balanceSummary}</div>` : "";
+    balanceBox.innerHTML = balanceSummary || "";
   }
   if (parts.length) setMessage($("#import-message"), parts.join(" · "));
 }
@@ -2971,25 +2975,56 @@ function bulkEditDialog(count, { title = "Group edit", allowAccount = true } = {
   });
 }
 
-function accountBalanceAfterRows(account, rows = []) {
-  return Number(account?.openingBalance || 0) + [
-    ...state.transactions,
-    ...rows
-  ].filter(tx => tx.accountId === account?.id).reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+function accountBalanceFromStoredTransactions(account) {
+  return Number(account?.openingBalance || 0) + state.transactions
+    .filter(tx => tx.accountId === account?.id)
+    .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+}
+
+function accountImportDelta(account, rows = []) {
+  return rows
+    .filter(tx => tx.accountId === account?.id)
+    .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+}
+
+function currencyFromLedgerHint(product = "") {
+  const text = String(product || "").toUpperCase();
+  const match = text.match(/(?:^|[:\s(])([A-Z]{3})(?:\)|$)/);
+  return match?.[1] || selectedCurrency();
+}
+
+function importOpeningHintHtml() {
+  const details = activeParsedFile?.openingBalanceDetails || [];
+  const hasSingle = hasImportOpeningHint(activeParsedFile?.openingBalanceHint);
+  const single = hasSingle ? Number(activeParsedFile.openingBalanceHint) : null;
+  if (!details.length && !hasSingle) return "";
+  const rows = details.length
+    ? details.map(item => {
+      const product = item.product || item.accountKey || "Statement";
+      const value = Number(item.value);
+      return Number.isFinite(value) ? `${escapeHtml(product)}: ${formatCurrency(value, currencyFromLedgerHint(product))}` : "";
+    }).filter(Boolean)
+    : (hasSingle ? [`Statement: ${formatCurrency(single, selectedCurrency())}`] : []);
+  if (!rows.length) return "";
+  return `<div class="import-balance-note"><strong>Statement opening hint only</strong><span>${rows.join(" · ")}</span><small class="muted">Not applied automatically, so the account start balance is not reset by import.</small></div>`;
 }
 
 function importBalanceSummaryHtml() {
   const rows = activePreview?.transactions || [];
-  if (!rows.length) return "";
   const accountIds = [...new Set(rows.map(tx => tx.accountId).filter(Boolean))];
-  return accountIds.map(accountId => {
+  const balanceRows = accountIds.map(accountId => {
     const account = state.accounts.find(item => item.id === accountId);
     if (!account) return "";
-    const current = accountBalanceAfterRows(account, []);
-    const next = accountBalanceAfterRows(account, rows);
+    const current = accountBalanceFromStoredTransactions(account);
+    const delta = accountImportDelta(account, rows);
+    const next = current + delta;
     const currency = account.currency || selectedCurrency();
-    return `<div><strong>${escapeHtml(account.name)}</strong><span>${formatCurrency(current, currency)} → ${formatCurrency(next, currency)}</span></div>`;
+    const deltaLabel = `${delta >= 0 ? "+" : ""}${formatCurrency(delta, currency)}`;
+    return `<div><strong>${escapeHtml(account.name)}</strong><span>${formatCurrency(current, currency)} ${escapeHtml(deltaLabel)} → ${formatCurrency(next, currency)}</span></div>`;
   }).filter(Boolean).join("");
+  const hint = importOpeningHintHtml();
+  if (!balanceRows && !hint) return "";
+  return `${balanceRows ? `<strong>Balance impact from accepted rows</strong><div class="import-balance-list">${balanceRows}</div>` : ""}${hint}`;
 }
 
 
@@ -3813,11 +3848,10 @@ function wireEvents() {
         let txCount = 0;
         let positionCount = 0;
         if (activePreview?.transactions?.length) {
-          const importAccount = state.accounts.find(account => account.id === $("#import-account")?.value);
-          const openingHint = Number(activeParsedFile?.openingBalanceHint);
-          if (importAccount && Number.isFinite(openingHint)) {
-            await saveAccount({ ...importAccount, openingBalance: openingHint });
-          }
+          // Import must only save the accepted transaction rows. Statement/opening
+          // balance hints are validation metadata and must not overwrite the
+          // account start balance, otherwise the previewed balance impact and the
+          // final stored balance diverge after import.
           await saveTransactionsBatch(activePreview.transactions);
           txCount = activePreview.transactions.length;
         }
