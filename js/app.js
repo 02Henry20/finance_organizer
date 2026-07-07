@@ -3310,7 +3310,7 @@ function wireEvents() {
         label: $("#rule-label").value,
         categoryId: $("#rule-category").value,
         keywords: $("#rule-keywords").value,
-        priority: parseMoney($("#rule-priority").value) || 0,
+        priority: Number.isFinite(Number($("#rule-priority").value)) ? Number($("#rule-priority").value) : 0,
         caseSensitive: $("#rule-case-sensitive").value === "true"
       };
       const savedId = await saveRule(ruleInput);
@@ -3337,15 +3337,20 @@ function wireEvents() {
   $("#delete-rule-button").addEventListener("click", async () => {
     const id = $("#rule-id").value;
     if (!id) return;
-    const ok = await confirmDialog({ title: "Delete rule", message: "Delete this keyword rule and recategorize past transactions?", confirmLabel: "Delete rule", danger: true });
+    const ok = await confirmDialog({
+      title: "Delete rule",
+      message: "Delete this keyword rule? Existing transactions will not be recategorized automatically. Use ↻ Rules if you want to reapply all rules afterwards.",
+      confirmLabel: "Delete rule",
+      danger: true
+    });
     if (!ok) return;
-    const oldRule = state.rules.find(rule => rule.id === id) || null;
-    const nextRules = state.rules.filter(rule => rule.id !== id);
-    await deleteRule(id);
-    const reapplied = await reapplyRulesAfterRuleChange(oldRule, null, nextRules);
-    toast("Rule deleted", reapplied ? `${reapplied} affected transactions updated.` : "");
-    requestRender();
-    closeModal();
+    const button = $("#delete-rule-button");
+    await withButtonBusy(button, "Deleting…", async () => {
+      await deleteRule(id);
+      toast("Rule deleted", "Transactions were not recategorized automatically.");
+      requestRender();
+      closeModal();
+    });
   });
 
   $("#settings-form")?.addEventListener("submit", async event => {

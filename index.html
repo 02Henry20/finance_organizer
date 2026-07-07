@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#111827">
   <meta name="description" content="Capito is a private finance organizer for accounts, transactions, holdings, rules and analytics.">
   <title>Capito</title>
-  <meta name="capito-build" content="capito-v53-rule-reapply-suggestions">
+  <meta name="capito-build" content="capito-v54-negative-priority-delete-fix">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16x16.png">
@@ -400,7 +400,7 @@
         <label class="field"><span>Label</span><input id="rule-label" placeholder="Groceries at REWE"></label>
         <label class="field"><span>Category</span><select id="rule-category"></select></label>
         <label class="field"><span>Keywords | phrases</span><input id="rule-keywords" placeholder="rewe, edeka, grocery"></label>
-        <div class="form-grid two"><label class="field"><span>Priority</span><input id="rule-priority" type="number" step="1" min="0" max="999" placeholder="0"></label><label class="field"><span>Case sensitive</span><select id="rule-case-sensitive"><option value="false">No</option><option value="true">Yes</option></select></label></div>
+        <div class="form-grid two"><label class="field"><span>Priority · higher wins</span><input id="rule-priority" type="number" step="1" min="-999" max="999" placeholder="0"></label><label class="field"><span>Case sensitive</span><select id="rule-case-sensitive"><option value="false">No</option><option value="true">Yes</option></select></label></div>
         <p id="rule-message" class="form-message" aria-live="polite"></p>
         <div class="button-row"><button class="primary-button" type="submit">Save rule</button><button id="delete-rule-button" class="danger-button" type="button" hidden>Delete</button></div>
       </form>
