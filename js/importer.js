@@ -937,7 +937,11 @@ export function rowToTransaction(row, mapping, context) {
   const id = transactionHash({ ...base, description: suppliedExternalId ? `${description} ${suppliedExternalId}` : description });
   const groupId = categorization.internalTransfer ? `it_${id}` : "";
   const nextCategoryId = categoryOverride || categorization.categoryId;
-  const ignoredReason = forcedIgnore ? "Excluded from spending statistics by import rule." : "";
+  const nextCategory = (context.categories || []).find(cat => cat.id === nextCategoryId);
+  const nextIsCash = nextCategoryId === "cash";
+  const nextIsInternalTransfer = Boolean(categorization.internalTransfer || nextCategoryId === "transfer");
+  const nextIsTransferCategory = Boolean(nextIsInternalTransfer || nextCategory?.type === "transfer");
+  const ignoredReason = forcedIgnore && !nextIsCash ? "Excluded from spending statistics by import rule." : "";
   const tx = {
     ...base,
     id,
@@ -951,8 +955,8 @@ export function rowToTransaction(row, mapping, context) {
     transferMatchedAccountId: categorization.transferMatchedAccountId || categorization.matchedAccountId || "",
     transferSourceAccountId: categorization.transferSourceAccountId || "",
     transferTargetAccountId: categorization.transferTargetAccountId || "",
-    internalTransfer: Boolean(categorization.internalTransfer || forcedIgnore || nextCategoryId === "transfer"),
-    excludeFromStats: Boolean(forcedIgnore || categorization.excludeFromStats),
+    internalTransfer: nextIsInternalTransfer,
+    excludeFromStats: nextIsCash ? false : Boolean((forcedIgnore || categorization.excludeFromStats) && nextIsTransferCategory),
     note
   };
   return categorization.internalTransfer ? withInternalTransferFields(tx, categorization, groupId) : tx;

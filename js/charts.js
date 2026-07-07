@@ -76,11 +76,21 @@ function drawLabels(ctx, labels, area, xFor, c) {
   ctx.fillStyle = c.text;
   ctx.font = "11px Inter, system-ui";
   ctx.textBaseline = "top";
-  const step = Math.max(1, Math.ceil(labels.length / 5));
-  labels.forEach((label, i) => {
-    if (i % step !== 0 && i !== labels.length - 1) return;
+  const count = labels.length;
+  const maxLabels = Math.max(2, Math.min(5, Math.floor((area.right - area.left) / 72)));
+  const step = Math.max(1, Math.ceil(count / maxLabels));
+  let indices = [];
+  for (let i = 0; i < count; i += step) indices.push(i);
+  if (count > 1 && !indices.includes(count - 1)) indices.push(count - 1);
+  indices = [...new Set(indices)].sort((a, b) => a - b);
+  const minGap = 52;
+  for (let i = indices.length - 2; i >= 0; i -= 1) {
+    if (Math.abs(xFor(indices[i + 1]) - xFor(indices[i])) < minGap && indices[i] !== 0) indices.splice(i, 1);
+  }
+  indices.forEach(i => {
+    const label = labels[i];
     const x = xFor(i);
-    ctx.textAlign = i === 0 ? "left" : i === labels.length - 1 ? "right" : "center";
+    ctx.textAlign = i === 0 ? "left" : i === count - 1 ? "right" : "center";
     const display = /^\d{4}-\d{2}/.test(label) ? label.slice(2) : label;
     ctx.fillText(display, x, area.bottom + 10);
   });
@@ -415,7 +425,7 @@ export function drawMultiLineSeries(canvas, payload, currency = "EUR", options =
   if (!available) return;
   const { ctx, width, height, colors: c } = prepare(canvas);
   const mobile = width < 520;
-  const palette = [c.accent, c.primary, c.yellow, c.violet, c.green, c.red, "#69d2ff", "#d19dff", "#ffb86b", c.text];
+  const palette = ["#3b82f6", "#f97316", "#a855f7", "#ef4444", "#14b8a6", "#eab308", "#ec4899", "#22c55e", "#06b6d4", "#f59e0b", c.primary, c.accent, c.violet, c.red];
   const legendRows = Math.min(3, Math.ceil(series.length / (mobile ? 2 : 4)) || 1);
   const area = {
     left: mobile ? 52 : 60,

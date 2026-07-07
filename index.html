@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#111827">
   <meta name="description" content="Capito is a private finance organizer for accounts, transactions, holdings, rules and analytics.">
   <title>Capito</title>
-  <meta name="capito-build" content="capito-v59-reports-progression-lines">
+  <meta name="capito-build" content="capito-v61-cash-stats-fix">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16x16.png">
@@ -110,7 +110,7 @@
 
       <section class="view" data-view-section="reports">
         <div class="surface-card reports-toolbar">
-          <div class="report-title-block"><p class="eyebrow">Reports</p><h3>Period analysis</h3><div class="report-title-actions desktop-only-tools"><button id="report-recalc-button" data-report-recalc class="secondary-button compact" type="button">↻ Recalc</button><small id="report-recalc-status" class="muted"></small></div></div>
+          <div class="report-title-block"><div class="report-title-row"><p class="eyebrow">Reports</p><button id="report-recalc-button" data-report-recalc class="secondary-button compact report-recalc-desktop-button desktop-only-tools" type="button">↻ Recalc</button></div><h3>Period analysis</h3><small id="report-recalc-status" class="muted report-recalc-status"></small></div>
           <div class="report-controls">
             <div class="segmented-control report-mode-control" role="group" aria-label="Report period mode">
               <button class="segment-button active" data-report-mode="month" type="button" aria-pressed="true">Month</button>
@@ -142,20 +142,20 @@
             <div class="chart-wrap"><canvas id="report-net-chart"></canvas><div class="chart-empty" data-empty-for="report-net-chart">No monthly net flow yet.</div></div>
           </article>
           <article class="chart-card surface-card">
-            <div class="panel-heading"><div><p class="eyebrow">BROKER HOLDINGS</p><h3 id="report-assets-title">Broker holdings</h3></div></div>
-            <div class="chart-wrap"><canvas id="report-asset-movement-chart"></canvas><div class="chart-empty" data-empty-for="report-asset-movement-chart">No broker holding values in this period.</div></div>
-          </article>
-          <article class="chart-card surface-card">
-            <div class="panel-heading"><div><p class="eyebrow">DEBT ACCOUNTS</p><h3 id="report-debt-title">Debt progression</h3></div></div>
-            <div class="chart-wrap"><canvas id="report-debt-movement-chart"></canvas><div class="chart-empty" data-empty-for="report-debt-movement-chart">No debt account values in this period.</div></div>
-          </article>
-          <article class="chart-card surface-card">
             <div class="panel-heading report-category-heading"><div><p class="eyebrow">CATEGORY FLOW</p><h3 id="report-spending-title">Category split</h3></div><div class="report-category-actions"><div class="segmented-control compact-segments report-category-mode" role="group" aria-label="Category flow mode"><button class="segment-button" data-report-category-mode="income" type="button" aria-pressed="false">In</button><button class="segment-button" data-report-category-mode="outcome" type="button" aria-pressed="false">Out</button><button class="segment-button active" data-report-category-mode="combined" type="button" aria-pressed="true">Both</button></div><span id="report-period-pill" class="metric-tag">Current month</span></div></div>
             <div class="chart-wrap"><canvas id="report-category-chart"></canvas><div class="chart-empty" data-empty-for="report-category-chart">No category flow in this period.</div></div>
           </article>
           <article class="chart-card surface-card">
             <div class="panel-heading"><div><p class="eyebrow">YEAR OVER YEAR</p><h3 id="report-yoy-title">Monthly spending</h3></div></div>
             <div class="chart-wrap"><canvas id="report-yoy-chart"></canvas><div class="chart-empty" data-empty-for="report-yoy-chart">No year comparison data yet.</div></div>
+          </article>
+          <article class="chart-card surface-card">
+            <div class="panel-heading"><div><p class="eyebrow">BROKER HOLDINGS</p><h3 id="report-assets-title">Broker holdings</h3></div></div>
+            <div class="chart-wrap"><canvas id="report-asset-movement-chart"></canvas><div class="chart-empty" data-empty-for="report-asset-movement-chart">No broker holding values in this period.</div></div>
+          </article>
+          <article class="chart-card surface-card">
+            <div class="panel-heading"><div><p class="eyebrow">DEBT ACCOUNTS</p><h3 id="report-debt-title">Debt progression</h3></div></div>
+            <div class="chart-wrap"><canvas id="report-debt-movement-chart"></canvas><div class="chart-empty" data-empty-for="report-debt-movement-chart">No debt account values in this period.</div></div>
           </article>
         </div>
       </section>

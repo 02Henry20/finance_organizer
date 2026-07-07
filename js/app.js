@@ -708,8 +708,13 @@ function transactionsInRange(start, end) {
 }
 
 function includeInSpending(cat, tx = {}) {
+  const isInternalOrTransfer = Boolean(tx.internalTransfer || tx.transferSourceAccountId || tx.transferTargetAccountId || cat?.type === "transfer");
+  if (isInternalOrTransfer && state.settings.hideInternalTransfersInSpending) return false;
+  // Cash withdrawals are real spending. Older imports/rule runs may have marked
+  // them as excluded; do not let that hide the Cash category from reports.
+  if (cat?.id === "cash") return true;
   if (shouldIgnoreTransactionInStats(tx)) return false;
-  return !(cat?.type === "transfer" && state.settings.hideInternalTransfersInSpending);
+  return true;
 }
 
 function summarizeTransactions(rows) {
@@ -1091,7 +1096,7 @@ function renderReports() {
   $("#report-net-title").textContent = reportsMode === "year" ? `${reportsYear} net flow` : "Rolling net flow";
   const flowLabels = { income: "Income", outcome: "Outcome", combined: "Combined" };
   const flowCenterLabels = { income: "incoming", outcome: "outgoing", combined: "flow" };
-  $("#report-spending-title").textContent = `${flowLabels[reportsCategoryMode] || "Combined"} category split`;
+  $("#report-spending-title").textContent = `${flowLabels[reportsCategoryMode] || "Combined"} split`;
   $("#report-yoy-title").textContent = `${selectedYear} vs ${reportsCompareYear} spending`;
   const periodLabel = bounds.label;
   const assetsTitle = $("#report-assets-title");
@@ -1662,7 +1667,8 @@ function syncTransactionReviewControl() {
   review.disabled = locked;
   const ignore = $("#transaction-ignore-stats");
   const cat = state.categories.find(item => item.id === category);
-  if (ignore && cat?.type === "transfer") ignore.checked = true;
+  if (ignore && cat?.id === "cash") ignore.checked = false;
+  else if (ignore && cat?.type === "transfer") ignore.checked = true;
 }
 
 function transactionDraftForCategorization() {
@@ -2111,6 +2117,9 @@ function buildCategorizedTransaction(tx, rulesOverride = state.rules, { reapplyM
   if (tx?.rulesLocked) return { ...tx };
   const result = categorizeTransaction(tx, rulesOverride, state.categories, state.accounts);
   const oldCategoryId = tx.categoryId || "misc";
+  const nextCategory = state.categories.find(cat => cat.id === result.categoryId);
+  const nextIsCash = result.categoryId === "cash";
+  const nextIsTransfer = Boolean(result.internalTransfer || nextCategory?.type === "transfer");
   const lostPreviousCategory = reapplyMode
     && oldCategoryId
     && oldCategoryId !== "misc"
@@ -2132,7 +2141,7 @@ function buildCategorizedTransaction(tx, rulesOverride = state.rules, { reapplyM
     transferSourceAccountId: result.transferSourceAccountId || "",
     transferTargetAccountId: result.transferTargetAccountId || "",
     internalTransfer: Boolean(result.internalTransfer),
-    excludeFromStats: Boolean(result.excludeFromStats)
+    excludeFromStats: nextIsCash ? false : Boolean(result.excludeFromStats && nextIsTransfer)
   };
 }
 
@@ -3329,7 +3338,7 @@ function wireEvents() {
         description: $("#transaction-description").value,
         note: $("#transaction-note").value,
         review: $("#transaction-review").checked,
-        excludeFromStats: Boolean($("#transaction-ignore-stats")?.checked),
+        excludeFromStats: selectedCategoryId === "cash" ? false : Boolean($("#transaction-ignore-stats")?.checked),
         rulesLocked: Boolean($("#transaction-rules-locked")?.checked),
         source: $("#transaction-id").value ? "manual-edit" : "manual"
       };

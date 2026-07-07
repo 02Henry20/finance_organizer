@@ -325,7 +325,7 @@ export async function saveTransaction(input) {
     referenceCoveredAmount: input.referenceCoveredAmount == null ? null : Number(input.referenceCoveredAmount),
     referenceFundingGroupId: input.referenceFundingGroupId || "",
     fundingOriginalId: input.fundingOriginalId || "",
-    excludeFromStats: Boolean(input.excludeFromStats || input.ignoreFromStats || input.statsIgnored),
+    excludeFromStats: input.categoryId === "cash" ? false : Boolean(input.excludeFromStats || input.ignoreFromStats || input.statsIgnored),
     createdAtMs: input.createdAtMs || Date.now()
   });
   return id;
@@ -344,6 +344,8 @@ export async function saveTransactionsBatch(transactions) {
         id,
         amount: Number(tx.amount || 0),
         currency: (tx.currency || state.settings.primaryCurrency || "EUR").toUpperCase(),
+        excludeFromStats: tx.categoryId === "cash" ? false : Boolean(tx.excludeFromStats || tx.ignoreFromStats || tx.statsIgnored),
+        internalTransfer: tx.categoryId === "cash" ? false : Boolean(tx.internalTransfer),
         clientUpdatedAtMs: Date.now(),
         updatedAt: serverTimestamp()
       }, { merge: true });

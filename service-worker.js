@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v59-reports-progression-lines";
+const CACHE_NAME = "capito-v61-cash-stats-fix";
 const CORE = [
   "./",
   "./index.html",
