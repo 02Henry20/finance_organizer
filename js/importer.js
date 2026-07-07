@@ -229,22 +229,35 @@ function parseExcelSerialDate(value) {
   return parseDateValue(value);
 }
 
+function parseNativeNumber(value, currency = "") {
+  const preferred = String(currency || "").toUpperCase();
+  const raw = String(value ?? "").replace(/\u00A0/g, " ").replace(/−/g, "-").trim();
+  if (!raw) return 0;
+  if (["KRW", "JPY"].includes(preferred)) {
+    const sign = raw.includes("-") ? -1 : 1;
+    const digits = raw.replace(/[^0-9]/g, "");
+    if (!digits) return 0;
+    return sign * Number(digits);
+  }
+  return money(raw);
+}
+
 function firstNativeMoney(value, currency = "") {
   if (value == null || value === "") return 0;
-  const text = String(value).replace(/â‚¬/g, "€").replace(/−/g, "-");
+  const text = String(value).replace(/â‚¬/g, "€").replace(/\u00A0/g, " ").replace(/−/g, "-");
   const preferred = String(currency || "").toUpperCase();
   const escaped = preferred.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   if (preferred && preferred !== "EUR") {
-    const pattern = new RegExp(`([+-]?\\d[\\d,.]*)\\s*${escaped}\\b`, "i");
+    const pattern = new RegExp(`([+-]?\\s*\\d[\\d,.\\s]*)\\s*${escaped}\\b`, "i");
     const match = text.match(pattern);
-    if (match) return money(match[1]);
+    if (match) return parseNativeNumber(match[1], preferred);
   }
   if (preferred === "EUR") {
     const match = text.match(/([+-]?\s*(?:€|EUR|â‚¬)\s*\d[\d,.]*|[+-]?\s*\d[\d,.]*\s*(?:€|EUR|â‚¬))/i);
     if (match) return money(match[1]);
   }
   const generic = text.match(/[+-]?\s*\d[\d,.]*/);
-  return generic ? money(generic[0]) : money(text);
+  return generic ? parseNativeNumber(generic[0], preferred) : money(text);
 }
 
 function isOwnName(text = "") {
@@ -455,69 +468,123 @@ function normalizeRevolutConsolidatedRows(rows, filename = "") {
   const outHeaders = ["Date", "Amount", "Currency", "Counterparty", "Description", "Balance", "External ID", "Exclude From Stats", "Note", "Account Key", "Category Override"];
   const outRows = [];
   const openingDetails = [];
+  const source = filename || "Revolut consolidated statement";
+
+  const isInstantAccessSavings = value => normalizeText(value).includes("instant access savings");
+  const addRow = ({ date, movement, currency, counterparty, description, balance = "", externalId, excludeFromStats = false, note = "", accountKey, categoryId = "" }) => {
+    if (!date || !Number.isFinite(Number(movement))) return;
+    outRows.push(...amountWithFeeSplitRows({
+      date,
+      movement,
+      fee: 0,
+      currency,
+      counterparty,
+      description,
+      balance,
+      externalId,
+      excludeFromStats,
+      note,
+      accountKey,
+      categoryId
+    }));
+  };
+
   for (let h = 0; h < rows.length; h += 1) {
     const header = rows[h].map(cleanText);
     const isTransaction = header[0] === "Date" && header[1] === "Description" && header[2] === "Category" && normalizeText(header[3]).includes("money in out");
     const isInterest = header[0] === "Date" && header[1] === "Description" && normalizeText(header[3]).includes("gross interest") && normalizeText(header[7]).includes("net interest");
     if (!isTransaction && !isInterest) continue;
+
     const accountLine = accountLineBefore(rows, h);
     const currency = currencyFromAccountLine(accountLine, "EUR");
     const product = productFromAccountLine(accountLine);
     const accountKey = `revolut:${product}:${currency}`;
+
     for (let r = h + 1; r < rows.length; r += 1) {
       const row = rows[r];
       const first = cleanText(row[0]);
       if (!first) continue;
       if (first === "---------" || /Transaction statement/i.test(first) || (first === "Date" && cleanText(row[1]) === "Description")) break;
       if (/^Total$/i.test(first)) break;
+
       const date = parseExcelSerialDate(row[0]);
       if (!date) continue;
+
       if (isTransaction) {
-        const category = row[2] || "";
+        const descriptionText = cleanText(row[1]);
+        const category = cleanText(row[2]);
         const rawMovement = row[3];
         const movement = firstNativeMoney(rawMovement, currency);
         if (!Number.isFinite(Number(movement))) continue;
-        const fee = Math.abs(firstNativeMoney(row[7], currency));
         const balance = firstNativeMoney(row[4], currency);
-        const neutral = isRevolutNeutral(category, row[1]);
-        const note = [accountKey, category, fee ? `Fee ${fee} ${currency}` : "", neutral ? "Revolut top-up/internal product transfer/currency exchange; excluded from spending statistics." : "", `Source ${filename}`].filter(Boolean).join(" · ");
-        outRows.push(...amountWithFeeSplitRows({
+        const feeInfo = Math.abs(firstNativeMoney(row[7], currency));
+        const neutral = isRevolutNeutral(category, descriptionText);
+        const note = [
+          accountKey,
+          category,
+          feeInfo ? `Fee ${feeInfo} ${currency} already included in Money in/out; not subtracted again` : "",
+          neutral ? "Revolut internal/top-up/exchange/savings movement; excluded from spending statistics." : "",
+          `Source ${source}`
+        ].filter(Boolean).join(" · ");
+
+        addRow({
           date,
           movement,
-          fee,
           currency,
-          counterparty: row[1] || "Revolut",
-          description: [accountLine, category, row[1], fee ? `Fee ${fee} ${currency}` : ""].filter(Boolean).join(" · "),
+          counterparty: descriptionText || "Revolut",
+          description: [accountLine, category, descriptionText, feeInfo ? `Fee ${feeInfo} ${currency} informational` : ""].filter(Boolean).join(" · "),
           balance: Number.isFinite(Number(balance)) ? balance : "",
-          externalId: [`revolut-xlsx`, accountKey, date, row[1], rawMovement, row[4]].join("|"),
+          externalId: [`revolut-consolidated-current`, accountKey, date, descriptionText, rawMovement, row[4]].join("|"),
           excludeFromStats: neutral,
           note,
           accountKey,
           categoryId: neutral ? "transfer" : ""
-        }));
+        });
+
+        // Revolut consolidated statements often list savings transfers only in
+        // the EUR current account. Mirror those rows into the deposit ledger
+        // with the inverse movement so the deposit balance is reconstructed.
+        if (product === "Current" && currency === "EUR" && isInstantAccessSavings(descriptionText)) {
+          const depositAccountKey = "revolut:Deposit:EUR";
+          addRow({
+            date,
+            movement: -movement,
+            currency: "EUR",
+            counterparty: "Revolut Savings",
+            description: [`Savings (EUR)`, descriptionText, "Mirror of current-account savings transfer"].filter(Boolean).join(" · "),
+            balance: "",
+            externalId: [`revolut-consolidated-deposit-transfer`, depositAccountKey, date, descriptionText, rawMovement].join("|"),
+            excludeFromStats: true,
+            note: [depositAccountKey, `Inverse of current-account movement ${movement} EUR`, "Reconstructs Instant Access Savings balance from current-account transfer row", `Source ${source}`].join(" · "),
+            accountKey: depositAccountKey,
+            categoryId: "transfer"
+          });
+        }
       } else if (isInterest) {
-        const movement = firstNativeMoney(row[7] || row[3], currency);
-        const fee = Math.abs(firstNativeMoney(row[6], currency));
+        const descriptionText = cleanText(row[1]);
+        const movement = firstNativeMoney(row[7], currency);
+        const feeInfo = Math.abs(firstNativeMoney(row[6], currency));
         if (!Number.isFinite(Number(movement))) continue;
-        outRows.push(...amountWithFeeSplitRows({
+        addRow({
           date,
           movement,
-          fee,
           currency,
           counterparty: "Revolut Savings",
-          description: [accountLine, row[1], "Interest"].filter(Boolean).join(" · "),
+          description: [accountLine, descriptionText, "Net interest"].filter(Boolean).join(" · "),
           balance: "",
-          externalId: [`revolut-interest`, accountKey, date, row[1], row[7]].join("|"),
+          externalId: [`revolut-consolidated-interest`, accountKey, date, descriptionText, row[7]].join("|"),
           excludeFromStats: false,
-          note: [accountKey, "Savings interest", fee ? `Fee ${fee} ${currency}` : ""].filter(Boolean).join(" · "),
+          note: [accountKey, "Savings net interest", feeInfo ? `Fee ${feeInfo} ${currency} informational; not subtracted again` : "", `Source ${source}`].filter(Boolean).join(" · "),
           accountKey,
           categoryId: "income_dividend"
-        }));
+        });
       }
     }
   }
+
   return { headers: outHeaders, rows: outRows, openingBalanceHint: null, openingBalanceDetails: openingDetails };
 }
+
 
 function normalizeSparkasse(headers, rows) {
   const idx = headerIndex(headers);

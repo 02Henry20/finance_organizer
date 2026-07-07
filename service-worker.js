@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v48-import-parser-fix";
+const CACHE_NAME = "capito-v49-revolut-consolidated-fix";
 const CORE = [
   "./",
   "./index.html",
