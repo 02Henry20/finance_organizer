@@ -409,6 +409,48 @@ function categoryMap() {
   return new Map(state.categories.map(cat => [cat.id, cat]));
 }
 
+
+function normalizeCategoryLookup(value = "") {
+  return String(value || "")
+    .trim()
+    .replace(/^[^\p{L}\p{N}]+/u, "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+function unresolvedCategory(raw = "") {
+  const label = String(raw || "").trim();
+  return {
+    id: label ? `unresolved:${label}` : "uncategorized",
+    name: label ? `Unresolved · ${label}` : "Uncategorized",
+    group: "Needs review",
+    type: "expense",
+    icon: "?",
+    color: DEFAULT_CATEGORY_COLOR,
+    unresolved: true
+  };
+}
+
+function resolveCategoryForTransaction(tx = {}, cats = categoryMap(), { allowMiscFallback = true } = {}) {
+  const raw = String(tx.categoryId || "").trim();
+  if (raw && cats.get(raw)) return cats.get(raw);
+
+  if (raw) {
+    const wanted = normalizeCategoryLookup(raw);
+    const loose = state.categories.find(cat => {
+      const candidates = [cat.id, cat.name, `${cat.icon || ""} ${cat.name || ""}`].map(normalizeCategoryLookup);
+      return candidates.includes(wanted);
+    });
+    if (loose) return loose;
+  }
+
+  if ((!raw || raw === "misc") && allowMiscFallback) return cats.get("misc") || unresolvedCategory("misc");
+  return unresolvedCategory(raw);
+}
+
 function accountMap() {
   return new Map(state.accounts.map(account => [account.id, account]));
 }
@@ -720,7 +762,7 @@ function includeInSpending(cat, tx = {}) {
 function summarizeTransactions(rows) {
   const cats = categoryMap();
   return rows.reduce((totals, tx) => {
-    const cat = cats.get(tx.categoryId) || cats.get("misc");
+    const cat = resolveCategoryForTransaction(tx, cats);
     const amount = convertCurrency(Number(tx.amount || 0), tx.currency || selectedCurrency(), state.settings);
     if (!includeInSpending(cat, tx)) {
       if (cat?.type === "transfer") totals.transfer += amount;
@@ -737,7 +779,7 @@ function categorySpendForRange(start, end) {
   const cats = categoryMap();
   const totals = new Map();
   for (const tx of transactionsInRange(start, end)) {
-    const cat = cats.get(tx.categoryId) || cats.get("misc");
+    const cat = resolveCategoryForTransaction(tx, cats);
     if (cat?.type === "income") continue;
     if (!includeInSpending(cat, tx)) continue;
     const value = Math.abs(Math.min(0, convertCurrency(tx.amount, tx.currency || selectedCurrency(), state.settings)));
@@ -754,7 +796,7 @@ function categoryFlowForRange(start, end, mode = "combined") {
   const cats = categoryMap();
   const totals = new Map();
   for (const tx of transactionsInRange(start, end)) {
-    const cat = cats.get(tx.categoryId) || cats.get("misc");
+    const cat = resolveCategoryForTransaction(tx, cats);
     if (!includeInSpending(cat, tx)) continue;
     const amount = convertCurrency(Number(tx.amount || 0), tx.currency || selectedCurrency(), state.settings);
     const isIncome = amount > 0;
@@ -909,7 +951,7 @@ function comparisonWindowFlow(compareDate) {
   return state.transactions.reduce((totals, tx) => {
     const date = String(tx.date || "");
     if (!date || date < compareDate || date > today) return totals;
-    const cat = cats.get(tx.categoryId) || cats.get("misc");
+    const cat = resolveCategoryForTransaction(tx, cats);
     if (!includeInSpending(cat, tx)) return totals;
     const amount = convertCurrency(Number(tx.amount || 0), tx.currency || selectedCurrency(), state.settings);
     if (amount >= 0) totals.income += amount;
@@ -1213,7 +1255,7 @@ function renderTransactions() {
     date: tx => tx.date || "",
     description: tx => tx.description || "",
     account: tx => accounts.get(tx.accountId)?.name || tx.accountId || "",
-    category: tx => cats.get(tx.categoryId)?.name || tx.categoryId || "",
+    category: tx => resolveCategoryForTransaction(tx, cats, { allowMiscFallback: false })?.name || tx.categoryId || "",
     amount: tx => Number(tx.amount || 0),
     note: tx => tx.note || ""
   });
@@ -1228,7 +1270,7 @@ function renderTransactions() {
   document.querySelector(".transactions-table")?.classList.toggle("selection-active", txSelectionMode);
   tbody.replaceChildren();
   for (const tx of pagedRows(rows, txPage, PAGE_SIZES.transactions)) {
-    const cat = cats.get(tx.categoryId) || cats.get("misc");
+    const cat = resolveCategoryForTransaction(tx, cats);
     const account = accounts.get(tx.accountId);
     const tr = document.createElement("tr");
     const selected = selectedTransactionIds.has(tx.id);
@@ -2092,7 +2134,7 @@ function renderAccountTransactionsModal() {
     return;
   }
   for (const tx of pagedRows(rows, accountTransactionsPage, PAGE_SIZES.accountTransactions)) {
-    const cat = cats.get(tx.categoryId) || cats.get("misc");
+    const cat = resolveCategoryForTransaction(tx, cats);
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${escapeHtml(tx.date)}</td>
@@ -2467,7 +2509,7 @@ function renderImportPreview() {
     date: tx => tx.date || "",
     description: tx => tx.description || "",
     amount: tx => Number(tx.amount || 0),
-    category: tx => cats.get(tx.categoryId)?.name || tx.categoryId || "",
+    category: tx => resolveCategoryForTransaction(tx, cats, { allowMiscFallback: false })?.name || tx.categoryId || "",
     status: tx => tx.review ? "Needs review" : "Prepared"
   });
   importSelectedIds = new Set([...importSelectedIds].filter(id => activePreview.transactions.some(tx => (tx.id || tx.externalId) === id)));
@@ -2478,7 +2520,7 @@ function renderImportPreview() {
   });
   updateSortButtons("import", importSort);
   for (const tx of pagedRows(rows, importPage, PAGE_SIZES.importPreview)) {
-    const cat = cats.get(tx.categoryId) || cats.get("misc");
+    const cat = resolveCategoryForTransaction(tx, cats);
     const id = tx.id || tx.externalId;
     const selected = importSelectedIds.has(id);
     const tr = document.createElement("tr");
@@ -2945,7 +2987,7 @@ function updateImportSelectionUi() {
     date: tx => tx.date || "",
     description: tx => tx.description || "",
     amount: tx => Number(tx.amount || 0),
-    category: tx => categoryMap().get(tx.categoryId)?.name || tx.categoryId || "",
+    category: tx => resolveCategoryForTransaction(tx, categoryMap(), { allowMiscFallback: false })?.name || tx.categoryId || "",
     status: tx => tx.review ? "Needs review" : "Prepared"
   }), importPage, PAGE_SIZES.importPreview);
   const visibleIds = pageRows.map(tx => tx.id || tx.externalId);
@@ -3285,7 +3327,7 @@ function wireEvents() {
       date: tx => tx.date || "",
       description: tx => tx.description || "",
       amount: tx => Number(tx.amount || 0),
-      category: tx => categoryMap().get(tx.categoryId)?.name || tx.categoryId || "",
+      category: tx => resolveCategoryForTransaction(tx, categoryMap(), { allowMiscFallback: false })?.name || tx.categoryId || "",
       status: tx => tx.review ? "Needs review" : "Prepared"
     });
     const visibleIds = pagedRows(rows, importPage, PAGE_SIZES.importPreview).map(tx => tx.id || tx.externalId);

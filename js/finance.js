@@ -487,6 +487,52 @@ export function shouldIgnoreTransactionInStats(tx = {}) {
   return Boolean(tx.excludeFromStats || tx.ignoreFromStats || tx.statsIgnored);
 }
 
+
+function normalizeCategoryLookup(value = "") {
+  return String(value || "")
+    .trim()
+    .replace(/^[^\p{L}\p{N}]+/u, "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+function unresolvedCategory(raw = "") {
+  const label = String(raw || "").trim();
+  return {
+    id: label ? `unresolved:${label}` : "uncategorized",
+    name: label ? `Unresolved · ${label}` : "Uncategorized",
+    group: "Needs review",
+    type: "expense",
+    icon: "?",
+    color: DEFAULT_CATEGORY_COLOR,
+    unresolved: true
+  };
+}
+
+function resolveCategory(categoryMap, categories = [], categoryId = "", { allowMiscFallback = true } = {}) {
+  const raw = String(categoryId || "").trim();
+  if (raw && categoryMap.get(raw)) return categoryMap.get(raw);
+  if (raw) {
+    const wanted = normalizeCategoryLookup(raw);
+    const loose = categories.find(cat => [cat.id, cat.name, `${cat.icon || ""} ${cat.name || ""}`].map(normalizeCategoryLookup).includes(wanted));
+    if (loose) return loose;
+  }
+  if ((!raw || raw === "misc") && allowMiscFallback) return categoryMap.get("misc") || unresolvedCategory("misc");
+  return unresolvedCategory(raw);
+}
+
+
+function includeInSpendingForFinance(cat, tx = {}, settings = {}) {
+  const isInternalOrTransfer = Boolean(tx.internalTransfer || tx.transferSourceAccountId || tx.transferTargetAccountId || cat?.type === "transfer");
+  if (isInternalOrTransfer && settings.hideInternalTransfersInSpending) return false;
+  if (cat?.id === "cash") return true;
+  if (shouldIgnoreTransactionInStats(tx)) return false;
+  return true;
+}
+
 export function buildMonthlySeries(transactions, categories, settings, monthsBack = 12) {
   const now = new Date(`${TODAY()}T00:00:00`);
   const months = [];
@@ -500,16 +546,13 @@ export function buildMonthlySeries(transactions, categories, settings, monthsBac
   for (const tx of transactions) {
     const row = rowMap.get(monthKey(tx.date));
     if (!row) continue;
-    const cat = categoryMap.get(tx.categoryId);
+    const cat = resolveCategory(categoryMap, categories, tx.categoryId, { allowMiscFallback: false });
     const amount = convertCurrency(Number(tx.amount), tx.currency, settings);
-    if (shouldIgnoreTransactionInStats(tx)) {
+    if (!includeInSpendingForFinance(cat, tx, settings)) {
       if (cat?.type === "transfer") row.transfer += amount;
       continue;
     }
-    if (cat?.type === "transfer") {
-      row.transfer += amount;
-      if (settings.hideInternalTransfersInSpending) continue;
-    }
+    if (cat?.type === "transfer") row.transfer += amount;
     if (amount >= 0) row.income += amount;
     else row.expense += Math.abs(amount);
     row.net += amount;
@@ -522,10 +565,9 @@ export function buildCategorySpend(transactions, categories, settings, period = 
   const totals = new Map();
   for (const tx of transactions) {
     if (monthKey(tx.date) !== period) continue;
-    if (shouldIgnoreTransactionInStats(tx)) continue;
-    const cat = categoryMap.get(tx.categoryId) || categoryMap.get("misc");
+    const cat = resolveCategory(categoryMap, categories, tx.categoryId);
     if (cat?.type === "income") continue;
-    if (cat?.type === "transfer" && settings.hideInternalTransfersInSpending) continue;
+    if (!includeInSpendingForFinance(cat, tx, settings)) continue;
     const value = Math.abs(Math.min(0, convertCurrency(tx.amount, tx.currency, settings)));
     if (value <= 0) continue;
     const prev = totals.get(cat.id) || { categoryId: cat.id, name: cat.name, group: cat.group, color: cat.color || DEFAULT_CATEGORY_COLOR, value: 0 };
