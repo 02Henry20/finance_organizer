@@ -722,6 +722,63 @@ function transactionSignature(tx) {
   ].join("|");
 }
 
+
+function signatureMapFromTransactions(rows = []) {
+  const map = new Map();
+  for (const row of rows) {
+    const signature = transactionSignature(row);
+    for (const key of [row.id, row.externalId].filter(Boolean)) {
+      if (!map.has(key)) map.set(key, new Set());
+      map.get(key).add(signature);
+    }
+  }
+  return map;
+}
+
+function hasExactSignature(map, key, signature) {
+  return Boolean(key && map.get(key)?.has(signature));
+}
+
+function keyHasDifferentSignature(map, key, signature) {
+  const signatures = key ? map.get(key) : null;
+  return Boolean(signatures && !signatures.has(signature));
+}
+
+function shortImportHash(value) {
+  const text = String(value || "");
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(36);
+}
+
+function reserveTransactionKeys(map, tx, signature) {
+  for (const key of [tx.id, tx.externalId].filter(Boolean)) {
+    if (!map.has(key)) map.set(key, new Set());
+    map.get(key).add(signature);
+  }
+}
+
+function makeCollisionSafeId(tx, signature, knownMap, previewMap) {
+  const currentId = tx.id || `tx_${shortImportHash(signature)}`;
+  const conflicts = keyHasDifferentSignature(knownMap, currentId, signature) || keyHasDifferentSignature(previewMap, currentId, signature);
+  if (!conflicts) return tx;
+  const base = currentId.replace(/_c[0-9a-z]+(?:_\d+)?$/i, "");
+  const suffix = shortImportHash([signature, tx.externalId, tx.rawText].filter(Boolean).join("|"));
+  let candidate = `${base}_c${suffix}`;
+  let counter = 2;
+  while (knownMap.has(candidate) || previewMap.has(candidate)) {
+    candidate = `${base}_c${suffix}_${counter}`;
+    counter += 1;
+  }
+  tx.id = candidate;
+  if (!tx.externalId || tx.externalId === currentId) tx.externalId = candidate;
+  tx.reason = [tx.reason, "Import ID collision resolved; full transaction signature differs."].filter(Boolean).join(" ");
+  return tx;
+}
+
 function amountKey(value) {
   return Math.abs(Number(value || 0)).toFixed(2);
 }
@@ -971,8 +1028,10 @@ export function rowToTransaction(row, mapping, context) {
 
 export function buildImportPreview(parsed, mapping, context, existingTransactions = []) {
   const importBatchId = uid();
-  const existingIds = new Set(existingTransactions.map(tx => tx.externalId || tx.id));
+  const existingKeySignatures = signatureMapFromTransactions(existingTransactions);
   const existingSignatures = new Set(existingTransactions.map(transactionSignature));
+  const previewKeySignatures = new Map();
+  const previewSignatures = new Set();
   const transactions = [];
   const skipped = [];
   const allKnownRows = () => [...existingTransactions, ...transactions];
@@ -983,10 +1042,12 @@ export function buildImportPreview(parsed, mapping, context, existingTransaction
       continue;
     }
     const signature = transactionSignature(tx);
-    if (existingIds.has(tx.id) || existingSignatures.has(signature) || transactions.some(item => item.id === tx.id || transactionSignature(item) === signature)) {
+    const exactIdDuplicate = [tx.id, tx.externalId].filter(Boolean).some(key => hasExactSignature(existingKeySignatures, key, signature) || hasExactSignature(previewKeySignatures, key, signature));
+    if (existingSignatures.has(signature) || previewSignatures.has(signature) || exactIdDuplicate) {
       skipped.push({ row, tx, reason: "Exact duplicate" });
       continue;
     }
+    makeCollisionSafeId(tx, signature, existingKeySignatures, previewKeySignatures);
     if (matchesInternalTransferDuplicate(tx, allKnownRows())) {
       skipped.push({ row, tx, reason: "Internal transfer counterpart already represented" });
       continue;
@@ -1001,8 +1062,16 @@ export function buildImportPreview(parsed, mapping, context, existingTransaction
     const referenceRows = buildReferenceFundingRows(tx, account, referenceAccount, transactions, existingTransactions);
 
     transactions.push(tx);
+    previewSignatures.add(signature);
+    reserveTransactionKeys(previewKeySignatures, tx, signature);
     for (const generated of referenceRows) {
-      if (!matchesReferenceFundingDuplicate(generated, allKnownRows(), context.accounts || [])) transactions.push(generated);
+      const generatedSignature = transactionSignature(generated);
+      if (!matchesReferenceFundingDuplicate(generated, allKnownRows(), context.accounts || []) && !previewSignatures.has(generatedSignature) && !existingSignatures.has(generatedSignature)) {
+        makeCollisionSafeId(generated, generatedSignature, existingKeySignatures, previewKeySignatures);
+        transactions.push(generated);
+        previewSignatures.add(generatedSignature);
+        reserveTransactionKeys(previewKeySignatures, generated, generatedSignature);
+      }
     }
   }
   return { transactions, skipped, importBatchId };

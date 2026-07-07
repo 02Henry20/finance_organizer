@@ -369,6 +369,16 @@ function selectedCurrency() {
   return (state.settings.primaryCurrency || "EUR").toUpperCase();
 }
 
+function showTransactionIdDebug() {
+  return state.settings.showTransactionIds === true || state.settings.showTransactionIds === "true";
+}
+
+function transactionIdDebugHtml(tx = {}) {
+  const id = tx.id || "";
+  const externalId = tx.externalId || "";
+  return `<div class="tx-id-debug" title="ID: ${escapeHtml(id)}${externalId && externalId !== id ? `\nExternal: ${escapeHtml(externalId)}` : ""}"><code>${escapeHtml(id || "—")}</code>${externalId && externalId !== id ? `<small>ext ${escapeHtml(externalId)}</small>` : ""}</div>`;
+}
+
 function accountDisplayCurrency(account = null) {
   return (account?.displayCurrency || state.settings.primaryCurrency || "EUR").toUpperCase();
 }
@@ -1268,7 +1278,12 @@ function renderTransactions() {
     renderTransactions();
   });
   updateSortButtons("transactions", txSort);
-  document.querySelector(".transactions-table")?.classList.toggle("selection-active", txSelectionMode);
+  const showIds = showTransactionIdDebug();
+  const transactionsTable = document.querySelector(".transactions-table");
+  transactionsTable?.classList.toggle("selection-active", txSelectionMode);
+  transactionsTable?.classList.toggle("show-debug-ids", showIds);
+  const txIdHeader = document.querySelector("[data-tx-id-header]");
+  if (txIdHeader) txIdHeader.hidden = !showIds;
   tbody.replaceChildren();
   for (const tx of pagedRows(rows, txPage, PAGE_SIZES.transactions)) {
     const cat = resolveCategoryForTransaction(tx, cats);
@@ -1285,6 +1300,7 @@ function renderTransactions() {
       <td>${categoryPill(cat, { review: tx.review })}</td>
       <td class="${Number(tx.amount) >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(tx.amount, tx.currency || selectedCurrency())}</td>
       <td class="note-cell"><span class="table-ellipsis" title="${escapeHtml(tx.note || "")}">${escapeHtml(tx.note || "")}</span></td>
+      ${showIds ? `<td class="tx-id-cell desktop-only-tools">${transactionIdDebugHtml(tx)}</td>` : ""}
       <td class="action-cell"><button class="ghost-button compact icon-only-action" type="button" data-edit-tx="${escapeHtml(tx.id)}" title="Edit transaction" aria-label="Edit transaction">✎</button></td>`;
     tbody.append(tr);
   }
@@ -1602,6 +1618,8 @@ function renderSettings() {
   if (quoteTimeout) quoteTimeout.value = String(Number(state.settings.quoteRequestTimeoutSeconds ?? 30));
   const deltaBars = $("#setting-account-delta-bars");
   if (deltaBars) deltaBars.value = String(state.settings.showAccountDeltaBars !== false);
+  const showIds = $("#setting-show-transaction-ids");
+  if (showIds) showIds.value = String(showTransactionIdDebug());
   setCompareMode(compareMode);
   $("#setting-compare-days").value = Number(state.settings.portfolioComparisonDays || 30);
   $("#setting-compare-date").value = state.settings.portfolioComparisonDate || "";
@@ -1649,7 +1667,8 @@ async function saveSettingsFromForm({ silent = true } = {}) {
     portfolioComparisonDays: comparisonMode === "rolling" ? Number($("#setting-compare-days").value || 30) : Number(state.settings.portfolioComparisonDays || 30),
     portfolioComparisonDate: comparisonMode === "date" ? $("#setting-compare-date").value || "" : "",
     hideInternalTransfersInSpending: $("#setting-hide-transfers").value === "true",
-    showAccountDeltaBars: $("#setting-account-delta-bars")?.value !== "false"
+    showAccountDeltaBars: $("#setting-account-delta-bars")?.value !== "false",
+    showTransactionIds: $("#setting-show-transaction-ids")?.value === "true"
   });
   settingsDirty = false;
   setMessage($("#settings-message"), silent ? "Saved automatically." : "Settings saved.");
@@ -2524,6 +2543,9 @@ function renderImportPreview() {
     renderImportPreview();
   });
   updateSortButtons("import", importSort);
+  const showIds = showTransactionIdDebug();
+  const importIdHeader = document.querySelector("[data-import-id-header]");
+  if (importIdHeader) importIdHeader.hidden = !showIds;
   for (const tx of pagedRows(rows, importPage, PAGE_SIZES.importPreview)) {
     const cat = resolveCategoryForTransaction(tx, cats);
     const id = tx.id || tx.externalId;
@@ -2532,7 +2554,7 @@ function renderImportPreview() {
     tr.classList.toggle("is-selected-row", selected);
     tr.classList.toggle("is-ignored-row", shouldIgnoreTransactionInStats(tx));
     const ignored = shouldIgnoreTransactionInStats(tx);
-    tr.innerHTML = `<td class="select-col desktop-only-tools"><input class="import-select-checkbox" data-select-import-tx="${escapeHtml(id)}" type="checkbox" ${selected ? "checked" : ""} aria-label="Select import row"></td><td>${escapeHtml(tx.date)}</td><td class="description-cell"><strong>${escapeHtml(tx.description)}</strong><small class="muted table-ellipsis">${escapeHtml(tx.reason || "")}</small>${transactionFlagsHtml(tx)}</td><td class="${tx.amount >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(tx.amount, tx.currency)}</td><td>${categoryPill(cat, { review: tx.review })}</td><td>${tx.review ? "Needs review" : "Prepared"}</td><td><select class="import-stats-select" data-import-ignore="${escapeHtml(id)}" aria-label="Spending statistics"><option value="false" ${ignored ? "" : "selected"}>Include</option><option value="true" ${ignored ? "selected" : ""}>Ignore</option></select></td>`;
+    tr.innerHTML = `<td class="select-col desktop-only-tools"><input class="import-select-checkbox" data-select-import-tx="${escapeHtml(id)}" type="checkbox" ${selected ? "checked" : ""} aria-label="Select import row"></td><td>${escapeHtml(tx.date)}</td><td class="description-cell"><strong>${escapeHtml(tx.description)}</strong><small class="muted table-ellipsis">${escapeHtml(tx.reason || "")}</small>${transactionFlagsHtml(tx)}</td><td class="${tx.amount >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(tx.amount, tx.currency)}</td><td>${categoryPill(cat, { review: tx.review })}</td><td>${tx.review ? "Needs review" : "Prepared"}</td>${showIds ? `<td class="tx-id-cell desktop-only-tools">${transactionIdDebugHtml(tx)}</td>` : ""}<td><select class="import-stats-select" data-import-ignore="${escapeHtml(id)}" aria-label="Spending statistics"><option value="false" ${ignored ? "" : "selected"}>Include</option><option value="true" ${ignored ? "selected" : ""}>Ignore</option></select></td>`;
     tbody.append(tr);
   }
   tbody.querySelectorAll("[data-select-import-tx]").forEach(box => box.addEventListener("change", event => {
@@ -2565,6 +2587,9 @@ function renderFilteredImportPreview() {
   card.hidden = skipped.length === 0;
   tbody.replaceChildren();
   if (count) count.textContent = skipped.length ? `${skipped.length} filtered` : "None";
+  const showIds = showTransactionIdDebug();
+  const filteredIdHeader = document.querySelector("[data-filtered-id-header]");
+  if (filteredIdHeader) filteredIdHeader.hidden = !showIds;
   if (!skipped.length) {
     renderPagination($("#import-filtered-pagination"), 0, 1, PAGE_SIZES.importPreview, () => {});
     return;
@@ -2581,6 +2606,7 @@ function renderFilteredImportPreview() {
       <td>${tx?.date ? escapeHtml(tx.date) : "—"}</td>
       <td class="description-cell"><strong>${escapeHtml(tx?.description || item.row?.join(" · ") || "Filtered row")}</strong><small class="muted table-ellipsis">${escapeHtml(item.reason || "Filtered")}</small>${tx ? transactionFlagsHtml(tx) : ""}</td>
       <td class="${Number(tx?.amount || 0) >= 0 ? "amount-pos" : "amount-neg"}">${tx ? formatCurrency(tx.amount, tx.currency || selectedCurrency()) : "—"}</td>
+      ${showIds && tx ? `<td class="tx-id-cell desktop-only-tools">${transactionIdDebugHtml(tx)}</td>` : showIds ? `<td class="tx-id-cell desktop-only-tools">—</td>` : ""}
       <td class="action-cell"><button class="secondary-button compact" type="button" data-restore-skipped="${rowNumber}" ${tx ? "" : "disabled"}>Add back</button></td>`;
     tbody.append(tr);
   });

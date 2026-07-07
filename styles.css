@@ -3594,3 +3594,41 @@ button[aria-busy="true"]::after {
     min-width: 0 !important;
   }
 }
+
+/* v68 desktop transaction ID debug columns */
+.transactions-table .tx-id-col,
+.import-preview-table .tx-id-col,
+.import-filtered-table .tx-id-col {
+  width: 190px;
+}
+.tx-id-cell {
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: .68rem;
+  color: var(--muted);
+  line-height: 1.25;
+}
+.tx-id-debug {
+  max-width: 184px;
+  min-width: 0;
+}
+.tx-id-debug code,
+.tx-id-debug small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tx-id-debug code {
+  color: var(--text);
+  font-size: .7rem;
+}
+.tx-id-debug small {
+  margin-top: 2px;
+  color: var(--muted);
+}
+@media (min-width: 921px) {
+  .transactions-table.show-debug-ids {
+    min-width: 1180px;
+  }
+}

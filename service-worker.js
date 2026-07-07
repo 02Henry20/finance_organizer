@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v67-import-balance-fix";
+const CACHE_NAME = "capito-v68-duplicate-debug-ids";
 const CORE = [
   "./",
   "./index.html",
