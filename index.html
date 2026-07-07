@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#111827">
   <meta name="description" content="Capito is a private finance organizer for accounts, transactions, holdings, rules and analytics.">
   <title>Capito</title>
-  <meta name="capito-build" content="capito-v57-plot-buttons-tx-flow-filter">
+  <meta name="capito-build" content="capito-v58-reports-movement-layout">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16x16.png">
@@ -140,6 +140,14 @@
           <article class="chart-card surface-card">
             <div class="panel-heading"><div><p class="eyebrow">NET FLOW</p><h3 id="report-net-title">Monthly balance</h3></div></div>
             <div class="chart-wrap"><canvas id="report-net-chart"></canvas><div class="chart-empty" data-empty-for="report-net-chart">No monthly net flow yet.</div></div>
+          </article>
+          <article class="chart-card surface-card">
+            <div class="panel-heading"><div><p class="eyebrow">ASSETS</p><h3 id="report-assets-title">Asset movement</h3></div></div>
+            <div class="chart-wrap"><canvas id="report-asset-movement-chart"></canvas><div class="chart-empty" data-empty-for="report-asset-movement-chart">No asset movement in this period.</div></div>
+          </article>
+          <article class="chart-card surface-card">
+            <div class="panel-heading"><div><p class="eyebrow">DEBT</p><h3 id="report-debt-title">Debt movement</h3></div></div>
+            <div class="chart-wrap"><canvas id="report-debt-movement-chart"></canvas><div class="chart-empty" data-empty-for="report-debt-movement-chart">No debt movement in this period.</div></div>
           </article>
           <article class="chart-card surface-card">
             <div class="panel-heading report-category-heading"><div><p class="eyebrow">CATEGORY FLOW</p><h3 id="report-spending-title">Category split</h3></div><div class="report-category-actions"><div class="segmented-control compact-segments report-category-mode" role="group" aria-label="Category flow mode"><button class="segment-button" data-report-category-mode="income" type="button" aria-pressed="false">In</button><button class="segment-button" data-report-category-mode="outcome" type="button" aria-pressed="false">Out</button><button class="segment-button active" data-report-category-mode="combined" type="button" aria-pressed="true">Both</button></div><span id="report-period-pill" class="metric-tag">Current month</span></div></div>

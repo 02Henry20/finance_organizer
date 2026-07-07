@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v57-plot-buttons-tx-flow-filter";
+const CACHE_NAME = "capito-v58-reports-movement-layout";
 const CORE = [
   "./",
   "./index.html",

@@ -2862,3 +2862,104 @@ button[aria-busy="true"]::after {
     display: none;
   }
 }
+
+
+/* v58: reports movement plots and tighter selectors */
+.report-mode-control .segment-button,
+.reports-toolbar .compact-field input,
+.reports-toolbar .compact-field select {
+  min-height: 42px;
+  font-size: .84rem;
+}
+.report-category-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+.report-category-heading h3,
+.report-category-heading .eyebrow {
+  min-width: 0;
+}
+.report-category-actions {
+  min-width: 128px;
+  justify-content: flex-end;
+}
+.report-category-mode.compact-segments {
+  display: inline-flex;
+  flex-wrap: nowrap !important;
+  min-width: 118px;
+}
+.report-category-mode .segment-button {
+  white-space: nowrap !important;
+  flex: 0 0 auto !important;
+  min-width: 36px;
+  min-height: 28px;
+  padding: 0 7px;
+  font-size: .64rem;
+}
+.reports-grid .chart-card:has(#report-asset-movement-chart) .chart-wrap,
+.reports-grid .chart-card:has(#report-debt-movement-chart) .chart-wrap {
+  min-height: 248px;
+}
+
+@media (max-width: 920px) {
+  .app-header {
+    padding-left: 12px !important;
+    padding-right: 14px !important;
+  }
+  .brand-lockup.compact {
+    gap: 13px !important;
+  }
+  .brand-lockup.compact .brand-mark-img,
+  .brand-lockup.compact .brand-mark.small {
+    width: 58px !important;
+    height: 58px !important;
+    border-radius: 19px !important;
+  }
+  .brand-lockup.compact > strong {
+    font-size: clamp(1.84rem, 7vw, 2.18rem) !important;
+  }
+}
+
+@media (max-width: 680px) {
+  .reports-toolbar {
+    grid-template-columns: minmax(0, 1fr) minmax(132px, 42vw) !important;
+  }
+  .reports-toolbar .report-mode-control {
+    max-width: none !important;
+    width: 100% !important;
+  }
+  .reports-toolbar .report-mode-control .segment-button,
+  .reports-toolbar .compact-field input,
+  .reports-toolbar .compact-field select,
+  .report-mobile-recalc-button {
+    min-height: 40px !important;
+    font-size: .78rem !important;
+  }
+  .report-category-heading {
+    grid-template-columns: minmax(0, 1fr) minmax(112px, auto) !important;
+    gap: 6px !important;
+  }
+  .report-category-actions {
+    min-width: 112px !important;
+    gap: 0 !important;
+    justify-content: flex-end !important;
+  }
+  .report-category-mode.compact-segments {
+    min-width: 104px !important;
+    gap: 2px !important;
+    padding: 3px !important;
+  }
+  .report-category-mode .segment-button {
+    min-width: 31px !important;
+    min-height: 24px !important;
+    padding: 0 4px !important;
+    font-size: .56rem !important;
+    line-height: 1 !important;
+  }
+  .reports-grid .chart-card:has(#report-asset-movement-chart) .chart-wrap,
+  .reports-grid .chart-card:has(#report-debt-movement-chart) .chart-wrap {
+    min-height: 218px !important;
+    height: 218px !important;
+  }
+}

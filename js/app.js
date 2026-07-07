@@ -62,7 +62,7 @@ import {
   serializeTransactionsCsv
 } from "./importer.js";
 import { fetchQuote, searchYahooAssetMatches } from "./market.js";
-import { drawAccountBars, drawDonut, drawIncomeExpense, drawNetSeries, drawYearComparison } from "./charts.js";
+import { drawAccountBars, drawDonut, drawIncomeExpense, drawMovementBars, drawNetSeries, drawYearComparison } from "./charts.js";
 
 const VIEW_LABELS = {
   overview: ["COMMAND CENTER", "Overview"],
@@ -595,6 +595,52 @@ function compareBoundsForReport() {
   return { start: monthStart(compareMonth), end: monthEnd(compareMonth), label: monthLabel(compareMonth, { short: true }) };
 }
 
+function dayBefore(dateString) {
+  const date = new Date(`${dateString}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return dateString;
+  date.setUTCDate(date.getUTCDate() - 1);
+  return date.toISOString().slice(0, 10);
+}
+
+function reportAssetValueAt(asset, account, asOfDate = "") {
+  const current = assetMarketValue(asset);
+  let value = current;
+  if (asOfDate) {
+    const givenDate = String(asset.startingAt || isoDateFromMs(asset.createdAtMs) || TODAY()).slice(0, 10);
+    if (asset.startingPosition && asOfDate < givenDate) value = assetBaselineValue(asset);
+    else if (!asset.startingPosition && asset.createdAtMs && isoDateFromMs(asset.createdAtMs) > asOfDate) value = 0;
+  }
+  return convertCurrency(value, asset.currency || account?.currency || selectedCurrency(), state.settings);
+}
+
+function reportAccountTotalAt(account, asOfDate = "") {
+  const base = calculatePortfolioSnapshot(state, asOfDate).accountRows.find(row => row.id === account.id)?.balance?.converted || 0;
+  const holdings = ["broker", "asset"].includes(account.type)
+    ? holdingsForAccount(account.id).reduce((sum, asset) => sum + reportAssetValueAt(asset, account, asOfDate), 0)
+    : 0;
+  const total = base + holdings;
+  return account.type === "debt" ? Math.abs(total) : total;
+}
+
+function reportAccountMovementRows(startDate, endDate, type = "asset") {
+  const previousDate = dayBefore(startDate);
+  const rows = visibleAccounts()
+    .filter(account => type === "debt" ? account.type === "debt" : !["debt", "hidden"].includes(account.type))
+    .map(account => {
+      const start = reportAccountTotalAt(account, previousDate);
+      const end = reportAccountTotalAt(account, endDate);
+      return {
+        id: account.id,
+        name: account.name || account.id || "Account",
+        start,
+        end,
+        value: end - start
+      };
+    })
+    .filter(row => Math.abs(row.value) > 0.005 || Math.abs(row.end) > 0.005 || Math.abs(row.start) > 0.005);
+  return rows.sort((a, b) => Math.abs(b.value) - Math.abs(a.value) || String(a.name || "").localeCompare(String(b.name || "")));
+}
+
 function daysBetween(start, end) {
   const a = new Date(`${start}T00:00:00`);
   const b = new Date(`${end}T00:00:00`);
@@ -940,6 +986,8 @@ function renderReports() {
   const compareSummary = summarizeTransactions(compareRows);
   const categoryRows = categoryFlowForRange(bounds.start, bounds.end, reportsCategoryMode);
   const compareCategoryRows = categoryFlowForRange(compareBounds.start, compareBounds.end, reportsCategoryMode);
+  const assetMovementRows = reportAccountMovementRows(bounds.start, bounds.end, "asset");
+  const debtMovementRows = reportAccountMovementRows(bounds.start, bounds.end, "debt");
   const days = daysBetween(bounds.start, bounds.end);
   const compareDays = daysBetween(compareBounds.start, compareBounds.end);
   const topCategory = categoryRows[0];
@@ -993,9 +1041,16 @@ function renderReports() {
   const flowCenterLabels = { income: "incoming", outcome: "outgoing", combined: "flow" };
   $("#report-spending-title").textContent = `${flowLabels[reportsCategoryMode] || "Combined"} category split`;
   $("#report-yoy-title").textContent = `${selectedYear} vs ${reportsCompareYear} spending`;
+  const periodLabel = bounds.label;
+  const assetsTitle = $("#report-assets-title");
+  const debtTitle = $("#report-debt-title");
+  if (assetsTitle) assetsTitle.textContent = `Asset movement · ${periodLabel}`;
+  if (debtTitle) debtTitle.textContent = `Debt movement · ${periodLabel}`;
 
   drawIncomeExpense($("#report-cashflow-chart"), trendRows, currency);
   drawNetSeries($("#report-net-chart"), trendRows);
+  drawMovementBars($("#report-asset-movement-chart"), assetMovementRows, currency);
+  drawMovementBars($("#report-debt-movement-chart"), debtMovementRows, currency);
   drawDonut($("#report-category-chart"), categoryRows, currency, { centerLabel: flowCenterLabels[reportsCategoryMode] || "flow" });
   drawYearComparison($("#report-yoy-chart"), yoyRows, currency, { currentLabel: selectedYear, previousLabel: reportsCompareYear });
 }
