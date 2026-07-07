@@ -111,6 +111,7 @@ let importSort = { key: "date", dir: "asc" };
 let txSelectionMode = false;
 let selectedTransactionIds = new Set();
 let transactionCategoryDebounce = null;
+let transactionRuleSuggestionUsed = false;
 let txFilteredRows = [];
 let importSelectedIds = new Set();
 let txPage = 1;
@@ -1500,7 +1501,7 @@ function transactionDraftForCategorization() {
   };
 }
 
-function applyRulesToTransactionCategory({ onlyWhenEmptyOrMisc = true, fillMisc = false } = {}) {
+function applyRulesToTransactionCategory({ onlyWhenEmptyOrMisc = true, fillMisc = false, markSuggestionUsed = false } = {}) {
   const input = $("#transaction-category");
   if (!input) return null;
   const currentId = categoryIdFromSearch(input.value);
@@ -1511,7 +1512,15 @@ function applyRulesToTransactionCategory({ onlyWhenEmptyOrMisc = true, fillMisc 
   if (result?.categoryId && (result.categoryId !== "misc" || fillMisc)) {
     input.value = categorySearchValue(result.categoryId);
     syncTransactionReviewControl();
+    if (markSuggestionUsed) transactionRuleSuggestionUsed = true;
   }
+  return result;
+}
+
+function suggestTransactionCategoryOnce() {
+  if (transactionRuleSuggestionUsed) return null;
+  const result = applyRulesToTransactionCategory({ onlyWhenEmptyOrMisc: true, fillMisc: false, markSuggestionUsed: true });
+  if (result) transactionRuleSuggestionUsed = true;
   return result;
 }
 
@@ -1519,12 +1528,13 @@ function scheduleTransactionCategoryAutofill() {
   if (transactionCategoryDebounce) clearTimeout(transactionCategoryDebounce);
   transactionCategoryDebounce = setTimeout(() => {
     transactionCategoryDebounce = null;
-    applyRulesToTransactionCategory({ onlyWhenEmptyOrMisc: true, fillMisc: false });
+    suggestTransactionCategoryOnce();
   }, 500);
 }
 
 function openTransactionModal(id = "") {
   const tx = id ? state.transactions.find(item => item.id === id) : null;
+  transactionRuleSuggestionUsed = Boolean(tx);
   $("#transaction-modal-title").textContent = tx ? "Edit transaction" : "Add transaction";
   $("#transaction-id").value = tx?.id || "";
   $("#transaction-account").value = tx?.accountId || state.accounts[0]?.id || "";
@@ -1920,21 +1930,31 @@ function openCategoryModal(id = "") {
   openModal("category");
 }
 
-function buildCategorizedTransaction(tx, rulesOverride = state.rules) {
+function buildCategorizedTransaction(tx, rulesOverride = state.rules, { reapplyMode = false } = {}) {
   const result = categorizeTransaction(tx, rulesOverride, state.categories, state.accounts);
+  const oldCategoryId = tx.categoryId || "misc";
+  const lostPreviousCategory = reapplyMode
+    && oldCategoryId
+    && oldCategoryId !== "misc"
+    && oldCategoryId !== "auto"
+    && result.categoryId === "misc"
+    && !(result.candidates || []).length;
+
   return {
     ...tx,
     categoryId: result.categoryId,
-    confidence: result.confidence,
-    review: result.review,
-    reason: result.reason,
+    confidence: lostPreviousCategory ? 0.38 : result.confidence,
+    review: lostPreviousCategory ? true : result.review,
+    reason: lostPreviousCategory
+      ? `No rule matched after reapplying rules. Previous category '${oldCategoryId}' was cleared and should be reviewed.`
+      : result.reason,
     candidates: result.candidates || [],
-    matchedAccountId: result.matchedAccountId || tx.matchedAccountId || "",
-    transferMatchedAccountId: result.transferMatchedAccountId || result.matchedAccountId || tx.transferMatchedAccountId || "",
-    transferSourceAccountId: result.transferSourceAccountId || tx.transferSourceAccountId || "",
-    transferTargetAccountId: result.transferTargetAccountId || tx.transferTargetAccountId || "",
-    internalTransfer: Boolean(result.internalTransfer || tx.internalTransfer),
-    excludeFromStats: Boolean(result.excludeFromStats || shouldIgnoreTransactionInStats(tx))
+    matchedAccountId: result.matchedAccountId || "",
+    transferMatchedAccountId: result.transferMatchedAccountId || result.matchedAccountId || "",
+    transferSourceAccountId: result.transferSourceAccountId || "",
+    transferTargetAccountId: result.transferTargetAccountId || "",
+    internalTransfer: Boolean(result.internalTransfer),
+    excludeFromStats: Boolean(result.excludeFromStats)
   };
 }
 
@@ -1946,6 +1966,8 @@ function transactionChangedByCategorization(tx, next) {
 function transactionsAffectedByRuleChange(oldRule, newRule) {
   return state.transactions.filter(tx => {
     if (tx.review || tx.categoryId === "misc") return true;
+    if (oldRule?.categoryId && tx.categoryId === oldRule.categoryId) return true;
+    if (newRule?.categoryId && tx.categoryId === newRule.categoryId) return true;
     if (oldRule && ruleMatchesTransaction(oldRule, tx)) return true;
     if (newRule && ruleMatchesTransaction(newRule, tx)) return true;
     if (oldRule?.label && String(tx.reason || "").includes(oldRule.label)) return true;
@@ -1959,7 +1981,7 @@ async function reapplyRulesToRows(rows, rulesOverride = state.rules, { onProgres
   const source = Array.isArray(rows) ? rows : [];
   for (let index = 0; index < source.length; index += 1) {
     const tx = source[index];
-    const next = buildCategorizedTransaction(tx, rulesOverride);
+    const next = buildCategorizedTransaction(tx, rulesOverride, { reapplyMode: true });
     if (transactionChangedByCategorization(tx, next)) updates.push(next);
     if (onProgress && (index % 10 === 0 || index === source.length - 1)) {
       await onProgress(index + 1, source.length, updates.length);
@@ -2999,6 +3021,7 @@ function wireEvents() {
   });
   const transactionCategoryInput = $("#transaction-category");
   transactionCategoryInput?.addEventListener("input", () => {
+    transactionRuleSuggestionUsed = true;
     renderTransactionCategoryMenu(true);
     syncTransactionReviewControl();
   });
@@ -3006,8 +3029,7 @@ function wireEvents() {
   transactionCategoryInput?.addEventListener("blur", () => setTimeout(() => renderTransactionCategoryMenu(false), 140));
   transactionCategoryInput?.addEventListener("change", syncTransactionReviewControl);
   ["#transaction-description", "#transaction-counterparty"].forEach(selector => {
-    $(selector)?.addEventListener("input", scheduleTransactionCategoryAutofill);
-    $(selector)?.addEventListener("blur", () => applyRulesToTransactionCategory({ onlyWhenEmptyOrMisc: true, fillMisc: false }));
+    $(selector)?.addEventListener("blur", () => suggestTransactionCategoryOnce());
   });
 
   $("#tx-selection-toggle")?.addEventListener("click", () => {

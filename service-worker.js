@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v52-unicode-hyphen-rules";
+const CACHE_NAME = "capito-v53-rule-reapply-suggestions";
 const CORE = [
   "./",
   "./index.html",

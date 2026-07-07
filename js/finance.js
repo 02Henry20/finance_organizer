@@ -141,13 +141,47 @@ export function normalizeIdentifier(value) {
     .trim();
 }
 
+function isWeakInternalTransferIdentifier(raw, normalized) {
+  const text = normalizeText(raw);
+  const compact = normalized || normalizeIdentifier(raw);
+  if (!compact) return true;
+
+  // These appear in imported transaction metadata such as
+  // "Personal Account (EUR)" or "revolut:Current:EUR". Treating them
+  // as own-account identifiers would classify every merchant transaction
+  // from that provider as an internal transfer.
+  const weakExact = new Set([
+    "bank", "broker", "manual", "account", "current", "deposit", "savings",
+    "revolut", "wise", "sparkasse", "smartbroker", "traderepublic",
+    "personalaccount", "personalaccounteur", "personalaccountkrw",
+    "currenteur", "currentkrw", "depositeur", "savingseur",
+    "mainchecking", "cashwallet"
+  ]);
+  if (weakExact.has(compact)) return true;
+
+  const weakPhrase = /^(personal account|current account|savings account|deposit account)(?:\s*[a-z]{3})?$/.test(text);
+  if (weakPhrase) return true;
+
+  return false;
+}
+
 export function accountIdentifiers(account) {
   const aliases = Array.isArray(account.transferAliases)
     ? account.transferAliases
     : String(account.transferAliases || "").split(",");
-  return [account.iban, account.accountNumber, account.bic, account.name, account.institution, ...aliases]
-    .map(value => ({ raw: String(value || "").trim(), normalized: normalizeIdentifier(value) }))
-    .filter(item => item.normalized.length >= 5);
+  const candidates = [
+    { raw: account.iban, source: "iban" },
+    { raw: account.accountNumber, source: "accountNumber" },
+    { raw: account.bic, source: "bic" },
+    { raw: account.name, source: "name" },
+    { raw: account.institution, source: "institution" },
+    ...aliases.map(raw => ({ raw, source: "alias" }))
+  ];
+
+  return candidates
+    .map(item => ({ raw: String(item.raw || "").trim(), normalized: normalizeIdentifier(item.raw), source: item.source }))
+    .filter(item => item.normalized.length >= 5)
+    .filter(item => !isWeakInternalTransferIdentifier(item.raw, item.normalized));
 }
 
 export function detectInternalTransfer(tx, accounts = []) {
