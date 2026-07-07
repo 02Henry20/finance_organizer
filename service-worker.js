@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v54-negative-priority-delete-fix";
+const CACHE_NAME = "capito-v56-reports-flow-rule-lock";
 const CORE = [
   "./",
   "./index.html",

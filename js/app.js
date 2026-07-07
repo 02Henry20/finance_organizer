@@ -128,6 +128,7 @@ let reportsMode = "month";
 let reportsMonth = monthKey(TODAY());
 let reportsYear = String(new Date().getFullYear());
 let reportsCompareYear = String(new Date().getFullYear() - 1);
+let reportsCategoryMode = "combined";
 
 const PAGE_SIZES = {
   transactions: 10,
@@ -440,6 +441,25 @@ function normalizedCurrencyFrom(selector, fallback = selectedCurrency()) {
   return code;
 }
 
+function absoluteAmountFilterValue(selector) {
+  const input = $(selector);
+  if (!input) return null;
+  const value = parseMoney(input.value);
+  if (value == null) return null;
+  return Math.abs(Number(value));
+}
+
+function normalizeAbsoluteAmountFilterInput(input) {
+  if (!input) return;
+  const value = parseMoney(input.value);
+  if (value == null) return;
+  const absolute = Math.abs(Number(value));
+  if (!Number.isFinite(absolute)) return;
+  if (Number(value) < 0 || String(input.value || "").trim().startsWith("-")) {
+    input.value = String(Math.round(absolute * 100) / 100);
+  }
+}
+
 function visibleAccounts() {
   return state.accounts.filter(account => !account.hidden);
 }
@@ -618,6 +638,28 @@ function categorySpendForRange(start, end) {
     if (cat?.type === "income") continue;
     if (!includeInSpending(cat, tx)) continue;
     const value = Math.abs(Math.min(0, convertCurrency(tx.amount, tx.currency || selectedCurrency(), state.settings)));
+    if (value <= 0) continue;
+    const prev = totals.get(cat.id) || { categoryId: cat.id, name: cat.name, group: cat.group, color: cat.color || DEFAULT_CATEGORY_COLOR, value: 0 };
+    prev.value += value;
+    totals.set(cat.id, prev);
+  }
+  return [...totals.values()].sort((a, b) => b.value - a.value);
+}
+
+function categoryFlowForRange(start, end, mode = "combined") {
+  const normalizedMode = ["income", "outcome", "combined"].includes(mode) ? mode : "combined";
+  const cats = categoryMap();
+  const totals = new Map();
+  for (const tx of transactionsInRange(start, end)) {
+    const cat = cats.get(tx.categoryId) || cats.get("misc");
+    if (!includeInSpending(cat, tx)) continue;
+    const amount = convertCurrency(Number(tx.amount || 0), tx.currency || selectedCurrency(), state.settings);
+    const isIncome = amount > 0;
+    const isOutcome = amount < 0;
+    if (normalizedMode === "income" && !isIncome) continue;
+    if (normalizedMode === "outcome" && !isOutcome) continue;
+    if (normalizedMode === "combined" && !isIncome && !isOutcome) continue;
+    const value = Math.abs(amount);
     if (value <= 0) continue;
     const prev = totals.get(cat.id) || { categoryId: cat.id, name: cat.name, group: cat.group, color: cat.color || DEFAULT_CATEGORY_COLOR, value: 0 };
     prev.value += value;
@@ -879,6 +921,13 @@ function fillReportControls() {
     button.classList.toggle("active", active);
     button.setAttribute("aria-pressed", String(active));
   });
+  $$('[data-report-category-mode]').forEach(button => {
+    const active = button.dataset.reportCategoryMode === reportsCategoryMode;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+  const flowFilter = $("#report-flow-filter");
+  if (flowFilter) flowFilter.value = reportsCategoryMode;
 }
 
 function renderReports() {
@@ -891,8 +940,8 @@ function renderReports() {
   const compareRows = transactionsInRange(compareBounds.start, compareBounds.end);
   const summary = summarizeTransactions(periodRows);
   const compareSummary = summarizeTransactions(compareRows);
-  const categoryRows = categorySpendForRange(bounds.start, bounds.end);
-  const compareCategoryRows = categorySpendForRange(compareBounds.start, compareBounds.end);
+  const categoryRows = categoryFlowForRange(bounds.start, bounds.end, reportsCategoryMode);
+  const compareCategoryRows = categoryFlowForRange(compareBounds.start, compareBounds.end, reportsCategoryMode);
   const days = daysBetween(bounds.start, bounds.end);
   const compareDays = daysBetween(compareBounds.start, compareBounds.end);
   const topCategory = categoryRows[0];
@@ -938,17 +987,36 @@ function renderReports() {
   $("#report-days-count").innerHTML = `${metricTrendHtml(dailySpend, compareDailySpend, { currency, inverted: true })}<span>${days} days</span>`;
   $("#report-top-category-value").innerHTML = topCategory
     ? `${metricTrendHtml(topCategory.value, compareTopValue, { currency, inverted: true })}<span>${formatCurrency(topCategory.value, currency)}</span>`
-    : "No spending yet";
+    : "No category flow yet";
   $("#report-period-pill").textContent = bounds.label;
   $("#report-cashflow-title").textContent = reportsMode === "year" ? `${reportsYear} monthly cashflow` : "13-month cashflow";
   $("#report-net-title").textContent = reportsMode === "year" ? `${reportsYear} net flow` : "Rolling net flow";
-  $("#report-spending-title").textContent = `Category split`;
+  const flowLabels = { income: "Income", outcome: "Outcome", combined: "Combined" };
+  const flowCenterLabels = { income: "incoming", outcome: "outgoing", combined: "flow" };
+  $("#report-spending-title").textContent = `${flowLabels[reportsCategoryMode] || "Combined"} category split`;
   $("#report-yoy-title").textContent = `${selectedYear} vs ${reportsCompareYear} spending`;
 
   drawIncomeExpense($("#report-cashflow-chart"), trendRows, currency);
   drawNetSeries($("#report-net-chart"), trendRows);
-  drawDonut($("#report-category-chart"), categoryRows, currency);
+  drawDonut($("#report-category-chart"), categoryRows, currency, { centerLabel: flowCenterLabels[reportsCategoryMode] || "flow" });
   drawYearComparison($("#report-yoy-chart"), yoyRows, currency, { currentLabel: selectedYear, previousLabel: reportsCompareYear });
+}
+
+async function recalcReportStats(button) {
+  const status = $("#report-recalc-status");
+  if (status) status.textContent = "Recalculating…";
+  await withButtonBusy(button, "Recalc…", async () => {
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    fillReportControls();
+    renderReports();
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    renderReports();
+  });
+  if (status) {
+    status.textContent = "Updated now";
+    setTimeout(() => { if (status.textContent === "Updated now") status.textContent = ""; }, 2200);
+  }
+  toast("Reports recalculated", "Stats and charts were rebuilt from current transactions.");
 }
 
 function fillFilters() {
@@ -994,8 +1062,8 @@ function renderTransactions() {
   const categoryFilter = $("#tx-category-filter").value || "all";
   const reviewFilter = $("#tx-review-filter").value || "all";
   const currencyFilter = $("#tx-currency-filter")?.value || "all";
-  const minAmount = parseMoney($("#tx-min-amount")?.value);
-  const maxAmount = parseMoney($("#tx-max-amount")?.value);
+  const minAmount = absoluteAmountFilterValue("#tx-min-amount");
+  const maxAmount = absoluteAmountFilterValue("#tx-max-amount");
   const dateFrom = $("#tx-date-from")?.value || "";
   const dateTo = $("#tx-date-to")?.value || "";
   let rows = state.transactions;
@@ -1003,8 +1071,8 @@ function renderTransactions() {
   if (accountFilter !== "all") rows = rows.filter(tx => tx.accountId === accountFilter);
   if (categoryFilter !== "all") rows = rows.filter(tx => tx.categoryId === categoryFilter);
   if (currencyFilter !== "all") rows = rows.filter(tx => (tx.currency || selectedCurrency()) === currencyFilter);
-  if (minAmount != null) rows = rows.filter(tx => Number(tx.amount || 0) >= minAmount);
-  if (maxAmount != null) rows = rows.filter(tx => Number(tx.amount || 0) <= maxAmount);
+  if (minAmount != null) rows = rows.filter(tx => Math.abs(Number(tx.amount || 0)) >= minAmount);
+  if (maxAmount != null) rows = rows.filter(tx => Math.abs(Number(tx.amount || 0)) <= maxAmount);
   if (dateFrom) rows = rows.filter(tx => String(tx.date || "") >= dateFrom);
   if (dateTo) rows = rows.filter(tx => String(tx.date || "") <= dateTo);
   if (reviewFilter === "review") rows = rows.filter(tx => tx.review);
@@ -1549,6 +1617,7 @@ function openTransactionModal(id = "") {
   $("#transaction-note").value = tx?.note || "";
   $("#transaction-review").checked = Boolean(tx?.review);
   if ($("#transaction-ignore-stats")) $("#transaction-ignore-stats").checked = shouldIgnoreTransactionInStats(tx || {});
+  if ($("#transaction-rules-locked")) $("#transaction-rules-locked").checked = Boolean(tx?.rulesLocked);
   $("#delete-transaction-button").hidden = !tx;
   syncTransactionReviewControl();
   openModal("transaction");
@@ -1931,6 +2000,7 @@ function openCategoryModal(id = "") {
 }
 
 function buildCategorizedTransaction(tx, rulesOverride = state.rules, { reapplyMode = false } = {}) {
+  if (tx?.rulesLocked) return { ...tx };
   const result = categorizeTransaction(tx, rulesOverride, state.categories, state.accounts);
   const oldCategoryId = tx.categoryId || "misc";
   const lostPreviousCategory = reapplyMode
@@ -2519,6 +2589,7 @@ function accountNameById(id) {
 
 function transactionFlagsHtml(tx = {}) {
   const flags = [];
+  if (tx.rulesLocked) flags.push("Untouched by rules");
   if (tx.internalTransfer) flags.push("Internal");
   if (tx.referenceFundingRole === "source-split") flags.push("Reference split");
   else if (tx.referenceFundingRole === "deduction") flags.push("Reference deduction");
@@ -2580,6 +2651,7 @@ function bulkEditDialog(count, { title = "Group edit", allowAccount = true } = {
           <label class="field"><span>Review status</span><select id="bulk-edit-review"><option value="">Keep</option><option value="false">Clean</option><option value="true">Needs review</option></select></label>
           <label class="field"><span>Statistics</span><select id="bulk-edit-ignore"><option value="">Keep</option><option value="false">Include in stats</option><option value="true">Ignore in stats</option></select></label>
         </div>
+        <label class="field"><span>Rules</span><select id="bulk-edit-rules-locked"><option value="">Keep</option><option value="true">Untouched by rules</option><option value="false">Rules may change it</option></select><small class="field-help">Untouched rows are skipped when rules are reapplied.</small></label>
         <div class="button-row dialog-actions"><button class="secondary-button" data-dialog-cancel type="button">Cancel</button><button class="primary-button" type="submit">Continue</button></div>
       </form>`, { wide: true });
     const finish = value => { close(); resolve(value); };
@@ -2595,6 +2667,7 @@ function bulkEditDialog(count, { title = "Group edit", allowAccount = true } = {
       const note = backdrop.querySelector("#bulk-edit-note").value;
       const review = backdrop.querySelector("#bulk-edit-review").value;
       const ignore = backdrop.querySelector("#bulk-edit-ignore").value;
+      const rulesLocked = backdrop.querySelector("#bulk-edit-rules-locked")?.value || "";
       if (categoryId) patch.categoryId = categoryId;
       if (allowAccount && accountId) patch.accountId = accountId;
       if (description) patch.description = description === "__CLEAR__" ? "" : description;
@@ -2602,6 +2675,7 @@ function bulkEditDialog(count, { title = "Group edit", allowAccount = true } = {
       if (note) patch.note = note === "__CLEAR__" ? "" : note;
       if (review) patch.review = review === "true";
       if (ignore) patch.excludeFromStats = ignore === "true";
+      if (rulesLocked) patch.rulesLocked = rulesLocked === "true";
       finish(patch);
     });
     backdrop.querySelector("#bulk-edit-category").focus();
@@ -2950,7 +3024,13 @@ function wireEvents() {
     importPage = 1;
     renderImportPreview();
   });
-  ["#tx-search", "#tx-account-filter", "#tx-category-filter", "#tx-currency-filter", "#tx-min-amount", "#tx-max-amount", "#tx-date-from", "#tx-date-to", "#tx-review-filter"].forEach(selector => $(selector)?.addEventListener("input", () => {
+  ["#tx-search", "#tx-account-filter", "#tx-category-filter", "#tx-currency-filter", "#tx-min-amount", "#tx-max-amount", "#tx-date-from", "#tx-date-to", "#tx-review-filter"].forEach(selector => $(selector)?.addEventListener("input", event => {
+    if (["tx-min-amount", "tx-max-amount"].includes(event.currentTarget?.id)) normalizeAbsoluteAmountFilterInput(event.currentTarget);
+    txPage = 1;
+    renderTransactions();
+  }));
+  ["#tx-min-amount", "#tx-max-amount"].forEach(selector => $(selector)?.addEventListener("blur", event => {
+    normalizeAbsoluteAmountFilterInput(event.currentTarget);
     txPage = 1;
     renderTransactions();
   }));
@@ -2984,6 +3064,9 @@ function wireEvents() {
   $("#rules-reapply-all")?.addEventListener("click", () => reapplyAllRulesWithProgress().catch(error => toast("Rule run failed", error.message, "error")));
   window.addEventListener("resize", updateRulesFoldState);
 
+  $$('[data-report-recalc]').forEach(button => button.addEventListener("click", event => {
+    recalcReportStats(event.currentTarget).catch(error => toast("Report recalculation failed", error.message, "error"));
+  }));
   $$("[data-report-mode]").forEach(button => button.addEventListener("click", () => {
     reportsMode = button.dataset.reportMode === "year" ? "year" : "month";
     renderReports();
@@ -2999,6 +3082,14 @@ function wireEvents() {
   });
   $("#report-compare-year")?.addEventListener("change", event => {
     reportsCompareYear = event.target.value || String(Number(reportsYear) - 1);
+    renderReports();
+  });
+  $$('[data-report-category-mode]').forEach(button => button.addEventListener("click", () => {
+    reportsCategoryMode = ["income", "outcome", "combined"].includes(button.dataset.reportCategoryMode) ? button.dataset.reportCategoryMode : "combined";
+    renderReports();
+  }));
+  $("#report-flow-filter")?.addEventListener("change", event => {
+    reportsCategoryMode = ["income", "outcome", "combined"].includes(event.target.value) ? event.target.value : "combined";
     renderReports();
   });
   $$("[data-position-period]").forEach(button => button.addEventListener("click", () => {
@@ -3134,17 +3225,18 @@ function wireEvents() {
         note: $("#transaction-note").value,
         review: $("#transaction-review").checked,
         excludeFromStats: Boolean($("#transaction-ignore-stats")?.checked),
+        rulesLocked: Boolean($("#transaction-rules-locked")?.checked),
         source: $("#transaction-id").value ? "manual-edit" : "manual"
       };
       if (!input.accountId || !input.date || input.amount == null) {
         toast("Invalid transaction", "Account, date and amount are required.", "error");
         return;
       }
-      if (!input.categoryId) {
+      if (!input.categoryId && !input.rulesLocked) {
         const cat = categorizeTransaction(input, state.rules, state.categories, state.accounts);
         Object.assign(input, cat);
-        if (!input.categoryId) input.categoryId = "misc";
       }
+      if (!input.categoryId) input.categoryId = "misc";
       if (!state.categories.some(cat => cat.id === input.categoryId)) {
         toast("Invalid category", "Choose an existing category from the category search list.", "error");
         $("#transaction-category")?.focus();

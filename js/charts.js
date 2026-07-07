@@ -164,7 +164,7 @@ export function drawNetSeries(canvas, rows) {
   drawLabels(ctx, rows.map(row => row.month), area, x, c);
 }
 
-export function drawDonut(canvas, rows, currency = "EUR") {
+export function drawDonut(canvas, rows, currency = "EUR", options = {}) {
   const source = (rows || []).filter(row => row.value > 0).sort((a, b) => b.value - a.value);
   const data = source.length > 9
     ? [...source.slice(0, 8), { name: "Rest", value: source.slice(8).reduce((sum, row) => sum + row.value, 0), color: css("--muted") || "#94a3b8" }]
@@ -199,7 +199,7 @@ export function drawDonut(canvas, rows, currency = "EUR") {
   ctx.fillText(totalLabel, cx, cy - 5);
   ctx.fillStyle = c.text;
   ctx.font = `${mobile ? 10 : 12}px Inter, system-ui`;
-  ctx.fillText("spent", cx, cy + (mobile ? 12 : 15));
+  ctx.fillText(options.centerLabel || "spent", cx, cy + (mobile ? 12 : 15));
   ctx.restore();
   const legendX = mobile ? width * 0.45 : width * 0.58;
   ctx.font = `${mobile ? 11 : 12}px Inter, system-ui`;

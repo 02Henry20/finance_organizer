@@ -2765,3 +2765,98 @@ button[aria-busy="true"]::after {
   animation: capito-spin .75s linear infinite;
 }
 @keyframes capito-spin { to { transform: rotate(360deg); } }
+
+/* v56: report flow controls, mobile recalc, rule locks */
+.report-title-block {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+.report-title-actions {
+  align-items: center;
+  gap: 10px;
+}
+.report-title-actions small {
+  min-height: 1.1em;
+  font-size: .75rem;
+  font-weight: 760;
+}
+#tx-min-amount:invalid,
+#tx-max-amount:invalid {
+  border-color: color-mix(in srgb, var(--red) 55%, var(--line));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--red) 14%, transparent);
+}
+
+/* v56: reports category flow controls and rule-lock affordance */
+.report-category-heading {
+  gap: 12px;
+  align-items: flex-start;
+}
+.report-category-actions {
+  display: flex;
+  align-items: end;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.report-category-mode.compact-segments {
+  min-height: 38px;
+}
+.report-category-mode .segment-button {
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: .74rem;
+}
+.report-flow-filter {
+  min-width: 132px;
+  margin: 0;
+}
+.report-flow-filter span {
+  font-size: .62rem;
+}
+.report-flow-filter select {
+  min-height: 36px;
+  padding: 8px 28px 8px 10px;
+  font-size: .74rem;
+}
+.report-mobile-recalc-button {
+  align-self: end;
+  min-height: 42px;
+  justify-content: center;
+}
+.rule-lock-row {
+  border-color: color-mix(in srgb, var(--yellow) 34%, var(--line));
+  background: color-mix(in srgb, var(--yellow) 7%, transparent);
+}
+
+@media (max-width: 920px) {
+  .reports-toolbar .report-controls {
+    grid-template-columns: 1fr auto;
+    align-items: end;
+  }
+  .reports-toolbar .report-mode-control,
+  .reports-toolbar #report-compare-field {
+    grid-column: 1 / -1;
+  }
+  .report-mobile-recalc-button {
+    display: inline-flex !important;
+    white-space: nowrap;
+    min-width: 96px;
+  }
+  .report-category-heading {
+    display: grid;
+    gap: 12px;
+  }
+  .report-category-actions {
+    justify-content: flex-start;
+  }
+  .report-category-mode {
+    width: 100%;
+  }
+  .report-category-mode .segment-button {
+    flex: 1;
+  }
+  .report-flow-filter {
+    min-width: 150px;
+  }
+}

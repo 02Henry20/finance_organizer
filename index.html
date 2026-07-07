@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#111827">
   <meta name="description" content="Capito is a private finance organizer for accounts, transactions, holdings, rules and analytics.">
   <title>Capito</title>
-  <meta name="capito-build" content="capito-v54-negative-priority-delete-fix">
+  <meta name="capito-build" content="capito-v56-reports-flow-rule-lock">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16x16.png">
@@ -110,7 +110,7 @@
 
       <section class="view" data-view-section="reports">
         <div class="surface-card reports-toolbar">
-          <div><p class="eyebrow">Reports</p><h3>Period analysis</h3></div>
+          <div class="report-title-block"><p class="eyebrow">Reports</p><h3>Period analysis</h3><div class="report-title-actions desktop-only-tools"><button id="report-recalc-button" data-report-recalc class="secondary-button compact" type="button">↻ Recalc</button><small id="report-recalc-status" class="muted"></small></div></div>
           <div class="report-controls">
             <div class="segmented-control report-mode-control" role="group" aria-label="Report period mode">
               <button class="segment-button active" data-report-mode="month" type="button" aria-pressed="true">Month</button>
@@ -118,6 +118,7 @@
             </div>
             <label id="report-month-field" class="field compact-field"><span>Month</span><input id="report-month" type="month"></label>
             <label id="report-year-field" class="field compact-field" hidden><span>Year</span><select id="report-year"></select></label>
+            <button id="report-recalc-mobile-button" data-report-recalc class="secondary-button compact mobile-only report-mobile-recalc-button" type="button">↻ Recalc</button>
             <label id="report-compare-field" class="field compact-field"><span>Compare year</span><select id="report-compare-year"></select></label>
           </div>
         </div>
@@ -141,8 +142,8 @@
             <div class="chart-wrap"><canvas id="report-net-chart"></canvas><div class="chart-empty" data-empty-for="report-net-chart">No monthly net flow yet.</div></div>
           </article>
           <article class="chart-card surface-card">
-            <div class="panel-heading"><div><p class="eyebrow">SPENDING</p><h3 id="report-spending-title">Category split</h3></div><span id="report-period-pill" class="metric-tag">Current month</span></div>
-            <div class="chart-wrap"><canvas id="report-category-chart"></canvas><div class="chart-empty" data-empty-for="report-category-chart">No spending in this period.</div></div>
+            <div class="panel-heading report-category-heading"><div><p class="eyebrow">CATEGORY FLOW</p><h3 id="report-spending-title">Category split</h3></div><div class="report-category-actions"><div class="segmented-control compact-segments report-category-mode" role="group" aria-label="Category flow mode"><button class="segment-button" data-report-category-mode="income" type="button" aria-pressed="false">Income</button><button class="segment-button" data-report-category-mode="outcome" type="button" aria-pressed="false">Outcome</button><button class="segment-button active" data-report-category-mode="combined" type="button" aria-pressed="true">Combined</button></div><label class="field compact-field report-flow-filter"><span>Filter</span><select id="report-flow-filter"><option value="income">Incoming</option><option value="outcome">Outcoming</option><option value="combined" selected>Both</option></select></label><span id="report-period-pill" class="metric-tag">Current month</span></div></div>
+            <div class="chart-wrap"><canvas id="report-category-chart"></canvas><div class="chart-empty" data-empty-for="report-category-chart">No category flow in this period.</div></div>
           </article>
           <article class="chart-card surface-card">
             <div class="panel-heading"><div><p class="eyebrow">YEAR OVER YEAR</p><h3 id="report-yoy-title">Monthly spending</h3></div></div>
@@ -161,7 +162,7 @@
               <label class="field"><span>Account</span><select id="tx-account-filter"></select></label>
               <label class="field"><span>Category</span><select id="tx-category-filter"></select></label>
               <label class="field"><span>Currency</span><select id="tx-currency-filter"><option value="all">All currencies</option></select></label>
-              <div class="form-grid two amount-filter-grid"><label class="field"><span>Min amount</span><input id="tx-min-amount" type="number" step="0.01" placeholder="Any"></label><label class="field"><span>Max amount</span><input id="tx-max-amount" type="number" step="0.01" placeholder="Any"></label></div>
+              <div class="form-grid two amount-filter-grid"><label class="field"><span>Min abs. amount</span><input id="tx-min-amount" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Any"></label><label class="field"><span>Max abs. amount</span><input id="tx-max-amount" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Any"></label></div>
               <div class="form-grid date-filter-grid"><label class="field"><span>From date</span><input id="tx-date-from" type="date"></label><label class="field"><span>To date</span><input id="tx-date-to" type="date"></label></div>
               <label class="field"><span>Status</span><select id="tx-review-filter"><option value="all">All</option><option value="review">Needs review</option><option value="clean">Clean</option></select></label>
               <button id="reset-tx-filters" class="secondary-button" type="button">Reset filters</button>
@@ -321,6 +322,7 @@
         <label class="field"><span>Note</span><textarea id="transaction-note" rows="3" placeholder="Optional note"></textarea></label>
         <label class="check-row"><input id="transaction-review" type="checkbox"> Mark as needs review</label>
         <label class="check-row"><input id="transaction-ignore-stats" type="checkbox"> Ignore in spending statistics</label>
+        <label class="check-row rule-lock-row"><input id="transaction-rules-locked" type="checkbox"> Untouched by rules</label>
         <div class="button-row"><button class="primary-button" type="submit">Save transaction</button><button id="delete-transaction-button" class="danger-button" type="button" hidden>Delete</button></div>
       </form>
     </section>
