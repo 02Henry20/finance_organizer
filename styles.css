@@ -3182,3 +3182,50 @@ button[aria-busy="true"]::after {
     font-size: .76rem !important;
   }
 }
+
+
+/* v62: selected-month cashflow/net-flow trends and visible desktop recalc placement */
+.report-title-row {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 12px !important;
+}
+.report-title-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.report-title-copy .eyebrow,
+.report-title-copy h3 {
+  margin: 0;
+}
+.report-recalc-desktop-button.desktop-only-tools {
+  display: inline-flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  flex: 0 0 auto !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-width: 88px !important;
+  min-height: 36px !important;
+  height: 36px !important;
+  padding: 0 12px !important;
+  font-size: .76rem !important;
+  white-space: nowrap !important;
+}
+.reports-toolbar .report-mode-control .segment-button,
+.reports-toolbar .compact-field input,
+.reports-toolbar .compact-field select {
+  height: 38px !important;
+  min-height: 38px !important;
+  font-size: .8rem !important;
+}
+@media (max-width: 920px) {
+  .report-recalc-desktop-button.desktop-only-tools {
+    display: none !important;
+  }
+  .report-title-row {
+    gap: 0 !important;
+  }
+}

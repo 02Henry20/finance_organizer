@@ -775,6 +775,24 @@ function aggregateMonths(months) {
   return months.map(month => ({ month, ...summarizeTransactions(transactionsInRange(monthStart(month), monthEnd(month))) }));
 }
 
+function reportDailyTrendLabel(dateString) {
+  const date = new Date(`${dateString}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return dateString;
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date);
+}
+
+function aggregateDays(startDate, endDate) {
+  const rows = [];
+  let cursor = startDate;
+  let guard = 0;
+  while (cursor <= endDate && guard < 370) {
+    rows.push({ month: reportDailyTrendLabel(cursor), date: cursor, ...summarizeTransactions(transactionsInRange(cursor, cursor)) });
+    cursor = addDaysIso(cursor, 1);
+    guard += 1;
+  }
+  return rows;
+}
+
 function monthsEndingAt(month, count = 13) {
   return Array.from({ length: count }, (_, index) => shiftMonth(month, index - count + 1));
 }
@@ -1054,8 +1072,9 @@ function renderReports() {
   const dailySpend = summary.expense / days;
   const compareDailySpend = compareSummary.expense / compareDays;
   const selectedYear = reportsMode === "year" ? reportsYear : reportsMonth.slice(0, 4);
-  const trendMonths = reportsMode === "year" ? monthsForYear(reportsYear) : monthsEndingAt(reportsMonth, 13);
-  const trendRows = aggregateMonths(trendMonths);
+  const trendRows = reportsMode === "year"
+    ? aggregateMonths(monthsForYear(reportsYear))
+    : aggregateDays(bounds.start, bounds.end);
   const currentYearRows = aggregateMonths(monthsForYear(selectedYear));
   const compareYearRows = aggregateMonths(monthsForYear(reportsCompareYear));
   const yoyRows = currentYearRows.map((row, index) => ({
@@ -1092,8 +1111,8 @@ function renderReports() {
     ? `${metricTrendHtml(topCategory.value, compareTopValue, { currency, inverted: true })}<span>${formatCurrency(topCategory.value, currency)}</span>`
     : "No category flow yet";
   $("#report-period-pill").textContent = bounds.label;
-  $("#report-cashflow-title").textContent = reportsMode === "year" ? `${reportsYear} monthly cashflow` : "13-month cashflow";
-  $("#report-net-title").textContent = reportsMode === "year" ? `${reportsYear} net flow` : "Rolling net flow";
+  $("#report-cashflow-title").textContent = reportsMode === "year" ? `${reportsYear} monthly cashflow` : `${monthLabel(reportsMonth, { short: true })} daily cashflow`;
+  $("#report-net-title").textContent = reportsMode === "year" ? `${reportsYear} net flow` : `${monthLabel(reportsMonth, { short: true })} daily net flow`;
   const flowLabels = { income: "Income", outcome: "Outcome", combined: "Combined" };
   const flowCenterLabels = { income: "incoming", outcome: "outgoing", combined: "flow" };
   $("#report-spending-title").textContent = `${flowLabels[reportsCategoryMode] || "Combined"} split`;
