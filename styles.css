@@ -2658,7 +2658,7 @@ td .category-pill .category-pill-text,
   white-space: nowrap;
 }
 
-/* v47: position update controls bigger but always one-line */
+/* v48: import parser fix; position update controls one-line */
 .positions-table .positions-updated-header,
 .positions-table td.position-update-cell {
   width: 154px !important;

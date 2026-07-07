@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v47-revolut-xlsx-timeouts";
+const CACHE_NAME = "capito-v48-import-parser-fix";
 const CORE = [
   "./",
   "./index.html",

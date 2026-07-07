@@ -80,6 +80,20 @@ function parseCsvRows(text, delimiter) {
   return rows;
 }
 
+
+function cleanText(value) {
+  return String(value ?? "")
+    .replace(/\u00A0/g, " ")
+    .replace(/â‚¬/g, "€")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function normalizeHeader(value) {
   return String(value || "")
     .toLowerCase()
@@ -176,6 +190,27 @@ function amountWithFeeSplitRows({ date, movement, fee = 0, currency, counterpart
   return rows;
 }
 
+
+function dateSortKey(value) {
+  const text = String(value || "").trim();
+  const match = text.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?)?/);
+  if (match) {
+    const day = Number(match[1]);
+    const month = Number(match[2]);
+    const year = Number(match[3].length === 2 ? `20${match[3]}` : match[3]);
+    const hour = Number(match[4] || 0);
+    const minute = Number(match[5] || 0);
+    const second = Number(match[6] || 0);
+    const milli = Number(String(match[7] || "0").padEnd(3, "0"));
+    return Date.UTC(year, month - 1, day, hour, minute, second, milli);
+  }
+  const parsed = Date.parse(text);
+  if (Number.isFinite(parsed)) return parsed;
+  const date = parseDateValue(value);
+  const fallback = date ? Date.parse(`${date}T00:00:00Z`) : NaN;
+  return Number.isFinite(fallback) ? fallback : 0;
+}
+
 function parseWiseDate(value) {
   const text = String(value || "").trim();
   const match = text.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})(?:\s+(.*))?$/);
@@ -241,7 +276,7 @@ function normalizeWiseStatement(headers, rows) {
   };
   const outHeaders = ["Date", "Amount", "Currency", "Counterparty", "Description", "Balance", "External ID", "Exclude From Stats", "Note", "Account Key", "Category Override"];
   const outRows = [];
-  const sorted = [...rows].sort((a, b) => String(a[i.dateTime] || a[i.date]).localeCompare(String(b[i.dateTime] || b[i.date])));
+  const sorted = [...rows].sort((a, b) => dateSortKey(a[i.dateTime] || a[i.date]) - dateSortKey(b[i.dateTime] || b[i.date]));
   for (const row of sorted) {
     const currency = String(row[i.currency] || "EUR").toUpperCase();
     const movement = money(row[i.amount]);
@@ -965,14 +1000,33 @@ async function readZipText(entries, path) {
   return new TextDecoder("utf-8").decode(data);
 }
 
+function xmlEntityDecode(value = "") {
+  return String(value || "")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
+function xmlAttr(xml = "", name = "") {
+  const pattern = new RegExp(`${name}="([^"]*)"`);
+  return xml.match(pattern)?.[1] || "";
+}
+
 function xmlDoc(xml) {
+  if (typeof DOMParser === "undefined") return null;
   return new DOMParser().parseFromString(xml, "application/xml");
 }
 
 function parseSharedStrings(xml) {
   if (!xml) return [];
   const doc = xmlDoc(xml);
-  return [...doc.getElementsByTagName("si")].map(item => [...item.getElementsByTagName("t")].map(t => t.textContent || "").join(""));
+  if (doc) return [...doc.getElementsByTagName("si")].map(item => [...item.getElementsByTagName("t")].map(t => t.textContent || "").join(""));
+  return [...xml.matchAll(/<si[\s\S]*?<\/si>/g)].map(match => {
+    return [...match[0].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map(t => xmlEntityDecode(t[1])).join("");
+  });
 }
 
 function cellColumnIndex(ref) {
@@ -985,17 +1039,39 @@ function cellColumnIndex(ref) {
 function parseWorksheet(xml, sharedStrings) {
   const doc = xmlDoc(xml);
   const rows = [];
-  for (const row of [...doc.getElementsByTagName("row")]) {
+  if (doc) {
+    for (const row of [...doc.getElementsByTagName("row")]) {
+      const output = [];
+      for (const cell of [...row.getElementsByTagName("c")]) {
+        const col = cellColumnIndex(cell.getAttribute("r"));
+        const type = cell.getAttribute("t");
+        let value = "";
+        if (type === "inlineStr") {
+          value = [...cell.getElementsByTagName("t")].map(t => t.textContent || "").join("");
+        } else {
+          const v = cell.getElementsByTagName("v")[0]?.textContent ?? "";
+          value = type === "s" ? (sharedStrings[Number(v)] ?? "") : v;
+        }
+        output[col] = value;
+      }
+      rows.push(output.map(item => item ?? ""));
+    }
+    return rows;
+  }
+
+  for (const rowMatch of xml.matchAll(/<row[^>]*>[\s\S]*?<\/row>/g)) {
     const output = [];
-    for (const cell of [...row.getElementsByTagName("c")]) {
-      const col = cellColumnIndex(cell.getAttribute("r"));
-      const type = cell.getAttribute("t");
+    for (const cellMatch of rowMatch[0].matchAll(/<c\s+([^>]*)>([\s\S]*?)<\/c>/g)) {
+      const attrs = cellMatch[1];
+      const body = cellMatch[2];
+      const col = cellColumnIndex(xmlAttr(attrs, "r"));
+      const type = xmlAttr(attrs, "t");
       let value = "";
       if (type === "inlineStr") {
-        value = [...cell.getElementsByTagName("t")].map(t => t.textContent || "").join("");
+        value = [...body.matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map(t => xmlEntityDecode(t[1])).join("");
       } else {
-        const v = cell.getElementsByTagName("v")[0]?.textContent ?? "";
-        value = type === "s" ? (sharedStrings[Number(v)] ?? "") : v;
+        const raw = body.match(/<v[^>]*>([\s\S]*?)<\/v>/)?.[1] ?? "";
+        value = type === "s" ? (sharedStrings[Number(raw)] ?? "") : xmlEntityDecode(raw);
       }
       output[col] = value;
     }
