@@ -592,40 +592,94 @@ export function buildCategorySpend(transactions, categories, settings, period = 
 }
 
 export function calculateAccountBalance(account, transactions, settings, untilDate = "") {
-  const own = transactions.filter(tx => tx.accountId === account.id && !tx.deleted && (!untilDate || String(tx.date || "") <= untilDate));
-  const current = Number(account.openingBalance || 0) + own.reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+  const openingBalanceDate = String(account.openingBalanceDate || "").slice(0, 10);
+  const includeOpeningBalance = !untilDate || !openingBalanceDate || openingBalanceDate <= String(untilDate).slice(0, 10);
+  const startDate = openingBalanceDate && includeOpeningBalance ? openingBalanceDate : "";
+  const own = transactions.filter(tx => {
+    if (tx.accountId !== account.id || tx.deleted) return false;
+    const txDate = String(tx.date || "").slice(0, 10);
+    if (untilDate && txDate > String(untilDate).slice(0, 10)) return false;
+    if (startDate && txDate < startDate) return false;
+    return true;
+  });
+  const current = (includeOpeningBalance ? Number(account.openingBalance || 0) : 0) + own.reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+  const signed = current * accountSign(account.type);
   return {
     raw: current,
-    signed: current * accountSign(account.type),
-    converted: convertCurrency(current * accountSign(account.type), account.currency, settings)
+    signed,
+    converted: convertCurrency(signed, account.currency, settings)
+  };
+}
+
+function assetMarketValueConverted(asset, settings) {
+  const price = Number(asset.lastPrice ?? asset.manualPrice ?? 0);
+  const quantity = Number(asset.quantity || 0);
+  return convertCurrency(price * quantity, asset.currency, settings);
+}
+
+function accountRowsForPortfolio(state, settings, untilDate = "") {
+  return state.accounts
+    .filter(account => !account.hidden)
+    .map(account => ({
+      ...account,
+      balance: calculateAccountBalance(account, state.transactions, settings, untilDate)
+    }));
+}
+
+function portfolioBreakdownFromRows(accountRows, assets = [], settings = DEFAULT_SETTINGS, asOfDate = "") {
+  // Liquidity means immediately spendable / transferable cash. Broker cash is
+  // still cash, so it belongs here. Dedicated manual asset accounts are not
+  // cash and are counted in assets instead.
+  const liquidityAccountTypes = new Set(["checking", "savings", "cash", "broker"]);
+
+  const liquidity = accountRows
+    .filter(account => liquidityAccountTypes.has(account.type))
+    .reduce((sum, account) => sum + account.balance.converted, 0);
+
+  const brokerCash = accountRows
+    .filter(account => account.type === "broker")
+    .reduce((sum, account) => sum + account.balance.converted, 0);
+
+  const manualAssetValue = accountRows
+    .filter(account => account.type === "asset")
+    .reduce((sum, account) => sum + account.balance.converted, 0);
+
+  const receivables = accountRows
+    .filter(account => account.type === "loan")
+    .reduce((sum, account) => sum + account.balance.converted, 0);
+
+  const debt = accountRows
+    .filter(account => account.type === "debt")
+    .reduce((sum, account) => sum + Math.abs(account.balance.converted), 0);
+
+  const holdingsValue = assets
+    .filter(asset => !asset.hidden)
+    .reduce((sum, asset) => sum + (asOfDate ? assetSnapshotValue(asset, settings, asOfDate) : assetMarketValueConverted(asset, settings)), 0);
+
+  const assetValue = manualAssetValue + holdingsValue;
+  const netWorth = liquidity + assetValue + receivables - debt;
+  return {
+    liquidity,
+    debt,
+    receivables,
+    assetValue,
+    holdingsValue,
+    manualAssetValue,
+    brokerCash,
+    // Backwards-compatible alias for old UI/debug code. It now represents only
+    // broker cash, not the full asset value.
+    investmentCash: brokerCash,
+    netWorth
   };
 }
 
 export function calculatePortfolio(state) {
   const settings = state.settings || DEFAULT_SETTINGS;
-  const visibleAccounts = state.accounts.filter(account => !account.hidden);
-  const accountRows = visibleAccounts.map(account => ({
-    ...account,
-    balance: calculateAccountBalance(account, state.transactions, settings)
-  }));
-  const liquidity = accountRows
-    .filter(account => !["asset", "debt"].includes(account.type))
-    .reduce((sum, account) => sum + account.balance.converted, 0);
-  const debt = accountRows
-    .filter(account => account.type === "debt")
-    .reduce((sum, account) => sum + Math.abs(account.balance.converted), 0);
-  const receivables = accountRows
-    .filter(account => account.type === "loan")
-    .reduce((sum, account) => sum + account.balance.converted, 0);
-  const assetValue = state.assets
-    .filter(asset => !asset.hidden)
-    .reduce((sum, asset) => {
-      const price = Number(asset.lastPrice ?? asset.manualPrice ?? 0);
-      const quantity = Number(asset.quantity || 0);
-      return sum + convertCurrency(price * quantity, asset.currency, settings);
-    }, 0);
-  const netWorth = liquidity + assetValue + receivables - debt;
-  return { liquidity, debt, receivables, assetValue, netWorth, accountRows };
+  const accountRows = accountRowsForPortfolio(state, settings);
+  return {
+    ...portfolioBreakdownFromRows(accountRows, state.assets, settings),
+    accountRows
+  };
 }
 
 
@@ -671,25 +725,12 @@ function assetSnapshotValue(asset, settings, asOfDate = "") {
 
 export function calculatePortfolioSnapshot(state, asOfDate = "") {
   const settings = state.settings || DEFAULT_SETTINGS;
-  const visibleAccounts = state.accounts.filter(account => !account.hidden);
-  const accountRows = visibleAccounts.map(account => ({
-    ...account,
-    balance: calculateAccountBalance(account, state.transactions, settings, asOfDate)
-  }));
-  const liquidity = accountRows
-    .filter(account => !["asset", "debt"].includes(account.type))
-    .reduce((sum, account) => sum + account.balance.converted, 0);
-  const debt = accountRows
-    .filter(account => account.type === "debt")
-    .reduce((sum, account) => sum + Math.abs(account.balance.converted), 0);
-  const receivables = accountRows
-    .filter(account => account.type === "loan")
-    .reduce((sum, account) => sum + account.balance.converted, 0);
-  const assetValue = state.assets
-    .filter(asset => !asset.hidden)
-    .reduce((sum, asset) => sum + assetSnapshotValue(asset, settings, asOfDate), 0);
-  const netWorth = liquidity + assetValue + receivables - debt;
-  return { liquidity, debt, receivables, assetValue, netWorth, accountRows, asOfDate };
+  const accountRows = accountRowsForPortfolio(state, settings, asOfDate);
+  return {
+    ...portfolioBreakdownFromRows(accountRows, state.assets, settings, asOfDate),
+    accountRows,
+    asOfDate
+  };
 }
 
 export function calculateMonthlySnapshot(state) {

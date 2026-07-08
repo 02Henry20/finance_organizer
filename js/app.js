@@ -131,7 +131,7 @@ let reportsMode = "month";
 let reportsMonth = monthKey(TODAY());
 let reportsYear = String(new Date().getFullYear());
 let reportsCompareYear = String(new Date().getFullYear() - 1);
-let reportsCategoryMode = "combined";
+let reportsCategoryMode = "outcome";
 
 const PAGE_SIZES = {
   transactions: 10,
@@ -3719,7 +3719,7 @@ function wireEvents() {
     renderReports();
   });
   $$('[data-report-category-mode]').forEach(button => button.addEventListener("click", () => {
-    reportsCategoryMode = ["income", "outcome", "combined"].includes(button.dataset.reportCategoryMode) ? button.dataset.reportCategoryMode : "combined";
+    reportsCategoryMode = ["income", "outcome", "combined"].includes(button.dataset.reportCategoryMode) ? button.dataset.reportCategoryMode : "outcome";
     renderReports();
   }));
   $$("[data-position-period]").forEach(button => button.addEventListener("click", () => {
