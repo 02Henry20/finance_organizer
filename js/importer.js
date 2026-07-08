@@ -712,9 +712,10 @@ export async function parseBankFile(file) {
 }
 
 function transactionSignature(tx) {
+  const normalizedDate = parseDateValue(tx.date) || String(tx.date || "").slice(0, 10);
   return [
     tx.accountId || "",
-    tx.date || "",
+    normalizedDate,
     Number(tx.amount || 0).toFixed(2),
     String(tx.currency || "").toUpperCase(),
     normalizeText(tx.description).slice(0, 160),
@@ -1044,7 +1045,7 @@ export function buildImportPreview(parsed, mapping, context, existingTransaction
     const signature = transactionSignature(tx);
     const exactIdDuplicate = [tx.id, tx.externalId].filter(Boolean).some(key => hasExactSignature(existingKeySignatures, key, signature) || hasExactSignature(previewKeySignatures, key, signature));
     if (existingSignatures.has(signature) || previewSignatures.has(signature) || exactIdDuplicate) {
-      skipped.push({ row, tx, reason: "Exact duplicate" });
+      skipped.push({ row, tx, reason: "Exact duplicate: same account, date, amount, currency, description and counterparty" });
       continue;
     }
     makeCollisionSafeId(tx, signature, existingKeySignatures, previewKeySignatures);

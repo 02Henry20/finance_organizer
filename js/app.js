@@ -49,7 +49,9 @@ import {
   formatCurrency,
   monthKey,
   normalizeText,
+  parseDateValue,
   parseMoney,
+  transactionHash,
   ruleMatchesTransaction,
   shouldIgnoreTransactionInStats
 } from "./finance.js";
@@ -377,6 +379,41 @@ function transactionIdDebugHtml(tx = {}) {
   const id = tx.id || "";
   const externalId = tx.externalId || "";
   return `<div class="tx-id-debug" title="ID: ${escapeHtml(id)}${externalId && externalId !== id ? `\nExternal: ${escapeHtml(externalId)}` : ""}"><code>${escapeHtml(id || "—")}</code>${externalId && externalId !== id ? `<small>ext ${escapeHtml(externalId)}</small>` : ""}</div>`;
+}
+
+function normalizedTransactionDate(value = "") {
+  return parseDateValue(value) || String(value || "").slice(0, 10);
+}
+
+function transactionExactSignature(tx = {}) {
+  return [
+    tx.accountId || "",
+    normalizedTransactionDate(tx.date),
+    Number(tx.amount || 0).toFixed(2),
+    String(tx.currency || selectedCurrency()).toUpperCase(),
+    normalizeText(tx.description || "").slice(0, 160),
+    normalizeText(tx.counterparty || "").slice(0, 120)
+  ].join("|");
+}
+
+function transactionSearchText(tx = {}, account = null, cat = null) {
+  return [
+    tx.id, tx.externalId, tx.importBatchId, tx.description, tx.counterparty, tx.note, tx.reason, tx.rawText,
+    account?.name, account?.institution, account?.id, cat?.name, cat?.id
+  ].filter(Boolean).join(" ").toLowerCase();
+}
+
+function collisionSafeManualTransactionId(tx = {}, knownIds = new Set()) {
+  const base = String(tx.id || transactionHash(tx)).trim() || transactionHash(tx);
+  if (!knownIds.has(base)) return base;
+  const seed = transactionExactSignature(tx);
+  let suffix = 2;
+  let candidate = `${base}_r${suffix}`;
+  while (knownIds.has(candidate)) {
+    suffix += 1;
+    candidate = `${base}_r${suffix}`;
+  }
+  return candidate;
 }
 
 function accountDisplayCurrency(account = null) {
@@ -1250,7 +1287,11 @@ function renderTransactions() {
   const dateFrom = $("#tx-date-from")?.value || "";
   const dateTo = $("#tx-date-to")?.value || "";
   let rows = state.transactions;
-  if (search) rows = rows.filter(tx => [tx.description, tx.counterparty, tx.note, tx.reason].join(" ").toLowerCase().includes(search));
+  if (search) rows = rows.filter(tx => {
+    const account = accounts.get(tx.accountId);
+    const cat = resolveCategoryForTransaction(tx, cats, { allowMiscFallback: false });
+    return transactionSearchText(tx, account, cat).includes(search);
+  });
   if (accountFilter !== "all") rows = rows.filter(tx => tx.accountId === accountFilter);
   if (categoryFilter !== "all") rows = rows.filter(tx => tx.categoryId === categoryFilter);
   if (currencyFilter !== "all") rows = rows.filter(tx => (tx.currency || selectedCurrency()) === currencyFilter);
@@ -1268,7 +1309,8 @@ function renderTransactions() {
     account: tx => accounts.get(tx.accountId)?.name || tx.accountId || "",
     category: tx => resolveCategoryForTransaction(tx, cats, { allowMiscFallback: false })?.name || tx.categoryId || "",
     amount: tx => Number(tx.amount || 0),
-    note: tx => tx.note || ""
+    note: tx => tx.note || "",
+    id: tx => tx.id || tx.externalId || ""
   });
   txFilteredRows = rows;
   selectedTransactionIds = new Set([...selectedTransactionIds].filter(id => state.transactions.some(tx => tx.id === id)));
@@ -1300,7 +1342,7 @@ function renderTransactions() {
       <td>${categoryPill(cat, { review: tx.review })}</td>
       <td class="${Number(tx.amount) >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(tx.amount, tx.currency || selectedCurrency())}</td>
       <td class="note-cell"><span class="table-ellipsis" title="${escapeHtml(tx.note || "")}">${escapeHtml(tx.note || "")}</span></td>
-      ${showIds ? `<td class="tx-id-cell desktop-only-tools">${transactionIdDebugHtml(tx)}</td>` : ""}
+      ${showIds ? `<td class="tx-id-cell">${transactionIdDebugHtml(tx)}</td>` : ""}
       <td class="action-cell"><button class="ghost-button compact icon-only-action" type="button" data-edit-tx="${escapeHtml(tx.id)}" title="Edit transaction" aria-label="Edit transaction">✎</button></td>`;
     tbody.append(tr);
   }
@@ -1799,6 +1841,9 @@ function openTransactionModal(id = "") {
   const tx = id ? state.transactions.find(item => item.id === id) : null;
   transactionRuleSuggestionUsed = Boolean(tx);
   $("#transaction-modal-title").textContent = tx ? "Edit transaction" : "Add transaction";
+  const debugField = $("#transaction-debug-id-field");
+  if (debugField) debugField.hidden = !showTransactionIdDebug();
+  $("#transaction-original-id").value = tx?.id || "";
   $("#transaction-id").value = tx?.id || "";
   $("#transaction-account").value = tx?.accountId || state.accounts[0]?.id || "";
   $("#transaction-date").value = tx?.date || TODAY();
@@ -2534,7 +2579,8 @@ function renderImportPreview() {
     description: tx => tx.description || "",
     amount: tx => Number(tx.amount || 0),
     category: tx => resolveCategoryForTransaction(tx, cats, { allowMiscFallback: false })?.name || tx.categoryId || "",
-    status: tx => tx.review ? "Needs review" : "Prepared"
+    status: tx => tx.review ? "Needs review" : "Prepared",
+    id: tx => tx.id || tx.externalId || ""
   });
   importSelectedIds = new Set([...importSelectedIds].filter(id => activePreview.transactions.some(tx => (tx.id || tx.externalId) === id)));
   $("#preview-count").textContent = `${activePreview.transactions.length} accepted · ${activePreview.skipped.length} skipped`;
@@ -2554,7 +2600,7 @@ function renderImportPreview() {
     tr.classList.toggle("is-selected-row", selected);
     tr.classList.toggle("is-ignored-row", shouldIgnoreTransactionInStats(tx));
     const ignored = shouldIgnoreTransactionInStats(tx);
-    tr.innerHTML = `<td class="select-col desktop-only-tools"><input class="import-select-checkbox" data-select-import-tx="${escapeHtml(id)}" type="checkbox" ${selected ? "checked" : ""} aria-label="Select import row"></td><td>${escapeHtml(tx.date)}</td><td class="description-cell"><strong>${escapeHtml(tx.description)}</strong><small class="muted table-ellipsis">${escapeHtml(tx.reason || "")}</small>${transactionFlagsHtml(tx)}</td><td class="${tx.amount >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(tx.amount, tx.currency)}</td><td>${categoryPill(cat, { review: tx.review })}</td><td>${tx.review ? "Needs review" : "Prepared"}</td>${showIds ? `<td class="tx-id-cell desktop-only-tools">${transactionIdDebugHtml(tx)}</td>` : ""}<td><select class="import-stats-select" data-import-ignore="${escapeHtml(id)}" aria-label="Spending statistics"><option value="false" ${ignored ? "" : "selected"}>Include</option><option value="true" ${ignored ? "selected" : ""}>Ignore</option></select></td>`;
+    tr.innerHTML = `<td class="select-col desktop-only-tools"><input class="import-select-checkbox" data-select-import-tx="${escapeHtml(id)}" type="checkbox" ${selected ? "checked" : ""} aria-label="Select import row"></td><td>${escapeHtml(tx.date)}</td><td class="description-cell"><strong>${escapeHtml(tx.description)}</strong><small class="muted table-ellipsis">${escapeHtml(tx.reason || "")}</small>${transactionFlagsHtml(tx)}</td><td class="${tx.amount >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(tx.amount, tx.currency)}</td><td>${categoryPill(cat, { review: tx.review })}</td><td>${tx.review ? "Needs review" : "Prepared"}</td>${showIds ? `<td class="tx-id-cell">${transactionIdDebugHtml(tx)}</td>` : ""}<td><select class="import-stats-select" data-import-ignore="${escapeHtml(id)}" aria-label="Spending statistics"><option value="false" ${ignored ? "" : "selected"}>Include</option><option value="true" ${ignored ? "selected" : ""}>Ignore</option></select></td>`;
     tbody.append(tr);
   }
   tbody.querySelectorAll("[data-select-import-tx]").forEach(box => box.addEventListener("change", event => {
@@ -2606,7 +2652,7 @@ function renderFilteredImportPreview() {
       <td>${tx?.date ? escapeHtml(tx.date) : "—"}</td>
       <td class="description-cell"><strong>${escapeHtml(tx?.description || item.row?.join(" · ") || "Filtered row")}</strong><small class="muted table-ellipsis">${escapeHtml(item.reason || "Filtered")}</small>${tx ? transactionFlagsHtml(tx) : ""}</td>
       <td class="${Number(tx?.amount || 0) >= 0 ? "amount-pos" : "amount-neg"}">${tx ? formatCurrency(tx.amount, tx.currency || selectedCurrency()) : "—"}</td>
-      ${showIds && tx ? `<td class="tx-id-cell desktop-only-tools">${transactionIdDebugHtml(tx)}</td>` : showIds ? `<td class="tx-id-cell desktop-only-tools">—</td>` : ""}
+      ${showIds && tx ? `<td class="tx-id-cell">${transactionIdDebugHtml(tx)}</td>` : showIds ? `<td class="tx-id-cell">—</td>` : ""}
       <td class="action-cell"><button class="secondary-button compact" type="button" data-restore-skipped="${rowNumber}" ${tx ? "" : "disabled"}>Add back</button></td>`;
     tbody.append(tr);
   });
@@ -2801,14 +2847,26 @@ async function runDataIntegrityRepair() {
     button.dataset.busy = "true";
     button.disabled = true;
   }
-  setMessage(message, "Checking category references…");
+  setMessage(message, "Checking categories, transaction IDs and duplicate signatures…");
 
   try {
     const categories = await ensureMiscCategoryForIntegrity();
     let txTrimmed = 0;
     let txNormalized = 0;
     let txMoved = 0;
-    const transactionPatches = [];
+    let idReassigned = 0;
+    let duplicateGroups = 0;
+    let duplicateRows = 0;
+    const transactionPatchesByOriginalId = new Map();
+    const transactionDeletes = [];
+
+    const queuePatch = (originalId, patch) => {
+      if (!originalId) return;
+      transactionPatchesByOriginalId.set(originalId, {
+        ...(transactionPatchesByOriginalId.get(originalId) || state.transactions.find(tx => tx.id === originalId) || {}),
+        ...patch
+      });
+    };
 
     for (const tx of state.transactions) {
       const original = String(tx.categoryId ?? "");
@@ -2831,7 +2889,51 @@ async function runDataIntegrityRepair() {
         patch.candidates = [];
         patch.reason = `Data integrity repair: invalid category '${trimmed || "empty"}' moved to Misc.`;
       }
-      transactionPatches.push(patch);
+      queuePatch(tx.id, patch);
+    }
+
+    const usedIds = new Set();
+    for (const tx of state.transactions) {
+      const current = transactionPatchesByOriginalId.get(tx.id) || tx;
+      const id = String(current.id || "").trim();
+      let nextId = id;
+      if (!nextId || nextId.includes("/") || usedIds.has(nextId)) {
+        nextId = collisionSafeManualTransactionId({ ...current, id: nextId || transactionHash(current) }, usedIds);
+      }
+      usedIds.add(nextId);
+      if (nextId !== current.id) {
+        idReassigned += 1;
+        const patch = {
+          ...current,
+          id: nextId,
+          externalId: current.externalId && current.externalId !== current.id ? current.externalId : nextId,
+          review: true,
+          reason: [current.reason, `Data integrity repair: transaction ID reassigned from '${current.id || "empty"}' to '${nextId}'.`].filter(Boolean).join(" ")
+        };
+        queuePatch(tx.id, patch);
+        if (tx.id && tx.id !== nextId) transactionDeletes.push(tx.id);
+      }
+    }
+
+    const signatureGroups = new Map();
+    for (const tx of state.transactions) {
+      const current = transactionPatchesByOriginalId.get(tx.id) || tx;
+      const signature = transactionExactSignature(current);
+      if (!signatureGroups.has(signature)) signatureGroups.set(signature, []);
+      signatureGroups.get(signature).push(current);
+    }
+    for (const group of signatureGroups.values()) {
+      if (group.length < 2) continue;
+      duplicateGroups += 1;
+      duplicateRows += group.length;
+      for (const tx of group) {
+        queuePatch(tx.id, {
+          ...tx,
+          review: true,
+          confidence: Math.min(Number(tx.confidence ?? 0.25), 0.25),
+          reason: [tx.reason, `Data integrity check: potential exact duplicate group (${group.length} rows). Review manually before deleting anything.`].filter(Boolean).join(" ")
+        });
+      }
     }
 
     let ruleNormalized = 0;
@@ -2847,20 +2949,28 @@ async function runDataIntegrityRepair() {
       await saveRule({ ...rule, categoryId: repair.targetId });
     }
 
+    const transactionPatches = [...transactionPatchesByOriginalId.values()];
     if (transactionPatches.length) {
       setMessage(message, `Repairing ${transactionPatches.length} transactions and ${ruleNormalized + ruleMoved} rules…`);
       await saveTransactionsBatch(transactionPatches);
+      const newIds = new Set(transactionPatches.map(tx => tx.id).filter(Boolean));
+      for (const oldId of [...new Set(transactionDeletes)]) {
+        if (oldId && !newIds.has(oldId)) await deleteTransaction(oldId);
+      }
     }
 
     const accountIds = new Set(state.accounts.map(account => account.id));
     const missingAccountTransactions = state.transactions.filter(tx => tx.accountId && !accountIds.has(tx.accountId)).length;
     const assetMissingAccounts = state.assets.filter(asset => asset.accountId && !accountIds.has(asset.accountId)).length;
-    const changed = transactionPatches.length + ruleNormalized + ruleMoved;
+    const changed = transactionPatches.length + ruleNormalized + ruleMoved + idReassigned + duplicateRows;
+    const duplicateNote = duplicateGroups
+      ? ` Potential exact duplicates exist: ${duplicateGroups} group(s), ${duplicateRows} transaction rows. They were marked Review and not deleted.`
+      : " No exact duplicate signatures found.";
     const summary = changed
-      ? `Fixed ${transactionPatches.length} transactions (${txMoved} moved to Misc, ${txNormalized} normalized, ${txTrimmed} trimmed) and ${ruleNormalized + ruleMoved} rules (${ruleMoved} moved to Misc).${missingAccountTransactions || assetMissingAccounts ? ` Also found ${missingAccountTransactions} transactions and ${assetMissingAccounts} holdings with missing account references; those were reported only.` : ""}`
-      : `No invalid category references found.${missingAccountTransactions || assetMissingAccounts ? ` Found ${missingAccountTransactions} transactions and ${assetMissingAccounts} holdings with missing account references; those were reported only.` : ""}`;
-    setMessage(message, summary);
-    toast(changed ? "Data integrity repaired" : "Data integrity OK", summary);
+      ? `Fixed/checked ${transactionPatches.length} transactions (${txMoved} moved to Misc, ${txNormalized} normalized, ${txTrimmed} trimmed, ${idReassigned} IDs reassigned). ${ruleNormalized + ruleMoved} rules repaired.${duplicateNote}${missingAccountTransactions || assetMissingAccounts ? ` Also found ${missingAccountTransactions} transactions and ${assetMissingAccounts} holdings with missing account references; those were reported only.` : ""}`
+      : `No invalid category references or ID problems found.${duplicateNote}${missingAccountTransactions || assetMissingAccounts ? ` Found ${missingAccountTransactions} transactions and ${assetMissingAccounts} holdings with missing account references; those were reported only.` : ""}`;
+    setMessage(message, summary, Boolean(duplicateGroups));
+    toast(changed ? "Data integrity checked" : "Data integrity OK", summary, duplicateGroups ? "error" : "success");
     requestRender();
   } catch (error) {
     setMessage(message, error.message, true);
@@ -3561,8 +3671,18 @@ function wireEvents() {
     setBusy(form, true);
     try {
       const selectedCategoryId = categoryIdFromSearch($("#transaction-category")?.value);
+      const originalTransactionId = $("#transaction-original-id")?.value || "";
+      const requestedTransactionId = String($("#transaction-id")?.value || "").trim();
+      if (requestedTransactionId && requestedTransactionId.includes("/")) {
+        toast("Invalid transaction ID", "IDs cannot contain /.", "error");
+        return;
+      }
+      if (requestedTransactionId && requestedTransactionId !== originalTransactionId && state.transactions.some(tx => tx.id === requestedTransactionId)) {
+        toast("Duplicate transaction ID", "Another transaction already uses this ID.", "error");
+        return;
+      }
       const input = {
-        id: $("#transaction-id").value || undefined,
+        id: requestedTransactionId || undefined,
         accountId: $("#transaction-account").value,
         date: $("#transaction-date").value,
         amount: parseMoney($("#transaction-amount").value),
@@ -3574,7 +3694,7 @@ function wireEvents() {
         review: $("#transaction-review").checked,
         excludeFromStats: selectedCategoryId === "cash" ? false : Boolean($("#transaction-ignore-stats")?.checked),
         rulesLocked: Boolean($("#transaction-rules-locked")?.checked),
-        source: $("#transaction-id").value ? "manual-edit" : "manual"
+        source: originalTransactionId ? "manual-edit" : "manual"
       };
       if (!input.accountId || !input.date || input.amount == null) {
         toast("Invalid transaction", "Account, date and amount are required.", "error");
@@ -3592,7 +3712,10 @@ function wireEvents() {
       }
       if (input.categoryId && input.categoryId !== "misc" && input.categoryId !== "auto") input.review = false;
       const savedCount = await saveTransactionWithReferenceSplit(input);
-      toast("Transaction saved", savedCount > 1 ? "Split with reference account." : "");
+      if (originalTransactionId && input.id && input.id !== originalTransactionId) {
+        await deleteTransaction(originalTransactionId);
+      }
+      toast("Transaction saved", savedCount > 1 ? "Split with reference account." : (originalTransactionId && input.id && input.id !== originalTransactionId ? "ID changed." : ""));
       closeModal();
     } catch (error) {
       toast("Save failed", error.message, "error");
@@ -3603,7 +3726,7 @@ function wireEvents() {
   });
 
   $("#delete-transaction-button").addEventListener("click", async () => {
-    const id = $("#transaction-id").value;
+    const id = $("#transaction-original-id")?.value || $("#transaction-id").value;
     if (!id) return;
     const ok = await confirmDialog({ title: "Delete transaction", message: "Delete this transaction permanently?", confirmLabel: "Delete", danger: true });
     if (!ok) return;
