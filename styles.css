@@ -3906,3 +3906,30 @@ button[aria-busy="true"]::after {
   font-weight: 800;
 }
 
+
+/* v76: reports category net-balance chart safety */
+@media (max-width: 920px) {
+  section[data-view-section="reports"] .chart-card:has(#report-category-chart) .chart-wrap {
+    min-height: 260px !important;
+    height: 260px !important;
+    max-height: 260px !important;
+    overflow: hidden !important;
+  }
+  section[data-view-section="reports"] .chart-card:has(#report-category-chart) canvas {
+    display: block !important;
+    width: 100% !important;
+    height: 260px !important;
+    max-height: 260px !important;
+  }
+}
+@media (max-width: 680px) {
+  section[data-view-section="reports"] .chart-card:has(#report-category-chart) .chart-wrap {
+    min-height: 272px !important;
+    height: 272px !important;
+    max-height: 272px !important;
+  }
+  section[data-view-section="reports"] .chart-card:has(#report-category-chart) canvas {
+    height: 272px !important;
+    max-height: 272px !important;
+  }
+}

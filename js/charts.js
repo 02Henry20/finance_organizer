@@ -367,50 +367,67 @@ export function drawAccountBars(canvas, rows, currency = "EUR", options = {}) {
 }
 
 export function drawMovementBars(canvas, rows, currency = "EUR", options = {}) {
-  const data = (rows || [])
+  const maxRows = Math.max(1, Number(options.maxRows || 9));
+  const sorted = (rows || [])
     .map(row => ({ ...row, value: Number(row.value || 0) }))
-    .filter(row => Number.isFinite(row.value))
+    .filter(row => Number.isFinite(row.value) && Math.abs(row.value) > 0.005)
     .sort((a, b) => Math.abs(b.value) - Math.abs(a.value) || String(a.name || "").localeCompare(String(b.name || "")));
-  const visible = data.filter(row => Math.abs(row.value) > 0.005);
-  setEmpty(canvas, !visible.length);
-  if (!visible.length) return;
+  const data = sorted.length > maxRows
+    ? [
+        ...sorted.slice(0, maxRows - 1),
+        {
+          categoryId: "rest",
+          name: options.restLabel || "Rest",
+          value: sorted.slice(maxRows - 1).reduce((sum, row) => sum + Number(row.value || 0), 0),
+          color: css("--muted") || "#94a3b8"
+        }
+      ].filter(row => Math.abs(row.value) > 0.005)
+    : sorted;
+  setEmpty(canvas, !data.length);
+  if (!data.length) return;
   const { ctx, width, height, colors: c } = prepare(canvas);
   const mobile = width < 520;
-  const labelSpace = mobile ? Math.min(142, Math.max(104, width * 0.34)) : Math.min(148, Math.max(112, width * 0.18));
-  const valueSpace = mobile ? Math.min(82, Math.max(56, width * 0.16)) : Math.min(112, Math.max(70, width * 0.12));
-  const area = { left: labelSpace, right: width - valueSpace, top: 20, bottom: height - 20 };
-  const maxAbs = Math.max(...visible.map(row => Math.abs(row.value)), 1);
+  const labelSpace = mobile ? Math.min(136, Math.max(96, width * 0.32)) : Math.min(156, Math.max(118, width * 0.18));
+  const valueSpace = mobile ? Math.min(72, Math.max(52, width * 0.16)) : Math.min(112, Math.max(72, width * 0.12));
+  const area = {
+    left: labelSpace,
+    right: Math.max(labelSpace + 96, width - valueSpace),
+    top: mobile ? 14 : 18,
+    bottom: height - (mobile ? 14 : 18)
+  };
+  const maxAbs = Math.max(...data.map(row => Math.abs(row.value)), 1);
   const zero = area.left + (area.right - area.left) * 0.5;
-  const scaleAbs = (area.right - area.left - 16) / 2 / maxAbs;
-  const rowH = Math.max(24, (area.bottom - area.top) / Math.max(visible.length, 1));
-  const barH = Math.min(18, Math.max(10, rowH * 0.48));
-  ctx.font = `${mobile ? 11 : 12}px Inter, system-ui`;
+  const scaleAbs = Math.max(1, (area.right - area.left - 20) / 2 / maxAbs);
+  const rowH = (area.bottom - area.top) / Math.max(data.length, 1);
+  const barH = Math.min(mobile ? 14 : 18, Math.max(8, rowH * 0.46));
+  ctx.font = `${mobile ? 10.5 : 12}px Inter, system-ui`;
   ctx.textBaseline = "middle";
   ctx.strokeStyle = c.grid;
   ctx.beginPath();
-  ctx.moveTo(zero, area.top - 6);
-  ctx.lineTo(zero, area.bottom + 6);
+  ctx.moveTo(zero, area.top - 4);
+  ctx.lineTo(zero, area.bottom + 4);
   ctx.stroke();
 
   const formatter = new Intl.NumberFormat(undefined, { style: "currency", currency, notation: "compact", maximumFractionDigits: 1 });
-  const labelMax = Math.max(44, area.left - (mobile ? 20 : 24));
-  visible.forEach((row, i) => {
+  const labelMax = Math.max(40, area.left - (mobile ? 18 : 24));
+  data.forEach((row, i) => {
     const y = area.top + i * rowH + rowH * 0.5;
     const value = Number(row.value || 0);
-    const x2 = zero + value * scaleAbs;
+    const rawX2 = zero + value * scaleAbs;
+    const x2 = Math.max(area.left + 3, Math.min(area.right - 3, rawX2));
     const x = Math.min(zero, x2);
     const w = Math.max(3, Math.abs(x2 - zero));
     ctx.fillStyle = c.text;
     ctx.textAlign = "right";
-    ctx.fillText(fitText(ctx, row.name || "Account", labelMax), area.left - (mobile ? 10 : 12), y);
+    ctx.fillText(fitText(ctx, row.name || "Category", labelMax), area.left - (mobile ? 8 : 12), y);
     ctx.fillStyle = value >= 0 ? c.accent : c.red;
     roundedRect(ctx, x, y - barH / 2, w, barH, 7);
     ctx.fill();
     ctx.fillStyle = c.fg;
     ctx.textAlign = value >= 0 ? "left" : "right";
-    let valueX = value >= 0 ? x + w + 8 : x - 8;
-    if (value >= 0 && valueX > width - 10) { valueX = width - 10; ctx.textAlign = "right"; }
-    if (value < 0 && valueX < area.left + 8) { valueX = area.left + 8; ctx.textAlign = "left"; }
+    let valueX = value >= 0 ? x + w + 7 : x - 7;
+    if (value >= 0 && valueX > width - 8) { valueX = width - 8; ctx.textAlign = "right"; }
+    if (value < 0 && valueX < area.left + 6) { valueX = area.left + 6; ctx.textAlign = "left"; }
     const prefix = value > 0 ? "+" : value < 0 ? "−" : "±";
     ctx.fillText(`${prefix}${formatter.format(Math.abs(value))}`, valueX, y);
   });

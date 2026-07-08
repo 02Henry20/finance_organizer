@@ -65,7 +65,7 @@ import {
   serializeTransactionsCsv
 } from "./importer.js";
 import { fetchQuote, searchYahooAssetMatches } from "./market.js";
-import { drawAccountBars, drawDonut, drawIncomeExpense, drawMultiLineSeries, drawNetSeries, drawYearComparison } from "./charts.js";
+import { drawAccountBars, drawDonut, drawIncomeExpense, drawMovementBars, drawMultiLineSeries, drawNetSeries, drawYearComparison } from "./charts.js";
 
 const VIEW_LABELS = {
   overview: ["COMMAND CENTER", "Overview"],
@@ -890,13 +890,37 @@ function categoryFlowForRange(start, end, mode = "combined") {
     if (normalizedMode === "income" && !isIncome) continue;
     if (normalizedMode === "outcome" && !isOutcome) continue;
     if (normalizedMode === "combined" && !isIncome && !isOutcome) continue;
-    const value = Math.abs(amount);
-    if (value <= 0) continue;
-    const prev = totals.get(cat.id) || { categoryId: cat.id, name: cat.name, group: cat.group, color: cat.color || DEFAULT_CATEGORY_COLOR, value: 0 };
-    prev.value += value;
+    if (Math.abs(amount) <= 0.005) continue;
+    const prev = totals.get(cat.id) || {
+      categoryId: cat.id,
+      name: cat.name,
+      group: cat.group,
+      color: cat.color || DEFAULT_CATEGORY_COLOR,
+      income: 0,
+      outcome: 0,
+      value: 0
+    };
+    if (amount > 0) prev.income += amount;
+    if (amount < 0) prev.outcome += Math.abs(amount);
+    prev.value = normalizedMode === "combined"
+      ? prev.income - prev.outcome
+      : normalizedMode === "income"
+        ? prev.income
+        : prev.outcome;
     totals.set(cat.id, prev);
   }
-  return [...totals.values()].sort((a, b) => b.value - a.value);
+  return [...totals.values()]
+    .filter(row => Math.abs(Number(row.value || 0)) > 0.005)
+    .sort((a, b) => {
+      if (normalizedMode === "combined") return Math.abs(b.value) - Math.abs(a.value) || String(a.name || "").localeCompare(String(b.name || ""));
+      return b.value - a.value || String(a.name || "").localeCompare(String(b.name || ""));
+    });
+}
+
+function topSpendingCategoryForRange(start, end) {
+  return categoryFlowForRange(start, end, "combined")
+    .filter(row => Number(row.value || 0) < -0.005)
+    .sort((a, b) => Number(a.value || 0) - Number(b.value || 0) || String(a.name || "").localeCompare(String(b.name || "")))[0] || null;
 }
 
 function aggregateMonths(months) {
@@ -1189,12 +1213,14 @@ function renderReports() {
   const compareSummary = summarizeTransactions(compareRows);
   const categoryRows = categoryFlowForRange(bounds.start, bounds.end, reportsCategoryMode);
   const compareCategoryRows = categoryFlowForRange(compareBounds.start, compareBounds.end, reportsCategoryMode);
+  const topSpendingCategory = topSpendingCategoryForRange(bounds.start, bounds.end);
+  const compareTopSpendingCategory = topSpendingCategory ? categoryFlowForRange(compareBounds.start, compareBounds.end, "combined").find(row => row.categoryId === topSpendingCategory.categoryId) : null;
+  const topSpendingLoss = Math.abs(Math.min(0, Number(topSpendingCategory?.value || 0)));
+  const compareTopSpendingLoss = Math.abs(Math.min(0, Number(compareTopSpendingCategory?.value || 0)));
   const assetProgressionRows = reportAccountProgressionRows(bounds.start, bounds.end, "holdings");
   const debtProgressionRows = reportAccountProgressionRows(bounds.start, bounds.end, "debt");
   const days = daysBetween(bounds.start, bounds.end);
   const compareDays = daysBetween(compareBounds.start, compareBounds.end);
-  const topCategory = categoryRows[0];
-  const compareTopValue = topCategory ? (compareCategoryRows.find(row => row.categoryId === topCategory.categoryId)?.value || 0) : 0;
   const savingsRate = summary.income > 0 ? summary.net / summary.income * 100 : null;
   const compareSavingsRate = compareSummary.income > 0 ? compareSummary.net / compareSummary.income * 100 : null;
   const dailySpend = summary.expense / days;
@@ -1227,23 +1253,23 @@ function renderReports() {
   savingsEl.className = savingsRate == null ? "delta-flat" : savingsRate >= 0 ? "amount-pos" : "amount-neg";
   dailyEl.textContent = formatCurrency(dailySpend, currency);
   dailyEl.className = "report-neutral-value";
-  topEl.textContent = topCategory?.name || "—";
-  topEl.title = topCategory?.name || "";
+  topEl.textContent = topSpendingCategory?.name || "—";
+  topEl.title = topSpendingCategory?.name || "";
 
   $("#report-income-detail").innerHTML = `${metricTrendHtml(summary.income, compareSummary.income, { currency })}<span>vs ${escapeHtml(compareBounds.label)}</span>`;
   $("#report-spending-detail").innerHTML = `${metricTrendHtml(summary.expense, compareSummary.expense, { currency, inverted: true })}<span>vs ${escapeHtml(compareBounds.label)}</span>`;
   $("#report-net-detail").innerHTML = `${metricTrendHtml(summary.net, compareSummary.net, { currency })}<span>${escapeHtml(bounds.label)}</span>`;
   $("#report-savings-rate-detail").innerHTML = `${metricTrendHtml(savingsRate ?? 0, compareSavingsRate ?? 0, { mode: "points" })}<span>Net flow / income</span>`;
   $("#report-days-count").innerHTML = `${metricTrendHtml(dailySpend, compareDailySpend, { currency, inverted: true })}<span>${days} days</span>`;
-  $("#report-top-category-value").innerHTML = topCategory
-    ? `${metricTrendHtml(topCategory.value, compareTopValue, { currency, inverted: true })}<span>${formatCurrency(topCategory.value, currency)}</span>`
-    : "No category flow yet";
+  $("#report-top-category-value").innerHTML = topSpendingCategory
+    ? `${metricTrendHtml(topSpendingLoss, compareTopSpendingLoss, { currency, inverted: true })}<span>${formatCurrency(topSpendingLoss, currency)} net loss</span>`
+    : "No net spending yet";
   $("#report-period-pill").textContent = bounds.label;
   $("#report-cashflow-title").textContent = reportsMode === "year" ? `${reportsYear} monthly cashflow` : `${monthLabel(reportsMonth, { short: true })} daily cashflow`;
   $("#report-net-title").textContent = reportsMode === "year" ? `${reportsYear} net flow` : `${monthLabel(reportsMonth, { short: true })} daily net flow`;
-  const flowLabels = { income: "Income", outcome: "Outcome", combined: "Combined" };
-  const flowCenterLabels = { income: "incoming", outcome: "outgoing", combined: "flow" };
-  $("#report-spending-title").textContent = `${flowLabels[reportsCategoryMode] || "Combined"} split`;
+  const flowLabels = { income: "Income", outcome: "Outcome", combined: "Net category balance" };
+  const flowCenterLabels = { income: "incoming", outcome: "outgoing", combined: "net" };
+  $("#report-spending-title").textContent = reportsCategoryMode === "combined" ? flowLabels.combined : `${flowLabels[reportsCategoryMode] || "Combined"} split`;
   $("#report-yoy-title").textContent = `${selectedYear} vs ${reportsCompareYear} spending`;
   const periodLabel = bounds.label;
   const assetsTitle = $("#report-assets-title");
@@ -1255,7 +1281,11 @@ function renderReports() {
   drawNetSeries($("#report-net-chart"), trendRows);
   drawMultiLineSeries($("#report-asset-movement-chart"), assetProgressionRows, currency, { zeroBased: true });
   drawMultiLineSeries($("#report-debt-movement-chart"), debtProgressionRows, currency, { zeroBased: true });
-  drawDonut($("#report-category-chart"), categoryRows, currency, { centerLabel: flowCenterLabels[reportsCategoryMode] || "flow" });
+  if (reportsCategoryMode === "combined") {
+    drawMovementBars($("#report-category-chart"), categoryRows, currency, { maxRows: 9, restLabel: "Rest" });
+  } else {
+    drawDonut($("#report-category-chart"), categoryRows, currency, { centerLabel: flowCenterLabels[reportsCategoryMode] || "flow" });
+  }
   drawYearComparison($("#report-yoy-chart"), yoyRows, currency, { currentLabel: selectedYear, previousLabel: reportsCompareYear });
 }
 

@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v75-review-notes-group-edit";
+const CACHE_NAME = "capito-v76-category-net-balance";
 const CORE = [
   "./",
   "./index.html",
