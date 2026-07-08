@@ -396,6 +396,44 @@ function transactionExactSignature(tx = {}) {
   ].join("|");
 }
 
+
+function appendUniqueNoteLine(note = "", line = "") {
+  const clean = String(line || "").trim();
+  if (!clean) return String(note || "").trim();
+  const current = String(note || "").trim();
+  if (current.toLowerCase().includes(clean.toLowerCase())) return current;
+  return [current, clean].filter(Boolean).join("\n");
+}
+
+function reviewReasonNote(reason = "") {
+  const detail = String(reason || "Manual review requested.").trim();
+  return `Needs review: ${detail}`;
+}
+
+function categoryNameForId(categoryId = "") {
+  return state.categories.find(cat => cat.id === categoryId)?.name || categoryId || "category";
+}
+
+function ruleApplicationNote(result = {}, categoryId = "") {
+  if (!result || result.review) return "";
+  const candidate = (result.candidates || []).find(item => item.categoryId === categoryId) || result.candidates?.[0] || null;
+  const ruleLabel = result.ruleLabel || candidate?.ruleLabel || "";
+  const keywords = Array.isArray(result.matchedKeywords) && result.matchedKeywords.length
+    ? result.matchedKeywords
+    : (candidate?.keywords || []);
+  if (!ruleLabel && !keywords.length) return "";
+  const keywordText = keywords.length ? ` via keyword${keywords.length === 1 ? "" : "s"} '${keywords.join("', '")}'` : "";
+  return `Rule applied: '${ruleLabel || "unnamed rule"}'${keywordText} → ${categoryNameForId(categoryId || result.categoryId)}.`;
+}
+
+function enrichTransactionNoteForAutomation(tx = {}, result = null) {
+  let note = String(tx.note || "").trim();
+  const ruleLine = ruleApplicationNote(result, tx.categoryId || result?.categoryId || "");
+  if (ruleLine) note = appendUniqueNoteLine(note, ruleLine);
+  if (tx.review) note = appendUniqueNoteLine(note, reviewReasonNote(tx.reason));
+  return { ...tx, note };
+}
+
 function transactionSearchText(tx = {}, account = null, cat = null) {
   return [
     tx.id, tx.externalId, tx.importBatchId, tx.description, tx.counterparty, tx.note, tx.reason, tx.rawText,
@@ -2254,7 +2292,7 @@ function buildCategorizedTransaction(tx, rulesOverride = state.rules, { reapplyM
     && result.categoryId === "misc"
     && !(result.candidates || []).length;
 
-  return {
+  return enrichTransactionNoteForAutomation({
     ...tx,
     categoryId: result.categoryId,
     confidence: lostPreviousCategory ? 0.38 : result.confidence,
@@ -2269,7 +2307,7 @@ function buildCategorizedTransaction(tx, rulesOverride = state.rules, { reapplyM
     transferTargetAccountId: result.transferTargetAccountId || "",
     internalTransfer: Boolean(result.internalTransfer),
     excludeFromStats: nextIsCash ? false : Boolean(result.excludeFromStats && nextIsTransfer)
-  };
+  }, lostPreviousCategory ? null : result);
 }
 
 function transactionChangedByCategorization(tx, next) {
@@ -2619,6 +2657,8 @@ function renderImportPreview() {
       Object.assign(tx, reviewResolutionPatch({ review: false }, "import-preview"));
       const cleaned = String(tx.reason || "").replace(/\s*·?\s*Marked clean manually\.?$/i, "").trim();
       tx.reason = cleaned ? `${cleaned} · Marked clean manually.` : "Marked clean manually.";
+    } else {
+      Object.assign(tx, enrichTransactionNoteForAutomation(tx, null));
     }
     renderImportPreview();
     updateUnifiedImportSummary();
@@ -2701,15 +2741,16 @@ function renderFilteredImportPreview() {
     }
     restored.id = candidate;
     restored.externalId = candidate;
-    activePreview.transactions.push({
+    const restoredTx = enrichTransactionNoteForAutomation({
       ...restored,
       review: isExactDuplicate ? false : true,
       reason: isExactDuplicate
         ? `Manually accepted duplicate: ${item.reason || "exact duplicate"}`
-        : `Manually added back: ${item.reason || "filtered"}`
-    });
+        : `Manually added back: ${item.reason || "filtered"}`,
+      ...(isExactDuplicate ? reviewResolutionPatch({ review: false }, "import-add-back") : {})
+    }, null);
+    activePreview.transactions.push(restoredTx);
     activePreview.skipped.splice(index, 1);
-    toast("Row added back", isExactDuplicate ? "Duplicate kept with a changed ID and marked Prepared." : "It is now included in the import preview and marked for review.");
     renderImportPreview();
     updateUnifiedImportSummary();
   }));
@@ -2909,10 +2950,11 @@ async function runDataIntegrityRepair() {
 
     const queuePatch = (originalId, patch) => {
       if (!originalId) return;
-      transactionPatchesByOriginalId.set(originalId, {
+      const merged = {
         ...(transactionPatchesByOriginalId.get(originalId) || state.transactions.find(tx => tx.id === originalId) || {}),
         ...patch
-      });
+      };
+      transactionPatchesByOriginalId.set(originalId, enrichTransactionNoteForAutomation(merged, null));
     };
 
     for (const tx of state.transactions) {
@@ -2971,18 +3013,10 @@ async function runDataIntegrityRepair() {
     }
     for (const group of signatureGroups.values()) {
       if (group.length < 2) continue;
-      const needsDuplicateReview = group.filter(tx => !(tx.duplicateAccepted || tx.reviewClearedAtMs));
-      if (!needsDuplicateReview.length) continue;
       duplicateGroups += 1;
-      duplicateRows += needsDuplicateReview.length;
-      for (const tx of needsDuplicateReview) {
-        queuePatch(tx.id, {
-          ...tx,
-          review: true,
-          confidence: Math.min(Number(tx.confidence ?? 0.25), 0.25),
-          reason: [tx.reason, `Data integrity check: potential exact duplicate group (${group.length} rows). Review manually before deleting anything.`].filter(Boolean).join(" ")
-        });
-      }
+      duplicateRows += group.length;
+      // Exact duplicate signatures are allowed when the transaction IDs already differ.
+      // The repair check should not mark these rows as Needs review anymore.
     }
 
     let ruleNormalized = 0;
@@ -3011,15 +3045,15 @@ async function runDataIntegrityRepair() {
     const accountIds = new Set(state.accounts.map(account => account.id));
     const missingAccountTransactions = state.transactions.filter(tx => tx.accountId && !accountIds.has(tx.accountId)).length;
     const assetMissingAccounts = state.assets.filter(asset => asset.accountId && !accountIds.has(asset.accountId)).length;
-    const changed = transactionPatches.length + ruleNormalized + ruleMoved + idReassigned + duplicateRows;
+    const changed = transactionPatches.length + ruleNormalized + ruleMoved;
     const duplicateNote = duplicateGroups
-      ? ` Potential exact duplicates exist: ${duplicateGroups} group(s), ${duplicateRows} transaction rows. They were marked Review and not deleted.`
+      ? ` Exact duplicate signatures exist: ${duplicateGroups} group(s), ${duplicateRows} transaction rows. IDs already differ, so they were left clean and unchanged.`
       : " No exact duplicate signatures found.";
     const summary = changed
       ? `Fixed/checked ${transactionPatches.length} transactions (${txMoved} moved to Misc, ${txNormalized} normalized, ${txTrimmed} trimmed, ${idReassigned} IDs reassigned). ${ruleNormalized + ruleMoved} rules repaired.${duplicateNote}${missingAccountTransactions || assetMissingAccounts ? ` Also found ${missingAccountTransactions} transactions and ${assetMissingAccounts} holdings with missing account references; those were reported only.` : ""}`
       : `No invalid category references or ID problems found.${duplicateNote}${missingAccountTransactions || assetMissingAccounts ? ` Found ${missingAccountTransactions} transactions and ${assetMissingAccounts} holdings with missing account references; those were reported only.` : ""}`;
-    setMessage(message, summary, Boolean(duplicateGroups));
-    toast(changed ? "Data integrity checked" : "Data integrity OK", summary, duplicateGroups ? "error" : "success");
+    setMessage(message, summary, false);
+    toast(changed ? "Data integrity checked" : "Data integrity OK", summary, "success");
     requestRender();
   } catch (error) {
     setMessage(message, error.message, true);
@@ -3394,12 +3428,13 @@ async function groupEditSelectedTransactions() {
   if (!rows.length) return toast("No transactions selected", "", "error");
   let patch = await promptBulkTransactionPatch(rows.length, { title: "Group edit transactions", allowAccount: true });
   if (patch === null) return;
+  if (patch.review === true && !patch.reason) patch.reason = "Marked under review by group edit.";
   patch = reviewResolutionPatch(patch, "bulk-edit");
   if (!Object.keys(patch).length) return toast("No changes", "Nothing was changed.");
   const ok = await confirmDialog({ title: "Apply group edit", message: `Apply these changes to ${rows.length} selected transactions?`, confirmLabel: "Apply changes" });
   if (!ok) return;
   const ids = new Set(rows.map(tx => tx.id));
-  const updates = rows.map(tx => ({ ...tx, ...patch, source: tx.source || "bulk-edit" }));
+  const updates = rows.map(tx => enrichTransactionNoteForAutomation({ ...tx, ...patch, source: tx.source || "bulk-edit" }, null));
   applyLocalTransactionPatch(ids, patch);
   await saveTransactionsBatch(updates);
   toast("Transactions updated", `${rows.length} changed.`);
@@ -3437,12 +3472,13 @@ async function groupEditImportRows() {
   if (!rows.length) return toast("No import rows selected", "", "error");
   let patch = await promptBulkTransactionPatch(rows.length, { title: "Group edit import rows", allowAccount: true });
   if (patch === null) return;
+  if (patch.review === true && !patch.reason) patch.reason = "Marked under review by import group edit.";
   patch = reviewResolutionPatch(patch, "import-bulk-edit");
   if (!Object.keys(patch).length) return toast("No changes", "Nothing was changed.");
   const ok = await confirmDialog({ title: "Apply import edit", message: `Apply these changes to ${rows.length} selected import rows?`, confirmLabel: "Apply changes" });
   if (!ok) return;
   const ids = new Set(rows.map(tx => tx.id || tx.externalId));
-  activePreview.transactions = activePreview.transactions.map(tx => ids.has(tx.id || tx.externalId) ? { ...tx, ...patch } : tx);
+  activePreview.transactions = activePreview.transactions.map(tx => ids.has(tx.id || tx.externalId) ? enrichTransactionNoteForAutomation({ ...tx, ...patch }, null) : tx);
   toast("Import rows updated", `${rows.length} changed.`);
   renderImportPreview();
   updateUnifiedImportSummary();
@@ -3807,11 +3843,20 @@ function wireEvents() {
         toast("Invalid transaction", "Account, date and amount are required.", "error");
         return;
       }
-      if (!input.categoryId && !input.rulesLocked) {
-        const cat = categorizeTransaction(input, state.rules, state.categories, state.accounts);
-        Object.assign(input, cat);
+      const matchingRule = input.rulesLocked ? null : categorizeTransaction(input, state.rules, state.categories, state.accounts);
+      if (!input.categoryId && matchingRule) {
+        Object.assign(input, matchingRule);
+        Object.assign(input, enrichTransactionNoteForAutomation(input, matchingRule));
+      } else if (matchingRule?.categoryId && matchingRule.categoryId === input.categoryId && !matchingRule.review) {
+        Object.assign(input, enrichTransactionNoteForAutomation(input, matchingRule));
+      } else if (input.review) {
+        Object.assign(input, enrichTransactionNoteForAutomation(input, null));
       }
       if (!input.categoryId) input.categoryId = "misc";
+      if (input.review && !input.reason) {
+        input.reason = originalTransactionId ? "Marked under review manually during edit." : "Marked under review manually.";
+        Object.assign(input, enrichTransactionNoteForAutomation(input, null));
+      }
       if (!state.categories.some(cat => cat.id === input.categoryId)) {
         toast("Invalid category", "Choose an existing category from the category search list.", "error");
         $("#transaction-category")?.focus();

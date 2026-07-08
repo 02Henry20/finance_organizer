@@ -184,6 +184,41 @@ function finiteNumberOrNull(value) {
 }
 
 
+
+function appendUniqueNoteLine(note = "", line = "") {
+  const clean = String(line || "").trim();
+  if (!clean) return String(note || "").trim();
+  const current = String(note || "").trim();
+  if (current.toLowerCase().includes(clean.toLowerCase())) return current;
+  return [current, clean].filter(Boolean).join("\n");
+}
+
+function ruleApplicationNote(categorization = {}, categoryId = "", categories = []) {
+  if (!categorization || categorization.review) return "";
+  const candidate = (categorization.candidates || []).find(item => item.categoryId === categoryId) || categorization.candidates?.[0] || null;
+  const ruleLabel = categorization.ruleLabel || candidate?.ruleLabel || "";
+  const keywords = Array.isArray(categorization.matchedKeywords) && categorization.matchedKeywords.length
+    ? categorization.matchedKeywords
+    : (candidate?.keywords || []);
+  if (!ruleLabel && !keywords.length) return "";
+  const categoryName = categories.find(cat => cat.id === categoryId)?.name || candidate?.categoryName || categoryId || "category";
+  const keywordText = keywords.length ? ` via keyword${keywords.length === 1 ? "" : "s"} '${keywords.join("', '")}'` : "";
+  return `Rule applied: '${ruleLabel || "unnamed rule"}'${keywordText} → ${categoryName}.`;
+}
+
+function reviewReasonNote(reason = "") {
+  const detail = String(reason || "Manual review requested.").trim();
+  return `Needs review: ${detail}`;
+}
+
+function enrichTransactionNoteForAutomation(tx = {}, categorization = null, categories = []) {
+  let note = String(tx.note || "").trim();
+  const ruleLine = ruleApplicationNote(categorization, tx.categoryId, categories);
+  if (ruleLine) note = appendUniqueNoteLine(note, ruleLine);
+  if (tx.review) note = appendUniqueNoteLine(note, reviewReasonNote(tx.reason));
+  return { ...tx, note };
+}
+
 function amountWithFeeSplitRows({ date, movement, fee = 0, currency, counterparty, description, balance = "", externalId, excludeFromStats, note, accountKey, categoryId = "" }) {
   const rows = [];
   const feeAmount = Math.abs(Number(fee || 0));
@@ -791,8 +826,11 @@ function makeDuplicateAcceptedId(tx, signature, knownMap, previewMap) {
   }
   tx.id = candidate;
   tx.externalId = candidate;
-  tx.review = true;
-  tx.confidence = Math.min(Number(tx.confidence ?? 0.35), 0.35);
+  tx.review = false;
+  tx.duplicateAccepted = true;
+  tx.reviewClearedAtMs = Date.now();
+  tx.reviewClearedBy = "duplicate-id-prepared";
+  tx.confidence = Math.max(Number(tx.confidence ?? 0.9), 0.9);
   tx.reason = [tx.reason, `Exact duplicate was explicitly prepared with duplicate ID ${counter}.`].filter(Boolean).join(" ");
   return tx;
 }
@@ -1024,7 +1062,7 @@ export function rowToTransaction(row, mapping, context) {
   const nextIsInternalTransfer = Boolean(categorization.internalTransfer || nextCategoryId === "transfer");
   const nextIsTransferCategory = Boolean(nextIsInternalTransfer || nextCategory?.type === "transfer");
   const ignoredReason = forcedIgnore && !nextIsCash ? "Excluded from spending statistics by import rule." : "";
-  const tx = {
+  const tx = enrichTransactionNoteForAutomation({
     ...base,
     id,
     externalId: suppliedExternalId || id,
@@ -1040,7 +1078,7 @@ export function rowToTransaction(row, mapping, context) {
     internalTransfer: nextIsInternalTransfer,
     excludeFromStats: nextIsCash ? false : Boolean((forcedIgnore || categorization.excludeFromStats) && nextIsTransferCategory),
     note
-  };
+  }, categoryOverride ? null : categorization, context.categories || []);
   return categorization.internalTransfer ? withInternalTransferFields(tx, categorization, groupId) : tx;
 }
 

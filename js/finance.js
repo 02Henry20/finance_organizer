@@ -408,14 +408,22 @@ function keywordMatchesText(keyword, rawText, { caseSensitive = false } = {}) {
   return Boolean(keywordMatchInfo(keyword, rawText, { caseSensitive }));
 }
 
+
+function noteWithoutAutomationLines(note = "") {
+  return String(note || "")
+    .split(/\n+/)
+    .filter(line => !/^\s*(Rule applied|Needs review):/i.test(line))
+    .join(" ");
+}
+
 export function ruleMatchesTransaction(rule = {}, tx = {}) {
-  const rawText = [tx.description, tx.counterparty, tx.rawText, tx.note, tx.reason].filter(Boolean).join(" ");
+  const rawText = [tx.description, tx.counterparty, tx.rawText, noteWithoutAutomationLines(tx.note), tx.reason].filter(Boolean).join(" ");
   const rawKeywords = (rule.keywords || []).map(value => String(value || "").trim()).filter(Boolean);
   return rawKeywords.some(keyword => keywordMatchesText(keyword, rawText, { caseSensitive: Boolean(rule.caseSensitive) }));
 }
 
 export function categorizeTransaction(tx, rules = DEFAULT_RULES, categories = DEFAULT_CATEGORIES, accounts = []) {
-  const rawText = [tx.description, tx.counterparty, tx.rawText, tx.note].filter(Boolean).join(" ");
+  const rawText = [tx.description, tx.counterparty, tx.rawText, noteWithoutAutomationLines(tx.note)].filter(Boolean).join(" ");
   const categoryMap = new Map(categories.map(cat => [cat.id, cat]));
   const detectedTransfer = detectInternalTransfer(tx, accounts);
   if (detectedTransfer) return detectedTransfer;
@@ -466,7 +474,9 @@ export function categorizeTransaction(tx, rules = DEFAULT_RULES, categories = DE
         categoryName: categoryMap.get(item.rule.categoryId)?.name || item.rule.categoryId,
         score: item.score,
         priority: item.priority,
-        keywords: item.matched
+        keywords: item.matched,
+        ruleId: item.rule.id || "",
+        ruleLabel: item.rule.label || ""
       }))
     };
   }
@@ -475,8 +485,11 @@ export function categorizeTransaction(tx, rules = DEFAULT_RULES, categories = DE
     categoryId: top.rule.categoryId,
     confidence: Math.min(0.99, top.score / 125),
     review: false,
-    reason: `Matched rule '${top.rule.label}'.`,
-    candidates: [{ categoryId: top.rule.categoryId, categoryName: topCategory?.name || top.rule.categoryId, score: top.score, priority: top.priority, keywords: top.matched }]
+    reason: `Matched rule '${top.rule.label}'${top.matched.length ? ` via keyword${top.matched.length === 1 ? "" : "s"} '${top.matched.join("', '")}'` : ""}.`,
+    ruleId: top.rule.id || "",
+    ruleLabel: top.rule.label || "",
+    matchedKeywords: top.matched,
+    candidates: [{ categoryId: top.rule.categoryId, categoryName: topCategory?.name || top.rule.categoryId, score: top.score, priority: top.priority, keywords: top.matched, ruleId: top.rule.id || "", ruleLabel: top.rule.label || "" }]
   };
 }
 

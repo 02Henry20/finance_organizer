@@ -289,6 +289,21 @@ export async function deleteRule(id) {
   await deleteDoc(userDoc("rules", id));
 }
 
+
+function appendUniqueNoteLine(note = "", line = "") {
+  const clean = String(line || "").trim();
+  if (!clean) return String(note || "").trim();
+  const current = String(note || "").trim();
+  if (current.toLowerCase().includes(clean.toLowerCase())) return current;
+  return [current, clean].filter(Boolean).join("\n");
+}
+
+function noteWithReviewReason(input = {}) {
+  let note = String(input.note || "").trim();
+  if (input.review && input.reason) note = appendUniqueNoteLine(note, `Needs review: ${input.reason}`);
+  return note;
+}
+
 export async function saveTransaction(input) {
   const id = input.id || uid();
   await saveDoc("transactions", id, {
@@ -300,7 +315,7 @@ export async function saveTransaction(input) {
     description: input.description?.trim() || "Manual entry",
     counterparty: input.counterparty?.trim() || "",
     categoryId: input.categoryId || "misc",
-    note: input.note?.trim() || "",
+    note: noteWithReviewReason(input),
     source: input.source || "manual",
     externalId: input.externalId || "",
     importBatchId: input.importBatchId || "",
@@ -337,26 +352,43 @@ export async function saveTransaction(input) {
 export async function saveTransactionsBatch(transactions) {
   if (!transactions.length) return { imported: 0 };
   let imported = 0;
-  const usedIds = new Set(state.transactions.map(tx => tx.id).filter(Boolean));
-  const nextUniqueId = id => {
-    const base = String(id || uid()).replace(/_dup\d+$/i, "");
-    if (!usedIds.has(base)) {
-      usedIds.add(base);
-      return base;
+  const existingById = new Map(state.transactions.map(tx => [tx.id, tx]).filter(([id]) => Boolean(id)));
+  const reservedIds = new Set();
+  const nextUniqueId = tx => {
+    const requested = String(tx.id || uid()).trim();
+    const existing = existingById.get(requested);
+    const isExistingUpdate = Boolean(existing && (
+      tx.createdAtMs === existing.createdAtMs ||
+      tx.clientUpdatedAtMs === existing.clientUpdatedAtMs ||
+      tx.source === "bulk-edit" ||
+      tx.source === "manual-edit" ||
+      tx.source === "rule-reapply" ||
+      tx.source === "integrity-repair"
+    ));
+    if (isExistingUpdate && !reservedIds.has(requested)) {
+      reservedIds.add(requested);
+      return requested;
+    }
+
+    const occupied = new Set([...existingById.keys(), ...reservedIds]);
+    const base = requested.replace(/_dup\d+$/i, "") || uid();
+    if (!occupied.has(requested)) {
+      reservedIds.add(requested);
+      return requested;
     }
     let counter = 2;
     let candidate = `${base}_dup${counter}`;
-    while (usedIds.has(candidate)) {
+    while (occupied.has(candidate)) {
       counter += 1;
       candidate = `${base}_dup${counter}`;
     }
-    usedIds.add(candidate);
+    reservedIds.add(candidate);
     return candidate;
   };
   for (let index = 0; index < transactions.length; index += 400) {
     const batch = writeBatch(db);
     for (const tx of transactions.slice(index, index + 400)) {
-      const id = nextUniqueId(tx.id);
+      const id = nextUniqueId(tx);
       imported += 1;
       batch.set(userDoc("transactions", id), {
         ...tx,
@@ -364,6 +396,7 @@ export async function saveTransactionsBatch(transactions) {
         externalId: !tx.externalId || tx.externalId === tx.id ? id : tx.externalId,
         amount: Number(tx.amount || 0),
         currency: (tx.currency || state.settings.primaryCurrency || "EUR").toUpperCase(),
+        note: noteWithReviewReason(tx),
         review: Boolean(tx.review),
         excludeFromStats: tx.categoryId === "cash" ? false : Boolean(tx.excludeFromStats || tx.ignoreFromStats || tx.statsIgnored),
         internalTransfer: tx.categoryId === "cash" ? false : Boolean(tx.internalTransfer),
