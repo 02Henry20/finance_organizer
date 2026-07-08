@@ -2616,6 +2616,7 @@ function renderImportPreview() {
     if (!tx) return;
     tx.review = event.currentTarget.value === "true";
     if (!tx.review) {
+      Object.assign(tx, reviewResolutionPatch({ review: false }, "import-preview"));
       const cleaned = String(tx.reason || "").replace(/\s*·?\s*Marked clean manually\.?$/i, "").trim();
       tx.reason = cleaned ? `${cleaned} · Marked clean manually.` : "Marked clean manually.";
     }
@@ -2970,9 +2971,11 @@ async function runDataIntegrityRepair() {
     }
     for (const group of signatureGroups.values()) {
       if (group.length < 2) continue;
+      const needsDuplicateReview = group.filter(tx => !(tx.duplicateAccepted || tx.reviewClearedAtMs));
+      if (!needsDuplicateReview.length) continue;
       duplicateGroups += 1;
-      duplicateRows += group.length;
-      for (const tx of group) {
+      duplicateRows += needsDuplicateReview.length;
+      for (const tx of needsDuplicateReview) {
         queuePatch(tx.id, {
           ...tx,
           review: true,
@@ -3148,9 +3151,9 @@ function bulkEditDialog(count, { title = "Group edit", allowAccount = true } = {
       if (description) patch.description = description === "__CLEAR__" ? "" : description;
       if (counterparty) patch.counterparty = counterparty === "__CLEAR__" ? "" : counterparty;
       if (note) patch.note = note === "__CLEAR__" ? "" : note;
-      if (review) patch.review = review === "true";
-      if (ignore) patch.excludeFromStats = ignore === "true";
-      if (rulesLocked) patch.rulesLocked = rulesLocked === "true";
+      if (review !== "") patch.review = review === "true";
+      if (ignore !== "") patch.excludeFromStats = ignore === "true";
+      if (rulesLocked !== "") patch.rulesLocked = rulesLocked === "true";
       finish(patch);
     });
     backdrop.querySelector("#bulk-edit-category").focus();
@@ -3277,6 +3280,52 @@ async function saveTransactionWithReferenceSplit(input) {
   return 2;
 }
 
+function reviewResolutionPatch(basePatch = {}, source = "manual") {
+  if (basePatch.review !== false) return basePatch;
+  return {
+    ...basePatch,
+    review: false,
+    confidence: Number(basePatch.confidence ?? 1),
+    candidates: [],
+    duplicateAccepted: true,
+    reviewClearedAtMs: Date.now(),
+    reviewClearedBy: source
+  };
+}
+
+function applyLocalTransactionPatch(ids, patch) {
+  if (!ids?.size || !patch || !Object.keys(patch).length) return;
+  state.transactions = state.transactions.map(tx => ids.has(tx.id) ? { ...tx, ...patch } : tx);
+}
+
+function resetTransactionFiltersForReviewQueue() {
+  const setValue = (selector, value) => { const el = $(selector); if (el) el.value = value; };
+  setValue("#tx-search", "");
+  setValue("#tx-account-filter", "all");
+  setValue("#tx-category-filter", "all");
+  setValue("#tx-currency-filter", "all");
+  setValue("#tx-flow-filter", "both");
+  setValue("#tx-min-amount", "");
+  setValue("#tx-max-amount", "");
+  setValue("#tx-date-from", "");
+  setValue("#tx-date-to", "");
+  setValue("#tx-review-filter", "review");
+  selectedTransactionIds.clear();
+  txSelectionMode = false;
+  txPage = 1;
+}
+
+function openNeedsReviewTransactions() {
+  resetTransactionFiltersForReviewQueue();
+  navigateTo("transactions");
+  renderTransactions();
+  const panel = $("#tx-filter-panel");
+  if (panel && window.matchMedia("(max-width: 920px)").matches) {
+    panel.classList.remove("is-collapsed");
+    $("#tx-filter-toggle")?.setAttribute("aria-expanded", "true");
+  }
+}
+
 function selectedTransactions() {
   const ids = selectedTransactionIds;
   return state.transactions.filter(tx => ids.has(tx.id));
@@ -3343,14 +3392,19 @@ async function deleteSelectedTransactions() {
 async function groupEditSelectedTransactions() {
   const rows = selectedTransactions();
   if (!rows.length) return toast("No transactions selected", "", "error");
-  const patch = await promptBulkTransactionPatch(rows.length, { title: "Group edit transactions", allowAccount: true });
+  let patch = await promptBulkTransactionPatch(rows.length, { title: "Group edit transactions", allowAccount: true });
   if (patch === null) return;
+  patch = reviewResolutionPatch(patch, "bulk-edit");
   if (!Object.keys(patch).length) return toast("No changes", "Nothing was changed.");
   const ok = await confirmDialog({ title: "Apply group edit", message: `Apply these changes to ${rows.length} selected transactions?`, confirmLabel: "Apply changes" });
   if (!ok) return;
-  await saveTransactionsBatch(rows.map(tx => ({ ...tx, ...patch, source: tx.source || "bulk-edit" })));
+  const ids = new Set(rows.map(tx => tx.id));
+  const updates = rows.map(tx => ({ ...tx, ...patch, source: tx.source || "bulk-edit" }));
+  applyLocalTransactionPatch(ids, patch);
+  await saveTransactionsBatch(updates);
   toast("Transactions updated", `${rows.length} changed.`);
   renderTransactions();
+  requestRender();
 }
 
 function exportSelectedTransactions() {
@@ -3381,8 +3435,9 @@ async function deleteSelectedImportRows() {
 async function groupEditImportRows() {
   const rows = importPreviewSelectedRows();
   if (!rows.length) return toast("No import rows selected", "", "error");
-  const patch = await promptBulkTransactionPatch(rows.length, { title: "Group edit import rows", allowAccount: true });
+  let patch = await promptBulkTransactionPatch(rows.length, { title: "Group edit import rows", allowAccount: true });
   if (patch === null) return;
+  patch = reviewResolutionPatch(patch, "import-bulk-edit");
   if (!Object.keys(patch).length) return toast("No changes", "Nothing was changed.");
   const ok = await confirmDialog({ title: "Apply import edit", message: `Apply these changes to ${rows.length} selected import rows?`, confirmLabel: "Apply changes" });
   if (!ok) return;
@@ -3487,7 +3542,13 @@ function wireEvents() {
     }
   });
   $$(`[data-view]`).forEach(button => button.addEventListener("click", () => navigateTo(button.dataset.view)));
-  $$(`[data-go-view]`).forEach(button => button.addEventListener("click", () => navigateTo(button.dataset.goView)));
+  $$(`[data-go-view]`).forEach(button => button.addEventListener("click", () => {
+    if (button.dataset.goView === "transactions" && button.closest("#review-panel")) {
+      openNeedsReviewTransactions();
+      return;
+    }
+    navigateTo(button.dataset.goView);
+  }));
   $("#hidden-accounts-toggle")?.addEventListener("click", () => {
     hiddenAccountsExpanded = !hiddenAccountsExpanded;
     requestRender();
