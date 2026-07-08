@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#111827">
   <meta name="description" content="Capito is a private finance organizer for accounts, transactions, holdings, rules and analytics.">
   <title>Capito</title>
-  <meta name="capito-build" content="capito-v81-home-networth-current-month">
+  <meta name="capito-build" content="capito-v82-liquidity-chart">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16x16.png">
@@ -96,10 +96,10 @@
           <article class="chart-card surface-card net-worth-chart-card">
             <div class="panel-heading net-worth-chart-heading">
               <div class="net-chart-title-block">
-                <p class="eyebrow">NET WORTH</p>
+                <p class="eyebrow">LIQUIDITY</p>
                 <div class="net-chart-title-line">
-                  <h3 id="home-net-title">Net worth</h3>
-                  <div class="segmented-control compact-segments net-chart-mode" role="group" aria-label="Home net worth chart mode">
+                  <h3 id="home-net-title">Liquidity</h3>
+                  <div class="segmented-control compact-segments net-chart-mode" role="group" aria-label="Home liquidity chart mode">
                     <button class="segment-button active" data-net-chart-mode="flow" data-net-chart-scope="home" type="button" aria-pressed="true">Flow</button>
                     <button class="segment-button" data-net-chart-mode="absolute" data-net-chart-scope="home" type="button" aria-pressed="false">Absolute</button>
                   </div>
@@ -107,7 +107,7 @@
               </div>
               <span id="home-net-period-pill" class="metric-tag">Current month</span>
             </div>
-            <div class="chart-wrap"><canvas id="net-series-chart"></canvas><div class="chart-empty" data-empty-for="net-series-chart">No net worth data yet.</div></div>
+            <div class="chart-wrap"><canvas id="net-series-chart"></canvas><div class="chart-empty" data-empty-for="net-series-chart">No liquidity data yet.</div></div>
           </article>
           <article class="chart-card surface-card">
             <div class="panel-heading"><div><p class="eyebrow">SPENDING</p><h3>Category split</h3></div><span id="spending-month-pill" class="metric-tag">Current month</span></div>
@@ -148,17 +148,17 @@
           <article class="chart-card surface-card net-worth-chart-card">
             <div class="panel-heading net-worth-chart-heading">
               <div class="net-chart-title-block">
-                <p class="eyebrow">NET WORTH</p>
+                <p class="eyebrow">LIQUIDITY</p>
                 <div class="net-chart-title-line">
-                  <h3 id="report-net-title">Net worth</h3>
-                  <div class="segmented-control compact-segments net-chart-mode" role="group" aria-label="Report net worth chart mode">
+                  <h3 id="report-net-title">Liquidity</h3>
+                  <div class="segmented-control compact-segments net-chart-mode" role="group" aria-label="Report liquidity chart mode">
                     <button class="segment-button active" data-net-chart-mode="flow" data-net-chart-scope="reports" type="button" aria-pressed="true">Flow</button>
                     <button class="segment-button" data-net-chart-mode="absolute" data-net-chart-scope="reports" type="button" aria-pressed="false">Absolute</button>
                   </div>
                 </div>
               </div>
             </div>
-            <div class="chart-wrap"><canvas id="report-net-chart"></canvas><div class="chart-empty" data-empty-for="report-net-chart">No net worth data in this period.</div></div>
+            <div class="chart-wrap"><canvas id="report-net-chart"></canvas><div class="chart-empty" data-empty-for="report-net-chart">No liquidity data in this period.</div></div>
           </article>
           <article class="chart-card surface-card">
             <div class="panel-heading report-category-heading"><div><p class="eyebrow">CATEGORY FLOW</p><h3 id="report-spending-title">Category split</h3></div><div class="report-category-actions"><div class="segmented-control compact-segments report-category-mode" role="group" aria-label="Category flow mode"><button class="segment-button" data-report-category-mode="income" type="button" aria-pressed="false">In</button><button class="segment-button active" data-report-category-mode="outcome" type="button" aria-pressed="true">Out</button><button class="segment-button" data-report-category-mode="combined" type="button" aria-pressed="false">Both</button></div><span id="report-period-pill" class="metric-tag">Current month</span></div></div>

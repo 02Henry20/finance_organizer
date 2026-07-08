@@ -987,35 +987,35 @@ function monthsForYear(year) {
   return Array.from({ length: 12 }, (_, index) => `${year}-${String(index + 1).padStart(2, "0")}`);
 }
 
-function netWorthDateForMonth(month) {
+function liquidityDateForMonth(month) {
   const today = TODAY();
   const end = monthEnd(month);
   return end > today ? today : end;
 }
 
-function netWorthSeriesForMonths(months = []) {
+function liquiditySeriesForMonths(months = []) {
   return months
     .map(month => {
-      const date = netWorthDateForMonth(month);
+      const date = liquidityDateForMonth(month);
       return {
         month,
         date,
-        net: calculatePortfolioSnapshot(state, date).netWorth
+        net: calculatePortfolioSnapshot(state, date).liquidity
       };
     })
     .filter((row, index, rows) => row.date && (index === 0 || row.date !== rows[index - 1].date));
 }
 
-function netWorthSeriesForDates(dates = [], options = {}) {
+function liquiditySeriesForDates(dates = [], options = {}) {
   const dense = options.dense ?? (dates.length > 45 || reportsMode === "year");
   return dates.map(date => ({
     month: reportPointLabel(date, dense),
     date,
-    net: calculatePortfolioSnapshot(state, date).netWorth
+    net: calculatePortfolioSnapshot(state, date).liquidity
   }));
 }
 
-function syncNetWorthChartModeControls(scope, mode) {
+function syncLiquidityChartModeControls(scope, mode) {
   $$(`[data-net-chart-scope="${scope}"]`).forEach(button => {
     const active = button.dataset.netChartMode === mode;
     button.classList.toggle("active", active);
@@ -1197,6 +1197,8 @@ function renderOverview() {
   }
   if (spendingMonthPill) spendingMonthPill.textContent = monthLabel(monthly.currentMonth, { short: true });
   if (homeNetPeriodPill) homeNetPeriodPill.textContent = monthLabel(monthly.currentMonth, { short: true });
+  const homeNetTitle = $("#home-net-title");
+  if (homeNetTitle) homeNetTitle.textContent = "Liquidity";
   const reviewPanel = $("#review-panel");
   const reviewCount = $("#review-count");
   const reviewList = $("#review-list");
@@ -1214,11 +1216,11 @@ function renderOverview() {
       reviewList.append(item);
     }
   }
-  syncNetWorthChartModeControls("home", homeNetWorthChartMode);
+  syncLiquidityChartModeControls("home", homeNetWorthChartMode);
   const homeNetMonthStart = monthStart(monthly.currentMonth);
   const homeNetMonthEnd = monthly.currentMonth === monthKey(TODAY()) ? TODAY() : monthEnd(monthly.currentMonth);
   const homeNetWorthRows = homeNetWorthChartMode === "absolute"
-    ? netWorthSeriesForDates(reportPeriodPoints(homeNetMonthStart, homeNetMonthEnd), { dense: false })
+    ? liquiditySeriesForDates(reportPeriodPoints(homeNetMonthStart, homeNetMonthEnd), { dense: false })
     : aggregateDays(homeNetMonthStart, homeNetMonthEnd);
   drawNetSeries($("#net-series-chart"), homeNetWorthRows, { currency });
   drawDonut($("#category-donut-chart"), categorySpend, currency);
@@ -1344,7 +1346,7 @@ function renderReports() {
     : "No net spending yet";
   $("#report-period-pill").textContent = bounds.label;
   $("#report-cashflow-title").textContent = reportsMode === "year" ? `${reportsYear} monthly cashflow` : `${monthLabel(reportsMonth, { short: true })} daily cashflow`;
-  $("#report-net-title").textContent = "Net worth";
+  $("#report-net-title").textContent = "Liquidity";
   const flowLabels = { income: "Income", outcome: "Outcome", combined: "Net category balance" };
   const flowCenterLabels = { income: "incoming", outcome: "outgoing", combined: "net" };
   $("#report-spending-title").textContent = reportsCategoryMode === "combined" ? flowLabels.combined : `${flowLabels[reportsCategoryMode] || "Combined"} split`;
@@ -1356,9 +1358,9 @@ function renderReports() {
   if (debtTitle) debtTitle.textContent = `Debt progression · ${periodLabel}`;
 
   drawIncomeExpense($("#report-cashflow-chart"), trendRows, currency);
-  syncNetWorthChartModeControls("reports", reportsNetWorthChartMode);
+  syncLiquidityChartModeControls("reports", reportsNetWorthChartMode);
   const reportNetWorthRows = reportsNetWorthChartMode === "absolute"
-    ? netWorthSeriesForDates(reportPeriodPoints(bounds.start, bounds.end))
+    ? liquiditySeriesForDates(reportPeriodPoints(bounds.start, bounds.end))
     : trendRows;
   drawNetSeries($("#report-net-chart"), reportNetWorthRows, { currency });
   drawMultiLineSeries($("#report-asset-movement-chart"), assetProgressionRows, currency, { zeroBased: true });

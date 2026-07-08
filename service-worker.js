@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v81-home-networth-current-month";
+const CACHE_NAME = "capito-v82-liquidity-chart";
 const CORE = [
   "./",
   "./index.html",
