@@ -780,6 +780,23 @@ function makeCollisionSafeId(tx, signature, knownMap, previewMap) {
   return tx;
 }
 
+function makeDuplicateAcceptedId(tx, signature, knownMap, previewMap) {
+  const currentId = tx.id || `tx_${shortImportHash(signature)}`;
+  const base = currentId.replace(/_dup\d+$/i, "");
+  let counter = 2;
+  let candidate = `${base}_dup${counter}`;
+  while (knownMap.has(candidate) || previewMap.has(candidate)) {
+    counter += 1;
+    candidate = `${base}_dup${counter}`;
+  }
+  tx.id = candidate;
+  tx.externalId = candidate;
+  tx.review = true;
+  tx.confidence = Math.min(Number(tx.confidence ?? 0.35), 0.35);
+  tx.reason = [tx.reason, `Exact duplicate was explicitly prepared with duplicate ID ${counter}.`].filter(Boolean).join(" ");
+  return tx;
+}
+
 function amountKey(value) {
   return Math.abs(Number(value || 0)).toFixed(2);
 }
@@ -1029,6 +1046,7 @@ export function rowToTransaction(row, mapping, context) {
 
 export function buildImportPreview(parsed, mapping, context, existingTransactions = []) {
   const importBatchId = uid();
+  const allowExactDuplicates = context.allowExactDuplicates === true;
   const existingKeySignatures = signatureMapFromTransactions(existingTransactions);
   const existingSignatures = new Set(existingTransactions.map(transactionSignature));
   const previewKeySignatures = new Map();
@@ -1045,8 +1063,18 @@ export function buildImportPreview(parsed, mapping, context, existingTransaction
     const signature = transactionSignature(tx);
     const exactIdDuplicate = [tx.id, tx.externalId].filter(Boolean).some(key => hasExactSignature(existingKeySignatures, key, signature) || hasExactSignature(previewKeySignatures, key, signature));
     if (existingSignatures.has(signature) || previewSignatures.has(signature) || exactIdDuplicate) {
-      skipped.push({ row, tx, reason: "Exact duplicate: same account, date, amount, currency, description and counterparty" });
-      continue;
+      if (!allowExactDuplicates) {
+        const duplicateTx = makeDuplicateAcceptedId({ ...tx }, signature, existingKeySignatures, previewKeySignatures);
+        reserveTransactionKeys(previewKeySignatures, duplicateTx, signature);
+        skipped.push({
+          row,
+          tx: duplicateTx,
+          duplicate: true,
+          reason: "Exact duplicate: same account, date, amount, currency, description and counterparty"
+        });
+        continue;
+      }
+      makeDuplicateAcceptedId(tx, signature, existingKeySignatures, previewKeySignatures);
     }
     makeCollisionSafeId(tx, signature, existingKeySignatures, previewKeySignatures);
     if (matchesInternalTransferDuplicate(tx, allKnownRows())) {

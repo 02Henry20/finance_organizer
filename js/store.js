@@ -334,14 +334,31 @@ export async function saveTransaction(input) {
 export async function saveTransactionsBatch(transactions) {
   if (!transactions.length) return { imported: 0 };
   let imported = 0;
+  const usedIds = new Set(state.transactions.map(tx => tx.id).filter(Boolean));
+  const nextUniqueId = id => {
+    const base = String(id || uid()).replace(/_dup\d+$/i, "");
+    if (!usedIds.has(base)) {
+      usedIds.add(base);
+      return base;
+    }
+    let counter = 2;
+    let candidate = `${base}_dup${counter}`;
+    while (usedIds.has(candidate)) {
+      counter += 1;
+      candidate = `${base}_dup${counter}`;
+    }
+    usedIds.add(candidate);
+    return candidate;
+  };
   for (let index = 0; index < transactions.length; index += 400) {
     const batch = writeBatch(db);
     for (const tx of transactions.slice(index, index + 400)) {
-      const id = tx.id || uid();
+      const id = nextUniqueId(tx.id);
       imported += 1;
       batch.set(userDoc("transactions", id), {
         ...tx,
         id,
+        externalId: !tx.externalId || tx.externalId === tx.id ? id : tx.externalId,
         amount: Number(tx.amount || 0),
         currency: (tx.currency || state.settings.primaryCurrency || "EUR").toUpperCase(),
         excludeFromStats: tx.categoryId === "cash" ? false : Boolean(tx.excludeFromStats || tx.ignoreFromStats || tx.statsIgnored),

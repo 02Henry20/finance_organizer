@@ -3722,3 +3722,80 @@ button[aria-busy="true"]::after {
     transform: translateY(4px) !important;
   }
 }
+
+/* v71: duplicate-import follow-up, mobile reports order, account/chart spacing */
+@media (max-width: 920px) {
+  section[data-view-section="reports"] .reports-toolbar .report-controls {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    grid-template-areas:
+      "period compare"
+      "mode recalc" !important;
+    gap: 8px !important;
+    align-items: end !important;
+  }
+  section[data-view-section="reports"] #report-month-field,
+  section[data-view-section="reports"] #report-year-field {
+    grid-area: period !important;
+    grid-column: auto !important;
+    grid-row: auto !important;
+    width: 100% !important;
+  }
+  section[data-view-section="reports"] #report-compare-field {
+    grid-area: compare !important;
+    grid-column: auto !important;
+    grid-row: auto !important;
+    width: 100% !important;
+  }
+  section[data-view-section="reports"] .report-mode-control {
+    grid-area: mode !important;
+    grid-column: auto !important;
+    grid-row: auto !important;
+    width: 100% !important;
+  }
+  section[data-view-section="reports"] .report-mobile-recalc-button {
+    grid-area: recalc !important;
+    grid-column: auto !important;
+    grid-row: auto !important;
+    width: 100% !important;
+  }
+  .account-card-header {
+    margin-bottom: 2px !important;
+  }
+  .account-card .item-card-header,
+  .account-title-block {
+    gap: 2px !important;
+  }
+  .account-value-row {
+    margin-top: 0 !important;
+    gap: 7px !important;
+  }
+  .account-value-row div {
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
+  }
+  .account-card-controls {
+    margin-top: 5px !important;
+  }
+}
+
+@media (max-width: 680px) {
+  section[data-view-section="overview"] .chart-card:has(#category-donut-chart),
+  section[data-view-section="reports"] .chart-card:has(#report-category-chart) {
+    padding-bottom: 10px !important;
+  }
+  section[data-view-section="overview"] .chart-card:has(#category-donut-chart) .chart-wrap,
+  section[data-view-section="reports"] .chart-card:has(#report-category-chart) .chart-wrap {
+    min-height: 220px !important;
+    height: 220px !important;
+    max-height: 220px !important;
+    margin-bottom: 0 !important;
+    overflow: hidden !important;
+  }
+  section[data-view-section="overview"] .chart-card:has(#category-donut-chart) canvas,
+  section[data-view-section="reports"] .chart-card:has(#report-category-chart) canvas {
+    display: block !important;
+    width: 100% !important;
+    max-height: 220px !important;
+  }
+}
