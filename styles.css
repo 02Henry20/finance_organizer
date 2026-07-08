@@ -3977,3 +3977,32 @@ button[aria-busy="true"]::after {
     max-width: 260px;
   }
 }
+
+/* v80: mobile account subtype/identifier restored without growing card spacing */
+@media (max-width: 920px) {
+  .account-title-block .account-meta-line {
+    display: block !important;
+    color: var(--muted) !important;
+    font-size: .64rem !important;
+    line-height: 1.12 !important;
+    margin-top: -1px !important;
+  }
+  .account-title-block .account-identifier,
+  .account-title-block .account-reference-preview,
+  .account-title-block .account-note-preview {
+    display: none !important;
+  }
+  .account-card-header {
+    margin-bottom: 0 !important;
+  }
+  .account-card .item-card-header,
+  .account-title-block {
+    gap: 1px !important;
+  }
+}
+
+@media (max-width: 680px) {
+  .account-title-block .account-meta-line {
+    font-size: .62rem !important;
+  }
+}

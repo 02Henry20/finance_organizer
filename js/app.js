@@ -726,6 +726,37 @@ function compareBoundsForReport() {
   return { start: monthStart(compareMonth), end: monthEnd(compareMonth), label: monthLabel(compareMonth, { short: true }) };
 }
 
+function sameMonthDayInYear(year, sourceDate = TODAY()) {
+  const source = String(sourceDate || TODAY()).slice(0, 10);
+  const month = Math.min(12, Math.max(1, Number(source.slice(5, 7)) || 1));
+  const wantedDay = Math.max(1, Number(source.slice(8, 10)) || 1);
+  const lastDay = new Date(Date.UTC(Number(year), month, 0)).getUTCDate();
+  return `${year}-${String(month).padStart(2, "0")}-${String(Math.min(wantedDay, lastDay)).padStart(2, "0")}`;
+}
+
+function reportTrendCompareScope(bounds, compareBounds) {
+  if (reportsMode !== "year") return { current: bounds, compare: compareBounds, label: compareBounds.label, ytd: false };
+  const today = TODAY();
+  const currentYear = String(new Date(`${today}T00:00:00`).getFullYear());
+  const selectedYear = String(reportsYear || bounds.label || "");
+  if (selectedYear !== currentYear) return { current: bounds, compare: compareBounds, label: compareBounds.label, ytd: false };
+  const currentEnd = today < bounds.end ? today : bounds.end;
+  const compareEndCandidate = sameMonthDayInYear(reportsCompareYear, today);
+  const compareEnd = compareEndCandidate < compareBounds.end ? compareEndCandidate : compareBounds.end;
+  return {
+    current: { ...bounds, end: currentEnd, label: `${bounds.label} YTD` },
+    compare: { ...compareBounds, end: compareEnd, label: `${compareBounds.label} YTD` },
+    label: `${compareBounds.label} YTD`,
+    ytd: true
+  };
+}
+
+function monthlySpendingMetric(summary, bounds) {
+  if (reportsMode !== "year") return Number(summary.expense || 0);
+  const months = monthsForYear(String(bounds.label || reportsYear)).length || 12;
+  return Number(summary.expense || 0) / months;
+}
+
 function dayBefore(dateString) {
   const date = new Date(`${dateString}T00:00:00Z`);
   if (Number.isNaN(date.getTime())) return dateString;
@@ -1252,32 +1283,35 @@ function renderReports() {
   const currency = selectedCurrency();
   const bounds = periodBoundsForReport();
   const compareBounds = compareBoundsForReport();
+  const trendCompare = reportTrendCompareScope(bounds, compareBounds);
   const periodRows = transactionsInRange(bounds.start, bounds.end);
-  const compareRows = transactionsInRange(compareBounds.start, compareBounds.end);
+  const compareRows = transactionsInRange(trendCompare.compare.start, trendCompare.compare.end);
+  const fullCompareRows = transactionsInRange(compareBounds.start, compareBounds.end);
   const summary = summarizeTransactions(periodRows);
   const compareSummary = summarizeTransactions(compareRows);
+  const fullCompareSummary = summarizeTransactions(fullCompareRows);
   const categoryRows = categoryFlowForRange(bounds.start, bounds.end, reportsCategoryMode);
-  const compareCategoryRows = categoryFlowForRange(compareBounds.start, compareBounds.end, reportsCategoryMode);
   const topSpendingCategory = topSpendingCategoryForRange(bounds.start, bounds.end);
-  const compareTopSpendingCategory = topSpendingCategory ? categoryFlowForRange(compareBounds.start, compareBounds.end, "combined").find(row => row.categoryId === topSpendingCategory.categoryId) : null;
+  const compareTopSpendingCategory = topSpendingCategory ? categoryFlowForRange(trendCompare.compare.start, trendCompare.compare.end, "combined").find(row => row.categoryId === topSpendingCategory.categoryId) : null;
   const topSpendingLoss = Math.abs(Math.min(0, Number(topSpendingCategory?.value || 0)));
   const compareTopSpendingLoss = Math.abs(Math.min(0, Number(compareTopSpendingCategory?.value || 0)));
   const assetProgressionRows = reportAccountProgressionRows(bounds.start, bounds.end, "holdings");
   const debtProgressionRows = reportAccountProgressionRows(bounds.start, bounds.end, "debt");
-  const days = daysBetween(bounds.start, bounds.end);
-  const compareDays = daysBetween(compareBounds.start, compareBounds.end);
   const savingsRate = summary.income > 0 ? summary.net / summary.income * 100 : null;
   const compareSavingsRate = compareSummary.income > 0 ? compareSummary.net / compareSummary.income * 100 : null;
-  const dailySpend = summary.expense / days;
-  const compareDailySpend = compareSummary.expense / compareDays;
+  const monthlySpend = monthlySpendingMetric(summary, bounds);
+  const compareMonthlySpend = monthlySpendingMetric(fullCompareSummary, compareBounds);
   const selectedYear = reportsMode === "year" ? reportsYear : reportsMonth.slice(0, 4);
   const trendRows = reportsMode === "year"
     ? aggregateMonths(monthsForYear(reportsYear))
     : aggregateDays(bounds.start, bounds.end);
-  const currentYearRows = aggregateMonths(monthsForYear(selectedYear));
-  const compareYearRows = aggregateMonths(monthsForYear(reportsCompareYear));
+  const yearlyComparisonMonths = reportsMode === "year" && String(selectedYear) === String(new Date(`${TODAY()}T00:00:00`).getFullYear())
+    ? monthsForYear(selectedYear).filter(month => month <= monthKey(TODAY()))
+    : monthsForYear(selectedYear);
+  const currentYearRows = aggregateMonths(yearlyComparisonMonths);
+  const compareYearRows = aggregateMonths(yearlyComparisonMonths.map(month => `${reportsCompareYear}-${month.slice(5, 7)}`));
   const yoyRows = currentYearRows.map((row, index) => ({
-    label: new Intl.DateTimeFormat(undefined, { month: "short" }).format(new Date(2000, index, 1)),
+    label: new Intl.DateTimeFormat(undefined, { month: "short" }).format(new Date(2000, Number(String(row.month).slice(5, 7)) - 1, 1)),
     current: row.expense,
     previous: compareYearRows[index]?.expense || 0
   }));
@@ -1296,16 +1330,16 @@ function renderReports() {
   netEl.className = summary.net > 0 ? "amount-pos" : summary.net < 0 ? "amount-neg" : "delta-flat";
   savingsEl.textContent = savingsRate == null ? "—" : formatPercent(savingsRate);
   savingsEl.className = savingsRate == null ? "delta-flat" : savingsRate >= 0 ? "amount-pos" : "amount-neg";
-  dailyEl.textContent = formatCurrency(dailySpend, currency);
+  dailyEl.textContent = formatCurrency(monthlySpend, currency);
   dailyEl.className = "report-neutral-value";
   topEl.textContent = topSpendingCategory?.name || "—";
   topEl.title = topSpendingCategory?.name || "";
 
-  $("#report-income-detail").innerHTML = `${metricTrendHtml(summary.income, compareSummary.income, { currency })}<span>vs ${escapeHtml(compareBounds.label)}</span>`;
-  $("#report-spending-detail").innerHTML = `${metricTrendHtml(summary.expense, compareSummary.expense, { currency, inverted: true })}<span>vs ${escapeHtml(compareBounds.label)}</span>`;
-  $("#report-net-detail").innerHTML = `${metricTrendHtml(summary.net, compareSummary.net, { currency })}<span>${escapeHtml(bounds.label)}</span>`;
-  $("#report-savings-rate-detail").innerHTML = `${metricTrendHtml(savingsRate ?? 0, compareSavingsRate ?? 0, { mode: "points" })}<span>Net flow / income</span>`;
-  $("#report-days-count").innerHTML = `${metricTrendHtml(dailySpend, compareDailySpend, { currency, inverted: true })}<span>${days} days</span>`;
+  $("#report-income-detail").innerHTML = `${metricTrendHtml(summary.income, compareSummary.income, { currency })}<span>vs ${escapeHtml(trendCompare.label)}</span>`;
+  $("#report-spending-detail").innerHTML = `${metricTrendHtml(summary.expense, compareSummary.expense, { currency, inverted: true })}<span>vs ${escapeHtml(trendCompare.label)}</span>`;
+  $("#report-net-detail").innerHTML = `${metricTrendHtml(summary.net, compareSummary.net, { currency })}<span>vs ${escapeHtml(trendCompare.label)}</span>`;
+  $("#report-savings-rate-detail").innerHTML = `${metricTrendHtml(savingsRate ?? 0, compareSavingsRate ?? 0, { mode: "points" })}<span>vs ${escapeHtml(trendCompare.label)}</span>`;
+  $("#report-days-count").innerHTML = `${metricTrendHtml(monthlySpend, compareMonthlySpend, { currency, inverted: true })}<span>${reportsMode === "year" ? `vs ${escapeHtml(compareBounds.label)} avg/month` : `vs ${escapeHtml(compareBounds.label)}`}</span>`;
   $("#report-top-category-value").innerHTML = topSpendingCategory
     ? `${metricTrendHtml(topSpendingLoss, compareTopSpendingLoss, { currency, inverted: true })}<span>${formatCurrency(topSpendingLoss, currency)} net loss</span>`
     : "No net spending yet";
@@ -1552,14 +1586,16 @@ function buildAccountCard(account, row, previousRow, { hidden = false } = {}) {
   const totalCurrent = cashCurrent + holdingsCurrent;
   const totalPrevious = cashPrevious + holdingsPrevious;
   const identifier = maskIban(account.iban || account.accountNumber);
+  const compactIdentifier = identifier === "No identifier" ? account.id : identifier;
+  const typeLabel = ACCOUNT_TYPES.find(item => item.id === account.type)?.label || account.type || "Account";
   const card = document.createElement("article");
   card.className = `surface-card item-card account-card ${isBroker ? "broker-card" : "bank-card"} ${hidden ? "hidden-account-card" : ""}`;
   const header = `
     <div class="item-card-header account-card-header">
       <div class="account-title-block">
         <h3 title="${escapeHtml(account.name)}">${escapeHtml(account.name)}</h3>
-        <small class="account-meta-line">${escapeHtml(account.institution || "Manual")} · ${escapeHtml(account.type)} · Native ${escapeHtml(account.currency || selectedCurrency())}${currency !== (account.currency || selectedCurrency()).toUpperCase() ? ` · shown in ${escapeHtml(currency)}` : ""}</small>
-        <small class="account-identifier">${escapeHtml(identifier)}</small>
+        <small class="account-meta-line">${escapeHtml(typeLabel)} · ${escapeHtml(compactIdentifier)}</small>
+        <small class="account-identifier">${escapeHtml(account.institution || "Manual")} · Native ${escapeHtml(account.currency || selectedCurrency())}${currency !== (account.currency || selectedCurrency()).toUpperCase() ? ` · shown in ${escapeHtml(currency)}` : ""}</small>
         ${account.referenceAccountId ? `<small class="account-reference-preview">Ref: ${escapeHtml(accountNameById(account.referenceAccountId))}</small>` : ""}
         ${account.note ? `<small class="account-note-preview">${escapeHtml(account.note)}</small>` : ""}
       </div>
