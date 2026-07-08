@@ -3799,3 +3799,96 @@ button[aria-busy="true"]::after {
     max-height: 220px !important;
   }
 }
+
+/* v72: final mobile reports control order and unsqueezed category plots */
+@media (max-width: 920px) {
+  section[data-view-section="reports"] .report-title-block {
+    display: none !important;
+  }
+  section[data-view-section="reports"] .reports-toolbar {
+    display: block !important;
+    padding: 14px !important;
+  }
+  section[data-view-section="reports"] .reports-toolbar .report-controls {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    grid-template-areas:
+      "period compare"
+      "mode recalc" !important;
+    gap: 8px !important;
+    align-items: stretch !important;
+    width: 100% !important;
+    margin: 0 !important;
+  }
+  section[data-view-section="reports"] #report-month-field:not([hidden]),
+  section[data-view-section="reports"] #report-year-field:not([hidden]) {
+    grid-area: period !important;
+    display: grid !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+  section[data-view-section="reports"] #report-month-field[hidden],
+  section[data-view-section="reports"] #report-year-field[hidden] {
+    display: none !important;
+  }
+  section[data-view-section="reports"] #report-compare-field {
+    grid-area: compare !important;
+    display: grid !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+  section[data-view-section="reports"] .reports-toolbar .report-mode-control {
+    grid-area: mode !important;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    align-self: stretch !important;
+  }
+  section[data-view-section="reports"] .reports-toolbar .report-mode-control .segment-button,
+  section[data-view-section="reports"] .reports-toolbar .compact-field input,
+  section[data-view-section="reports"] .reports-toolbar .compact-field select,
+  section[data-view-section="reports"] .report-mobile-recalc-button {
+    min-height: 44px !important;
+    height: 44px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    font-size: .78rem !important;
+  }
+  section[data-view-section="reports"] .reports-toolbar .compact-field span {
+    font-size: .62rem !important;
+    line-height: 1.1 !important;
+  }
+  section[data-view-section="reports"] .report-mobile-recalc-button {
+    grid-area: recalc !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-weight: 900 !important;
+    padding-inline: 8px !important;
+    white-space: nowrap !important;
+  }
+}
+
+@media (max-width: 680px) {
+  section[data-view-section="overview"] .chart-card:has(#category-donut-chart),
+  section[data-view-section="reports"] .chart-card:has(#report-category-chart) {
+    padding-bottom: 8px !important;
+  }
+  section[data-view-section="overview"] .chart-card:has(#category-donut-chart) .chart-wrap,
+  section[data-view-section="reports"] .chart-card:has(#report-category-chart) .chart-wrap {
+    min-height: 252px !important;
+    height: 252px !important;
+    max-height: 252px !important;
+    margin-bottom: 0 !important;
+    overflow: hidden !important;
+  }
+  section[data-view-section="overview"] .chart-card:has(#category-donut-chart) canvas,
+  section[data-view-section="reports"] .chart-card:has(#report-category-chart) canvas {
+    display: block !important;
+    width: 100% !important;
+    height: 252px !important;
+    max-height: 252px !important;
+  }
+}

@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#111827">
   <meta name="description" content="Capito is a private finance organizer for accounts, transactions, holdings, rules and analytics.">
   <title>Capito</title>
-  <meta name="capito-build" content="capito-v71-mobile-duplicate-followup">
+  <meta name="capito-build" content="capito-v72-mobile-reports-import-prompt">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16x16.png">
@@ -112,13 +112,13 @@
         <div class="surface-card reports-toolbar">
           <div class="report-title-block"><div class="report-title-row"><button id="report-recalc-button" data-report-recalc class="secondary-button compact report-recalc-desktop-button desktop-only-tools" type="button">↻ Recalc</button></div><small id="report-recalc-status" class="muted report-recalc-status"></small></div>
           <div class="report-controls">
+            <label id="report-month-field" class="field compact-field"><span>Month</span><input id="report-month" type="month"></label>
+            <label id="report-year-field" class="field compact-field" hidden><span>Year</span><select id="report-year"></select></label>
+            <label id="report-compare-field" class="field compact-field"><span>Compare year</span><select id="report-compare-year"></select></label>
             <div class="segmented-control report-mode-control" role="group" aria-label="Report period mode">
               <button class="segment-button active" data-report-mode="month" type="button" aria-pressed="true">Month</button>
               <button class="segment-button" data-report-mode="year" type="button" aria-pressed="false">Year</button>
             </div>
-            <label id="report-month-field" class="field compact-field"><span>Month</span><input id="report-month" type="month"></label>
-            <label id="report-year-field" class="field compact-field" hidden><span>Year</span><select id="report-year"></select></label>
-            <label id="report-compare-field" class="field compact-field"><span>Compare year</span><select id="report-compare-year"></select></label>
             <button id="report-recalc-mobile-button" data-report-recalc class="secondary-button compact mobile-only report-mobile-recalc-button" type="button">↻ Recalc</button>
           </div>
         </div>
