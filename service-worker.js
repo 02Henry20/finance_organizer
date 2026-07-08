@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v80-monthly-spending-ytd-account-meta";
+const CACHE_NAME = "capito-v81-home-networth-current-month";
 const CORE = [
   "./",
   "./index.html",

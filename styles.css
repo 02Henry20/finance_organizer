@@ -4006,3 +4006,91 @@ button[aria-busy="true"]::after {
     font-size: .62rem !important;
   }
 }
+
+/* v81: home net worth current-month chart, compact title-side toggle, no home cashflow card */
+.net-worth-chart-heading {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: flex-start !important;
+  gap: 12px !important;
+  flex-wrap: wrap !important;
+}
+.net-chart-title-block {
+  min-width: 0;
+}
+.net-chart-title-block .eyebrow {
+  margin-bottom: 6px;
+}
+.net-chart-title-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.net-chart-title-line h3 {
+  flex: 0 0 auto;
+}
+.net-chart-mode {
+  width: auto !important;
+  min-width: 156px !important;
+  max-width: 176px !important;
+  padding: 3px !important;
+  border-radius: 15px !important;
+}
+.net-chart-mode .segment-button {
+  min-height: 32px !important;
+  padding: 6px 8px !important;
+  border-radius: 12px !important;
+  font-size: .7rem !important;
+  line-height: 1 !important;
+}
+#home-net-period-pill {
+  margin-left: auto;
+  align-self: flex-start;
+  white-space: nowrap;
+}
+
+@media (max-width: 680px) {
+  .net-worth-chart-heading {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start !important;
+    column-gap: 8px !important;
+    row-gap: 6px !important;
+  }
+  .net-chart-title-line {
+    gap: 7px;
+    flex-wrap: nowrap;
+  }
+  .net-chart-title-line h3 {
+    font-size: 1rem;
+  }
+  .net-chart-mode {
+    min-width: 126px !important;
+    max-width: 140px !important;
+  }
+  .net-chart-mode .segment-button {
+    min-height: 30px !important;
+    padding: 5px 5px !important;
+    font-size: .61rem !important;
+  }
+  #home-net-period-pill {
+    justify-self: end;
+    margin-left: 0;
+    padding: 5px 8px;
+    font-size: .66rem;
+  }
+}
+
+@media (max-width: 390px) {
+  .net-worth-chart-heading {
+    grid-template-columns: 1fr;
+  }
+  .net-chart-title-line {
+    flex-wrap: wrap;
+  }
+  #home-net-period-pill {
+    justify-self: start;
+  }
+}

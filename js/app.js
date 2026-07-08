@@ -1006,9 +1006,10 @@ function netWorthSeriesForMonths(months = []) {
     .filter((row, index, rows) => row.date && (index === 0 || row.date !== rows[index - 1].date));
 }
 
-function netWorthSeriesForDates(dates = []) {
+function netWorthSeriesForDates(dates = [], options = {}) {
+  const dense = options.dense ?? (dates.length > 45 || reportsMode === "year");
   return dates.map(date => ({
-    month: reportPointLabel(date, dates.length > 45 || reportsMode === "year"),
+    month: reportPointLabel(date, dense),
     date,
     net: calculatePortfolioSnapshot(state, date).netWorth
   }));
@@ -1186,16 +1187,16 @@ function renderOverview() {
   const monthIncome = $("#month-income");
   const monthExpense = $("#month-expense");
   const monthNet = $("#month-net");
-  const currentMonthPill = $("#current-month-pill");
   const spendingMonthPill = $("#spending-month-pill");
+  const homeNetPeriodPill = $("#home-net-period-pill");
   if (monthIncome) monthIncome.textContent = formatCurrency(monthly.current.income, currency);
   if (monthExpense) monthExpense.textContent = formatCurrency(monthly.current.expense, currency);
   if (monthNet) {
     monthNet.textContent = formatCurrency(monthly.current.net, currency);
     monthNet.className = monthly.current.net >= 0 ? "amount-pos" : "amount-neg";
   }
-  if (currentMonthPill) currentMonthPill.textContent = monthly.currentMonth;
   if (spendingMonthPill) spendingMonthPill.textContent = monthLabel(monthly.currentMonth, { short: true });
+  if (homeNetPeriodPill) homeNetPeriodPill.textContent = monthLabel(monthly.currentMonth, { short: true });
   const reviewPanel = $("#review-panel");
   const reviewCount = $("#review-count");
   const reviewList = $("#review-list");
@@ -1213,15 +1214,13 @@ function renderOverview() {
       reviewList.append(item);
     }
   }
-  drawIncomeExpense($("#income-expense-chart"), monthly.series, currency);
   syncNetWorthChartModeControls("home", homeNetWorthChartMode);
-  drawNetSeries(
-    $("#net-series-chart"),
-    homeNetWorthChartMode === "absolute"
-      ? netWorthSeriesForMonths(monthsEndingAt(monthly.currentMonth, 13))
-      : monthly.series,
-    { currency }
-  );
+  const homeNetMonthStart = monthStart(monthly.currentMonth);
+  const homeNetMonthEnd = monthly.currentMonth === monthKey(TODAY()) ? TODAY() : monthEnd(monthly.currentMonth);
+  const homeNetWorthRows = homeNetWorthChartMode === "absolute"
+    ? netWorthSeriesForDates(reportPeriodPoints(homeNetMonthStart, homeNetMonthEnd), { dense: false })
+    : aggregateDays(homeNetMonthStart, homeNetMonthEnd);
+  drawNetSeries($("#net-series-chart"), homeNetWorthRows, { currency });
   drawDonut($("#category-donut-chart"), categorySpend, currency);
   const accountChart = $("#account-bars-chart");
   const visibleAccountRows = (portfolio.accountRows || []).filter(row => !row.hidden);

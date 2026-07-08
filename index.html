@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#111827">
   <meta name="description" content="Capito is a private finance organizer for accounts, transactions, holdings, rules and analytics.">
   <title>Capito</title>
-  <meta name="capito-build" content="capito-v80-monthly-spending-ytd-account-meta">
+  <meta name="capito-build" content="capito-v81-home-networth-current-month">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16x16.png">
@@ -93,19 +93,19 @@
         </section>
 
         <div class="insight-grid">
-          <article class="chart-card surface-card">
-            <div class="panel-heading"><div><p class="eyebrow">CASHFLOW</p><h3>Income vs spending</h3></div><span id="current-month-pill" class="metric-tag">Current month</span></div>
-            <div class="chart-wrap"><canvas id="income-expense-chart"></canvas><div class="chart-empty" data-empty-for="income-expense-chart">Import or add transactions to see cashflow.</div></div>
-          </article>
           <article class="chart-card surface-card net-worth-chart-card">
             <div class="panel-heading net-worth-chart-heading">
-              <div class="net-chart-heading-left">
-                <div class="segmented-control compact-segments net-chart-mode" role="group" aria-label="Home net worth chart mode">
-                  <button class="segment-button active" data-net-chart-mode="flow" data-net-chart-scope="home" type="button" aria-pressed="true">Flow</button>
-                  <button class="segment-button" data-net-chart-mode="absolute" data-net-chart-scope="home" type="button" aria-pressed="false">Absolute</button>
+              <div class="net-chart-title-block">
+                <p class="eyebrow">NET WORTH</p>
+                <div class="net-chart-title-line">
+                  <h3 id="home-net-title">Net worth</h3>
+                  <div class="segmented-control compact-segments net-chart-mode" role="group" aria-label="Home net worth chart mode">
+                    <button class="segment-button active" data-net-chart-mode="flow" data-net-chart-scope="home" type="button" aria-pressed="true">Flow</button>
+                    <button class="segment-button" data-net-chart-mode="absolute" data-net-chart-scope="home" type="button" aria-pressed="false">Absolute</button>
+                  </div>
                 </div>
-                <div><p class="eyebrow">NET WORTH</p><h3 id="home-net-title">Net worth</h3></div>
               </div>
+              <span id="home-net-period-pill" class="metric-tag">Current month</span>
             </div>
             <div class="chart-wrap"><canvas id="net-series-chart"></canvas><div class="chart-empty" data-empty-for="net-series-chart">No net worth data yet.</div></div>
           </article>
@@ -147,12 +147,15 @@
           </article>
           <article class="chart-card surface-card net-worth-chart-card">
             <div class="panel-heading net-worth-chart-heading">
-              <div class="net-chart-heading-left">
-                <div class="segmented-control compact-segments net-chart-mode" role="group" aria-label="Report net worth chart mode">
-                  <button class="segment-button active" data-net-chart-mode="flow" data-net-chart-scope="reports" type="button" aria-pressed="true">Flow</button>
-                  <button class="segment-button" data-net-chart-mode="absolute" data-net-chart-scope="reports" type="button" aria-pressed="false">Absolute</button>
+              <div class="net-chart-title-block">
+                <p class="eyebrow">NET WORTH</p>
+                <div class="net-chart-title-line">
+                  <h3 id="report-net-title">Net worth</h3>
+                  <div class="segmented-control compact-segments net-chart-mode" role="group" aria-label="Report net worth chart mode">
+                    <button class="segment-button active" data-net-chart-mode="flow" data-net-chart-scope="reports" type="button" aria-pressed="true">Flow</button>
+                    <button class="segment-button" data-net-chart-mode="absolute" data-net-chart-scope="reports" type="button" aria-pressed="false">Absolute</button>
+                  </div>
                 </div>
-                <div><p class="eyebrow">NET WORTH</p><h3 id="report-net-title">Net worth</h3></div>
               </div>
             </div>
             <div class="chart-wrap"><canvas id="report-net-chart"></canvas><div class="chart-empty" data-empty-for="report-net-chart">No net worth data in this period.</div></div>
