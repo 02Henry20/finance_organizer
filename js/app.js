@@ -1,4 +1,4 @@
-﻿import {
+import {
   auth,
   createUserWithEmailAndPassword,
   initializeAuthPersistence,
@@ -1785,9 +1785,10 @@ function syncTransactionReviewControl() {
   const category = categoryInput?.tagName === "SELECT" ? (categoryInput.value || "") : categoryIdFromSearch(categoryInput?.value);
   const review = $("#transaction-review");
   if (!review) return;
-  const locked = Boolean(category && category !== "misc" && category !== "auto");
-  if (locked) review.checked = false;
-  review.disabled = locked;
+  // Review status is user-editable. A specific category should not permanently
+  // lock a duplicate or manually checked transaction in/out of Needs review.
+  review.disabled = false;
+  review.removeAttribute("disabled");
   const ignore = $("#transaction-ignore-stats");
   const cat = state.categories.find(item => item.id === category);
   if (ignore && cat?.id === "cash") ignore.checked = false;
@@ -2600,7 +2601,7 @@ function renderImportPreview() {
     tr.classList.toggle("is-selected-row", selected);
     tr.classList.toggle("is-ignored-row", shouldIgnoreTransactionInStats(tx));
     const ignored = shouldIgnoreTransactionInStats(tx);
-    tr.innerHTML = `<td class="select-col desktop-only-tools"><input class="import-select-checkbox" data-select-import-tx="${escapeHtml(id)}" type="checkbox" ${selected ? "checked" : ""} aria-label="Select import row"></td><td>${escapeHtml(tx.date)}</td><td class="description-cell"><strong>${escapeHtml(tx.description)}</strong><small class="muted table-ellipsis">${escapeHtml(tx.reason || "")}</small>${transactionFlagsHtml(tx)}</td><td class="${tx.amount >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(tx.amount, tx.currency)}</td><td>${categoryPill(cat, { review: tx.review })}</td><td>${tx.review ? "Needs review" : "Prepared"}</td>${showIds ? `<td class="tx-id-cell">${transactionIdDebugHtml(tx)}</td>` : ""}<td><select class="import-stats-select" data-import-ignore="${escapeHtml(id)}" aria-label="Spending statistics"><option value="false" ${ignored ? "" : "selected"}>Include</option><option value="true" ${ignored ? "selected" : ""}>Ignore</option></select></td>`;
+    tr.innerHTML = `<td class="select-col desktop-only-tools"><input class="import-select-checkbox" data-select-import-tx="${escapeHtml(id)}" type="checkbox" ${selected ? "checked" : ""} aria-label="Select import row"></td><td>${escapeHtml(tx.date)}</td><td class="description-cell"><strong>${escapeHtml(tx.description)}</strong><small class="muted table-ellipsis">${escapeHtml(tx.reason || "")}</small>${transactionFlagsHtml(tx)}</td><td class="${tx.amount >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(tx.amount, tx.currency)}</td><td>${categoryPill(cat, { review: tx.review })}</td><td><select class="import-review-select" data-import-review="${escapeHtml(id)}" aria-label="Review status"><option value="false" ${tx.review ? "" : "selected"}>Prepared</option><option value="true" ${tx.review ? "selected" : ""}>Needs review</option></select></td>${showIds ? `<td class="tx-id-cell">${transactionIdDebugHtml(tx)}</td>` : ""}<td><select class="import-stats-select" data-import-ignore="${escapeHtml(id)}" aria-label="Spending statistics"><option value="false" ${ignored ? "" : "selected"}>Include</option><option value="true" ${ignored ? "selected" : ""}>Ignore</option></select></td>`;
     tbody.append(tr);
   }
   tbody.querySelectorAll("[data-select-import-tx]").forEach(box => box.addEventListener("change", event => {
@@ -2608,6 +2609,18 @@ function renderImportPreview() {
     if (event.currentTarget.checked) importSelectedIds.add(id);
     else importSelectedIds.delete(id);
     renderImportPreview();
+  }));
+  tbody.querySelectorAll("[data-import-review]").forEach(select => select.addEventListener("change", event => {
+    const id = event.currentTarget.dataset.importReview;
+    const tx = activePreview?.transactions?.find(item => (item.id || item.externalId) === id);
+    if (!tx) return;
+    tx.review = event.currentTarget.value === "true";
+    if (!tx.review) {
+      const cleaned = String(tx.reason || "").replace(/\s*·?\s*Marked clean manually\.?$/i, "").trim();
+      tx.reason = cleaned ? `${cleaned} · Marked clean manually.` : "Marked clean manually.";
+    }
+    renderImportPreview();
+    updateUnifiedImportSummary();
   }));
   tbody.querySelectorAll("[data-import-ignore]").forEach(select => select.addEventListener("change", event => {
     const id = event.currentTarget.dataset.importIgnore;
@@ -2664,20 +2677,20 @@ function renderFilteredImportPreview() {
     if (isExactDuplicate) {
       const ok = await confirmDialog({
         title: "Add duplicate transaction?",
-        message: "This row has the same account, date, amount, currency, description and counterparty as another transaction. Add it anyway as a separate reviewed transaction with a changed ID?",
+        message: "This row has the same account, date, amount, currency, description and counterparty as another transaction. Add it anyway as a separate transaction with a changed ID?",
         confirmLabel: "Add duplicate",
         cancelLabel: "Keep skipped"
       });
       if (!ok) return;
     }
     const knownIds = new Set([
-      ...state.transactions.map(tx => tx.id),
-      ...(activePreview?.transactions || []).map(tx => tx.id)
+      ...state.transactions.flatMap(tx => [tx.id, tx.externalId]),
+      ...(activePreview?.transactions || []).flatMap(tx => [tx.id, tx.externalId])
     ].filter(Boolean));
     const restored = { ...item.tx };
     const base = String(restored.id || restored.externalId || `tx_${Date.now()}`).replace(/_dup\d+$/i, "");
     let candidate = base;
-    if (knownIds.has(candidate)) {
+    if (isExactDuplicate || knownIds.has(candidate)) {
       let counter = 2;
       candidate = `${base}_dup${counter}`;
       while (knownIds.has(candidate)) {
@@ -2687,12 +2700,19 @@ function renderFilteredImportPreview() {
     }
     restored.id = candidate;
     restored.externalId = candidate;
-    activePreview.transactions.push({ ...restored, review: true, reason: `Manually added back: ${item.reason || "filtered"}` });
+    activePreview.transactions.push({
+      ...restored,
+      review: isExactDuplicate ? false : true,
+      reason: isExactDuplicate
+        ? `Manually accepted duplicate: ${item.reason || "exact duplicate"}`
+        : `Manually added back: ${item.reason || "filtered"}`
+    });
     activePreview.skipped.splice(index, 1);
-    toast("Row added back", isExactDuplicate ? "Duplicate kept with a changed ID and marked for review." : "It is now included in the import preview and marked for review.");
+    toast("Row added back", isExactDuplicate ? "Duplicate kept with a changed ID and marked Prepared." : "It is now included in the import preview and marked for review.");
     renderImportPreview();
     updateUnifiedImportSummary();
-  }));}
+  }));
+}
 
 function updateBrokerPositionsFileLabel() {
   const label = $("#positions-file-label");
@@ -3736,7 +3756,6 @@ function wireEvents() {
         $("#transaction-category")?.focus();
         return;
       }
-      if (input.categoryId && input.categoryId !== "misc" && input.categoryId !== "auto") input.review = false;
       const savedCount = await saveTransactionWithReferenceSplit(input);
       if (originalTransactionId && input.id && input.id !== originalTransactionId) {
         await deleteTransaction(originalTransactionId);
@@ -4056,7 +4075,8 @@ if ("serviceWorker" in navigator) {
   });
 }
 
-// v72: if the target import account changes after a file was selected, re-run the file import
+
+// v72/v73: if the target import account changes after a file was selected, re-run the file import
 // so account matching, rules, filters and duplicate checks are recalculated for the new account.
 function attachV72ImportAccountReparse() {
   const accountSelect = document.querySelector("#import-account");
@@ -4073,3 +4093,4 @@ if (document.readyState === "loading") {
 } else {
   attachV72ImportAccountReparse();
 }
+

@@ -3892,3 +3892,17 @@ button[aria-busy="true"]::after {
     max-height: 252px !important;
   }
 }
+
+/* v73: editable import preview status */
+.import-review-select,
+.import-stats-select {
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: .78rem;
+  font-weight: 800;
+}
+

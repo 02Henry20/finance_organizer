@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v69-duplicate-integrity-mobile-debug";
+const CACHE_NAME = "capito-v73-reviewable-duplicates";
 const CORE = [
   "./",
   "./index.html",
