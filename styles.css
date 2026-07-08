@@ -3933,3 +3933,47 @@ button[aria-busy="true"]::after {
     max-height: 272px !important;
   }
 }
+
+/* v79 net worth chart toggle + category modal actions */
+.net-worth-chart-heading {
+  justify-content: flex-start;
+  align-items: flex-start;
+}
+.net-chart-heading-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.net-chart-mode {
+  width: auto;
+  min-width: 174px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.net-chart-mode .segment-button {
+  min-height: 36px;
+  padding: 7px 10px;
+  font-size: .74rem;
+}
+#category-form .button-row {
+  justify-content: space-between;
+}
+#category-form .button-row .primary-button {
+  flex: 1 1 auto;
+}
+
+@media (max-width: 680px) {
+  .net-worth-chart-heading {
+    display: block;
+  }
+  .net-chart-heading-left {
+    display: grid;
+    gap: 10px;
+  }
+  .net-chart-mode {
+    width: 100%;
+    min-width: 0;
+    max-width: 260px;
+  }
+}

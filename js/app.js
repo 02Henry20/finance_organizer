@@ -11,6 +11,7 @@ import {
   connectUser,
   deleteAccount,
   deleteAsset,
+  deleteCategory,
   deleteRule,
   deleteTransaction,
   disconnectUser,
@@ -132,6 +133,8 @@ let reportsMonth = monthKey(TODAY());
 let reportsYear = String(new Date().getFullYear());
 let reportsCompareYear = String(new Date().getFullYear() - 1);
 let reportsCategoryMode = "outcome";
+let homeNetWorthChartMode = "flow";
+let reportsNetWorthChartMode = "flow";
 
 const PAGE_SIZES = {
   transactions: 10,
@@ -953,6 +956,41 @@ function monthsForYear(year) {
   return Array.from({ length: 12 }, (_, index) => `${year}-${String(index + 1).padStart(2, "0")}`);
 }
 
+function netWorthDateForMonth(month) {
+  const today = TODAY();
+  const end = monthEnd(month);
+  return end > today ? today : end;
+}
+
+function netWorthSeriesForMonths(months = []) {
+  return months
+    .map(month => {
+      const date = netWorthDateForMonth(month);
+      return {
+        month,
+        date,
+        net: calculatePortfolioSnapshot(state, date).netWorth
+      };
+    })
+    .filter((row, index, rows) => row.date && (index === 0 || row.date !== rows[index - 1].date));
+}
+
+function netWorthSeriesForDates(dates = []) {
+  return dates.map(date => ({
+    month: reportPointLabel(date, dates.length > 45 || reportsMode === "year"),
+    date,
+    net: calculatePortfolioSnapshot(state, date).netWorth
+  }));
+}
+
+function syncNetWorthChartModeControls(scope, mode) {
+  $$(`[data-net-chart-scope="${scope}"]`).forEach(button => {
+    const active = button.dataset.netChartMode === mode;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+}
+
 function formatDateTime(value) {
   if (!value) return "never";
   const date = new Date(value);
@@ -1145,7 +1183,14 @@ function renderOverview() {
     }
   }
   drawIncomeExpense($("#income-expense-chart"), monthly.series, currency);
-  drawNetSeries($("#net-series-chart"), monthly.series);
+  syncNetWorthChartModeControls("home", homeNetWorthChartMode);
+  drawNetSeries(
+    $("#net-series-chart"),
+    homeNetWorthChartMode === "absolute"
+      ? netWorthSeriesForMonths(monthsEndingAt(monthly.currentMonth, 13))
+      : monthly.series,
+    { currency }
+  );
   drawDonut($("#category-donut-chart"), categorySpend, currency);
   const accountChart = $("#account-bars-chart");
   const visibleAccountRows = (portfolio.accountRows || []).filter(row => !row.hidden);
@@ -1266,7 +1311,7 @@ function renderReports() {
     : "No net spending yet";
   $("#report-period-pill").textContent = bounds.label;
   $("#report-cashflow-title").textContent = reportsMode === "year" ? `${reportsYear} monthly cashflow` : `${monthLabel(reportsMonth, { short: true })} daily cashflow`;
-  $("#report-net-title").textContent = reportsMode === "year" ? `${reportsYear} net flow` : `${monthLabel(reportsMonth, { short: true })} daily net flow`;
+  $("#report-net-title").textContent = "Net worth";
   const flowLabels = { income: "Income", outcome: "Outcome", combined: "Net category balance" };
   const flowCenterLabels = { income: "incoming", outcome: "outgoing", combined: "net" };
   $("#report-spending-title").textContent = reportsCategoryMode === "combined" ? flowLabels.combined : `${flowLabels[reportsCategoryMode] || "Combined"} split`;
@@ -1278,7 +1323,11 @@ function renderReports() {
   if (debtTitle) debtTitle.textContent = `Debt progression · ${periodLabel}`;
 
   drawIncomeExpense($("#report-cashflow-chart"), trendRows, currency);
-  drawNetSeries($("#report-net-chart"), trendRows);
+  syncNetWorthChartModeControls("reports", reportsNetWorthChartMode);
+  const reportNetWorthRows = reportsNetWorthChartMode === "absolute"
+    ? netWorthSeriesForDates(reportPeriodPoints(bounds.start, bounds.end))
+    : trendRows;
+  drawNetSeries($("#report-net-chart"), reportNetWorthRows, { currency });
   drawMultiLineSeries($("#report-asset-movement-chart"), assetProgressionRows, currency, { zeroBased: true });
   drawMultiLineSeries($("#report-debt-movement-chart"), debtProgressionRows, currency, { zeroBased: true });
   if (reportsCategoryMode === "combined") {
@@ -2305,6 +2354,8 @@ function openCategoryModal(id = "") {
   $("#category-type").value = cat?.type || "expense";
   $("#category-color").innerHTML = colorOptions(cat?.color || DEFAULT_CATEGORY_COLOR);
   $("#category-color").value = safeColor(cat?.color);
+  const deleteButton = $("#delete-category-button");
+  if (deleteButton) deleteButton.hidden = !cat || cat.id === "misc";
   openModal("category");
 }
 
@@ -3722,6 +3773,16 @@ function wireEvents() {
     reportsCategoryMode = ["income", "outcome", "combined"].includes(button.dataset.reportCategoryMode) ? button.dataset.reportCategoryMode : "outcome";
     renderReports();
   }));
+  $$('[data-net-chart-mode]').forEach(button => button.addEventListener("click", () => {
+    const mode = button.dataset.netChartMode === "absolute" ? "absolute" : "flow";
+    if (button.dataset.netChartScope === "reports") {
+      reportsNetWorthChartMode = mode;
+      renderReports();
+    } else {
+      homeNetWorthChartMode = mode;
+      renderOverview();
+    }
+  }));
   $$("[data-position-period]").forEach(button => button.addEventListener("click", () => {
     positionsPeriod = button.dataset.positionPeriod === "today" ? "today" : "basis";
     renderPositionsModal();
@@ -4037,6 +4098,32 @@ function wireEvents() {
     } finally {
       form.dataset.busy = "false";
       setBusy(form, false);
+    }
+  });
+
+  $("#delete-category-button")?.addEventListener("click", async () => {
+    const id = $("#category-id").value;
+    if (!id || id === "misc") return;
+    const category = state.categories.find(cat => cat.id === id);
+    const txCount = state.transactions.filter(tx => tx.categoryId === id).length;
+    const ruleCount = state.rules.filter(rule => rule.categoryId === id).length;
+    const details = [
+      txCount ? `${txCount} transaction${txCount === 1 ? "" : "s"} will be moved to Misc.` : "No transactions use this category.",
+      ruleCount ? `${ruleCount} rule${ruleCount === 1 ? "" : "s"} will also be moved to Misc.` : "No rules use this category."
+    ].join(" ");
+    const ok = await confirmDialog({
+      title: "Delete category",
+      message: `Delete '${category?.name || id}'? ${details}`,
+      confirmLabel: "Delete",
+      danger: true
+    });
+    if (!ok) return;
+    try {
+      await deleteCategory(id, { replacementCategoryId: "misc" });
+      toast("Category deleted", "Existing transactions and rules were moved to Misc.");
+      closeModal();
+    } catch (error) {
+      toast("Category delete failed", error.message, "error");
     }
   });
 

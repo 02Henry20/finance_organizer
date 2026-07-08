@@ -269,6 +269,32 @@ export async function saveCategory(input) {
   return id;
 }
 
+export async function deleteCategory(id, { replacementCategoryId = "misc" } = {}) {
+  const categoryId = String(id || "").trim();
+  if (!categoryId) return;
+  if (categoryId === replacementCategoryId) throw new Error("The replacement category cannot be deleted.");
+
+  const txRows = state.transactions.filter(tx => tx.categoryId === categoryId);
+  const ruleRows = state.rules.filter(rule => rule.categoryId === categoryId);
+  const operations = [
+    ...txRows.map(tx => ({ collection: "transactions", id: tx.id, data: { categoryId: replacementCategoryId, clientUpdatedAtMs: Date.now(), updatedAt: serverTimestamp() } })),
+    ...ruleRows.map(rule => ({ collection: "rules", id: rule.id, data: { categoryId: replacementCategoryId, clientUpdatedAtMs: Date.now(), updatedAt: serverTimestamp() } }))
+  ];
+
+  for (let index = 0; index < operations.length; index += 399) {
+    const batch = writeBatch(db);
+    for (const op of operations.slice(index, index + 399)) {
+      batch.set(userDoc(op.collection, op.id), op.data, { merge: true });
+    }
+    if (index + 399 >= operations.length) batch.delete(userDoc("categories", categoryId));
+    await batch.commit();
+  }
+
+  if (!operations.length) {
+    await deleteDoc(userDoc("categories", categoryId));
+  }
+}
+
 export async function saveRule(input) {
   const id = input.id || `rule_${uid().slice(0, 8)}`;
   const keywords = Array.isArray(input.keywords)

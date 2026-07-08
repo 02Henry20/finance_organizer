@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v78-broker-cash-liquidity";
+const CACHE_NAME = "capito-v79-net-worth-evolution-category-delete";
 const CORE = [
   "./",
   "./index.html",

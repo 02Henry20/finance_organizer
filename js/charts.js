@@ -138,7 +138,7 @@ export function drawIncomeExpense(canvas, rows, currency = "EUR") {
   drawLabels(ctx, rows.map(row => row.month), area, i => area.left + i * xStep + xStep / 2, c);
 }
 
-export function drawNetSeries(canvas, rows) {
+export function drawNetSeries(canvas, rows, options = {}) {
   const available = rows?.length > 1;
   setEmpty(canvas, !available);
   if (!available) return;
@@ -147,7 +147,10 @@ export function drawNetSeries(canvas, rows) {
   const [min, max] = extent(rows.map(row => row.net), 0.2);
   const y = scale(min, max, area.bottom, area.top);
   const x = i => area.left + (rows.length === 1 ? 0 : i / (rows.length - 1)) * (area.right - area.left);
-  drawGrid(ctx, area, min, max, y, c, v => new Intl.NumberFormat(undefined, { notation: "compact" }).format(v));
+  const gridFormatter = options.currency
+    ? (v => new Intl.NumberFormat(undefined, { style: "currency", currency: options.currency, notation: "compact", maximumFractionDigits: 1 }).format(v))
+    : (v => new Intl.NumberFormat(undefined, { notation: "compact" }).format(v));
+  drawGrid(ctx, area, min, max, y, c, gridFormatter);
   ctx.save();
   const gradient = ctx.createLinearGradient(0, area.top, 0, area.bottom);
   gradient.addColorStop(0, "rgba(62,232,197,.22)");
