@@ -1,130 +1,170 @@
-# Capito stable update
+# Capito
 
-Deploy the files in this folder exactly as-is.
+Capito is a private finance organizer for people who want one calm place for
+cash, bank transactions, broker holdings, rules, reports, and backups.
 
-Included in this build:
-- Keeps the stable login/auth flow.
-- Removes automatic default seeding of accounts, categories and rules.
-- Delete all data now leaves accounts/categories/rules/transactions/holdings truly empty.
-- Adds Settings → Check / repair sync for Firebase/offline-cache troubleshooting.
-- Keeps account start balance as an editable starting point, not a transaction.
-- Bank import recognizes Wise, Revolut, Sparkasse, Trade Republic and generic CSV/TSV.
-- Broker position import recognizes Smartbroker XLSX/CSV and Trade Republic CSV.
-- Exact duplicate transactions are skipped during import.
-- New Capito icon is used on the start screen, header, manifest and favicon.
+It is built as a lightweight browser app: open it, sign in, import your exports,
+review what changed, and keep your money picture understandable without turning
+personal finance into a second job.
 
-If a browser keeps old behavior, open `/cache-reset.html`, reset cache once, then open `/index.html`.
+## What It Does
 
+Capito brings everyday banking and investing into one dashboard.
 
-## Update: sync resolution, display currency, unified import
+- Tracks checking, savings, cash, broker, asset, and debt accounts.
+- Shows net worth, liquidity, assets, receivables, debt, and monthly cashflow.
+- Stores transactions with account, category, currency, note, review status, and
+  import metadata.
+- Manages broker holdings with quantity, buy price, current price, manual or
+  provider pricing, comparison dates, and stale-price warnings.
+- Separates spendable cash from long-term assets so the overview stays useful.
+- Supports hidden accounts for closed, archived, or rarely used balances.
 
-- Settings sync troubleshooting now has three manual resolution actions:
-  - Keep local: upload the current local/offline state to Firebase.
-  - Merge both: combine local and Firebase records, preferring newer records when IDs conflict.
-  - Take Firebase: discard the local/offline view and reload server data.
-- Accounts page has a Display currency selector. This affects account cards and the home balances chart display only; it does not change native account currencies.
-- The import page now uses one unified file input. It auto-detects bank transactions and broker holdings from the same file when possible.
+## Import And Cleanup
 
+The import flow is designed for real exported bank files, not perfect demo data.
 
-## v20 update
+Supported transaction imports:
 
-- Account display currency is now set independently per account card or in the account edit modal.
-- Mobile Reports first box has been rearranged to keep Month/Year in the upper-right and Month/Compare Year below.
-- Desktop sync troubleshooting has a wider, single-line button layout.
+- Wise currency statements and legacy Wise CSV exports.
+- Revolut CSV and consolidated XLSX/CSV statements.
+- Sparkasse CSV exports.
+- Trade Republic CSV activity exports.
+- Generic CSV/TSV files with date, amount, description, counterparty, and
+  currency fields.
 
+Supported broker imports:
 
-## v21 update
+- Smartbroker XLSX/CSV position exports.
+- Trade Republic CSV holdings/activity exports.
 
-- Desktop sync troubleshooting buttons are below the explanation text.
-- Account display currency is inside each account's gear menu.
-- Display currency options are limited to main currency and the account's native currency.
-- Removed the explanatory note below account display currency.
+Capito previews imports before committing them. Exact duplicate transactions are
+skipped automatically, suspicious rows are marked for review, and filtered rows
+can be added back manually when you intentionally want to keep them.
 
+## Rules, Categories, And Review
 
-## v22 update
+Capito includes editable categories and keyword rules so repeated transactions
+settle into the right place over time.
 
-- Desktop broker positions modal keeps the two toggle groups side by side:
-  - Since buy / Today
-  - Amount / Percent
+- Built-in categories cover income, housing, groceries, mobility, lifestyle,
+  admin costs, personal spending, transfers, investing, and debt.
+- Custom categories can have colors, icons, groups, and income/expense/transfer
+  behavior.
+- Rules can be searched, edited, prioritized, and reapplied.
+- Internal transfers can be detected from account aliases and excluded from
+  spending reports.
+- Transactions that need attention appear in a review queue instead of silently
+  disappearing into the ledger.
 
+## Reports
 
-## v23 update
+The Reports view turns the ledger into a monthly operating picture.
 
-- Home card visual polish: centered change box, larger trend line, stronger net-worth number styling.
-- Cashflow order changed to amount line first, label second.
-- Header logo/wordmark enlarged.
-- Removed category group input.
-- Mobile Reports toolbar compacted.
-- Removed Show currency from account gear menu.
-- Mobile account gear menu is now a full pop menu with an X close button.
-- Desktop gear menu closes when clicking the gear again.
+- Income vs spending.
+- Liquidity flow and absolute balance trends.
+- Category split for income, spending, or both.
+- Year-over-year monthly spending comparison.
+- Broker holdings overview.
+- Debt progression.
 
+Display currencies and exchange rates can be configured, so accounts can keep
+their native currency while reports stay readable in your preferred currency.
 
-## v24 update
+## Sync, Offline Use, And Backups
 
-- Net-worth number recolored for readability in both themes, without green glow.
-- Removed the mobile account menu X button.
-- Accounts toolbar simplified to centered actions with a larger Add account button.
-- Accounts page kicker is now Money Containers.
-- Duplicate page kickers were replaced with more meaningful labels.
-- Mobile Reports toolbar layout corrected again.
+Capito uses Firebase Authentication and Firestore for private user data. It also
+keeps working through the browser cache when the network is unavailable.
 
+Data tools include:
 
-## v25 update
+- Full JSON export and import for accounts, transactions, categories, rules,
+  settings, and holdings.
+- Legacy CSV export for transactions.
+- Data integrity repair for invalid categories, duplicate IDs, and exact
+  duplicate transactions.
+- Manual sync recovery actions: keep local data, merge local and cloud data, or
+  take Firebase data.
+- A service worker for app-shell caching.
 
-- Net-worth number now has a visible accent color without the green light background.
-- Desktop Reports toolbar shows only selectors.
-- Mobile Reports keeps the Reports heading with green supertext.
-- Mobile hidden-account toggle sits left of Add account when it appears.
+## Market Data
 
+Holdings can be priced manually or refreshed through Yahoo Finance lookups. The
+app stores the working provider symbol and quote metadata so future refreshes are
+faster and easier to diagnose.
 
-## v26 update
+There is also a helper script at
+`test-data/yahoo_identifier_lookup.py` for testing Yahoo identifier searches and
+generating Capito-compatible holding import JSON.
 
-- Net worth number uses the light-mode design treatment in both light and dark mode.
+## Tech Stack
 
+- Static HTML, CSS, and vanilla JavaScript modules.
+- Firebase Auth and Firestore.
+- Browser service worker for cached app-shell loading.
+- Browser-side CSV/TSV parsing and lightweight XLSX extraction for imports.
+- No build step required for local use.
 
-## v27 update
+## Project Structure
 
-- Added Given / starting position option with a given date for holdings.
-- Given holdings are treated as baseline positions in comparison snapshots.
-- Positive position changes now show a plus sign.
-- Cost basis total is calculated automatically from quantity × buy price.
-- Current/manual price is disabled unless the provider is Manual.
-- Broker position imports create starting/given holdings by default.
+```text
+.
+|-- index.html              # App shell and views
+|-- styles.css              # Full visual system and responsive layout
+|-- manifest.webmanifest    # PWA metadata and install icons
+|-- service-worker.js       # Offline/app-shell cache
+|-- firebase-config.js      # Firebase project config
+|-- firebase.json           # Firebase hosting config
+|-- firestore.rules         # Firestore security rules
+|-- js/
+|   |-- app.js              # UI orchestration and event handling
+|   |-- store.js            # Firebase persistence and app state
+|   |-- finance.js          # Categorization, totals, reports, formatting
+|   |-- importer.js         # Bank and broker file import parsing
+|   |-- market.js           # Quotes, Yahoo lookup, and FX rates
+|   `-- charts.js           # Canvas chart rendering
+|-- icons/                  # PWA, favicon, and install icons
+`-- test-data/
+    `-- yahoo_identifier_lookup.py
+```
 
+## Run Locally
 
-## v28 update
+Because the app uses JavaScript modules and a service worker, serve the folder
+from a local web server instead of opening `index.html` directly.
 
-- Revolut CSV import now ignores PENDING/REVERTED rows and imports only COMPLETED rows.
-- Revolut fees now keep their sign, so fee refunds increase the balance instead of decreasing it.
-- Revolut Product is included in the import description/external ID.
+```bash
+python -m http.server 8080
+```
 
+Then open:
 
-## v29 update
+```text
+http://127.0.0.1:8080/index.html
+```
 
-- Revolut import infers the opening balance from the Balance column.
-- Import commit applies that opening balance to the selected account.
-- This fixes the case where the app showed only the transaction sum, e.g. 424.26 €, instead of opening balance + transactions.
+## Firebase Setup
 
+Capito expects Firebase Auth and Firestore to be available.
 
-## v30 update
+1. Create a Firebase project.
+2. Enable Authentication for the sign-in method you want to use.
+3. Enable Firestore.
+4. Put your Firebase web config in `firebase-config.js`.
+5. Review `firestore.rules` before deploying.
+6. Deploy with Firebase Hosting if you want the app online.
 
-- Stooq lookup tries ticker suffix candidates automatically, so AAPL can resolve as AAPL.US.
-- Stooq quote currency is inferred from the resolved symbol suffix.
-- Stooq errors now list the attempted symbols.
+## Philosophy
 
+Capito is meant to feel practical, private, and steady. It does not try to be a
+bank replacement or a trading terminal. It helps answer the questions that matter
+most day to day:
 
-## v31 update
+- How much money is actually liquid?
+- What changed this month?
+- Which transactions need review?
+- Are my holdings and debts moving in the right direction?
+- Can I restore or audit my data if sync gets weird?
 
-- Provider-based holdings show latest provider price in the editor instead of stale manual price.
-- Stooq refresh falls back to daily-history CSV when the live quote CSV has no row.
-
-
-## v32 update
-
-- Refresh interval is an hours input and allows decimals such as 0.01.
-- Money formatting now always uses two decimals.
-- Desktop transaction bulk tools added: select, delete, export, group edit.
-- Desktop import preview bulk tools added: select, delete, export, group edit before commit.
-- Transaction filters now include a date period.
-- Accounts now have note and opening-balance date fields.
+That is the whole point: fewer loose spreadsheets, fewer mystery balances, and a
+clearer relationship with your own money.
