@@ -80,6 +80,16 @@ const VIEW_LABELS = {
   settings: ["CONTROL", "Settings"]
 };
 
+const EVENT_CATEGORY = {
+  id: "event",
+  name: "Spending event",
+  group: "System",
+  type: "neutral",
+  icon: "#",
+  color: "#B8A7FF",
+  fixed: true
+};
+
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const elements = {
@@ -318,6 +328,10 @@ function categoryOptions(selected = "misc") {
   return state.categories.map(cat => `<option value="${escapeHtml(cat.id)}" ${cat.id === selected ? "selected" : ""}>${escapeHtml(cat.icon || "•")} ${escapeHtml(cat.name)}</option>`).join("");
 }
 
+function transactionCategoryFilterOptions(selected = "all") {
+  return `<option value="all">All categories</option><option value="event" ${selected === "event" ? "selected" : ""}>${escapeHtml(EVENT_CATEGORY.icon)} ${escapeHtml(EVENT_CATEGORY.name)}</option>${categoryOptions(selected)}`;
+}
+
 function categorySearchValue(categoryId = "") {
   if (!categoryId) return "";
   const cat = state.categories.find(item => item.id === categoryId);
@@ -454,10 +468,14 @@ function appendUniqueNoteLine(note = "", line = "") {
 function stripAutomationNoteLines(note = "", options = {}) {
   const { ruleOnly = false } = options;
   const pattern = ruleOnly ? /^\s*Rule applied:/i : /^\s*(Rule applied|Needs review):/i;
+  const inlinePattern = ruleOnly
+    ? /\s*Rule applied:[^\n.]*\.\s*/gi
+    : /\s*(Rule applied|Needs review):[^\n.]*\.\s*/gi;
   return String(note || "")
+    .replace(inlinePattern, " ")
     .split(/\n+/)
     .map(line => line.trim())
-    .filter(line => line && !pattern.test(line))
+    .filter(line => line && !pattern.test(line) && !(ruleOnly ? /Rule applied:/i : /(Rule applied|Needs review):/i).test(line))
     .join("\n");
 }
 
@@ -470,7 +488,7 @@ function removeRuleReferencesFromTransaction(tx = {}, knownRuleIds = new Set(), 
     })
     : [];
   const reason = String(tx.reason || "").trim();
-  const hasLooseReason = /matched rule|ambiguous:/i.test(reason)
+  const hasLooseReason = /matched rule|ambiguous:|Rule applied:/i.test(reason)
     && ![...knownRuleLabels].some(label => label && reason.includes(label));
   const next = {
     ...tx,
@@ -1590,7 +1608,7 @@ function fillFilters() {
   const ruleCategory = $("#rule-category");
   const assetAccount = $("#asset-account");
   if (txAccountFilter) txAccountFilter.innerHTML = `<option value="all">All accounts</option>${accountOptions(txAccountFilter.value)}`;
-  if (txCategoryFilter) txCategoryFilter.innerHTML = `<option value="all">All categories</option>${categoryOptions(txCategoryFilter.value)}`;
+  if (txCategoryFilter) txCategoryFilter.innerHTML = transactionCategoryFilterOptions(txCategoryFilter.value);
   if (txCurrencyFilter) {
     const current = txCurrencyFilter.value || "all";
     const currencies = [...new Set([selectedCurrency(), ...state.transactions.map(tx => tx.currency).filter(Boolean)])].sort();
@@ -1633,7 +1651,8 @@ function renderTransactions() {
     return transactionSearchText(tx, account, cat).includes(search);
   });
   if (accountFilter !== "all") rows = rows.filter(tx => tx.accountId === accountFilter);
-  if (categoryFilter !== "all") rows = rows.filter(tx => tx.categoryId === categoryFilter);
+  if (categoryFilter === "event") rows = rows.filter(tx => transactionEventId(tx));
+  else if (categoryFilter !== "all") rows = rows.filter(tx => tx.categoryId === categoryFilter);
   if (currencyFilter !== "all") rows = rows.filter(tx => (tx.currency || selectedCurrency()) === currencyFilter);
   if (flowFilter === "incoming") rows = rows.filter(tx => Number(tx.amount || 0) > 0);
   if (flowFilter === "outcoming") rows = rows.filter(tx => Number(tx.amount || 0) < 0);
@@ -1648,7 +1667,7 @@ function renderTransactions() {
     date: tx => tx.date || "",
     description: tx => tx.description || "",
     account: tx => tx.isSpendingEvent ? "Spending event" : accounts.get(tx.accountId)?.name || tx.accountId || "",
-    category: tx => resolveCategoryForTransaction(tx, cats, { allowMiscFallback: false })?.name || tx.categoryId || "",
+    category: tx => tx.isSpendingEvent ? EVENT_CATEGORY.name : resolveCategoryForTransaction(tx, cats, { allowMiscFallback: false })?.name || tx.categoryId || "",
     amount: tx => Number(tx.amount || 0),
     note: tx => tx.note || "",
     id: tx => tx.id || tx.externalId || ""
@@ -1669,7 +1688,7 @@ function renderTransactions() {
   if (txIdHeader) txIdHeader.hidden = !showIds;
   tbody.replaceChildren();
   for (const tx of pagedRows(rows, txPage, PAGE_SIZES.transactions)) {
-    const cat = resolveCategoryForTransaction(tx, cats);
+    const cat = tx.isSpendingEvent ? EVENT_CATEGORY : resolveCategoryForTransaction(tx, cats);
     const account = accounts.get(tx.accountId);
     const tr = document.createElement("tr");
     const selectableIds = tx.isSpendingEvent ? (tx.childIds || []) : [tx.id];
@@ -3593,8 +3612,10 @@ function openSpendingEventDialog(eventId = "") {
   const note = first.spendingEventNote || "";
   const netRows = spendingEventNetRows(rows);
   const netHtml = netRows.length
-    ? netRows.map(row => `<span class="${row.amount >= 0 ? "amount-pos" : "amount-neg"}">${escapeHtml(row.cat?.name || "Misc")}: ${formatCurrency(row.amount, selectedCurrency())}</span>`).join("")
-    : `<span class="delta-flat">No spending impact</span>`;
+    ? netRows
+      .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
+      .map(row => `<div class="event-net-row"><span class="category-color-dot" style="--cat-color:${safeColor(row.cat?.color)}"></span><strong>${escapeHtml(row.cat?.icon || "?")} ${escapeHtml(row.cat?.name || "Misc")}</strong><span class="${row.amount >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(row.amount, selectedCurrency())}</span></div>`).join("")
+    : `<div class="event-net-row"><strong>${escapeHtml(EVENT_CATEGORY.icon)} ${escapeHtml(EVENT_CATEGORY.name)}</strong><span class="delta-flat">No spending impact</span></div>`;
   const { backdrop, close } = modalDialogShell("Spending event", `
     <form class="form-stack spending-event-form" data-event-form>
       <label class="field"><span>Name</span><input id="event-name" value="${escapeHtml(name)}" required></label>
@@ -3606,17 +3627,57 @@ function openSpendingEventDialog(eventId = "") {
           <tbody>${spendingEventDialogRows(rows)}</tbody>
         </table>
       </div>
-      <div class="button-row dialog-actions"><button class="secondary-button" data-dialog-cancel type="button">Close</button><button class="danger-button" data-event-ungroup type="button">Remove event</button><button class="primary-button" type="submit">Save event</button></div>
+      <div class="button-row dialog-actions"><button class="secondary-button" data-dialog-cancel type="button">Close</button><button class="secondary-button" data-event-add type="button">Add transactions</button><button class="danger-button" data-event-ungroup type="button">Remove event</button><button class="primary-button" type="submit">Save event</button></div>
     </form>`, { wide: true });
 
   backdrop.querySelector("[data-dialog-cancel]")?.addEventListener("click", () => close());
   backdrop.addEventListener("click", event => { if (event.target === backdrop) close(); });
+  backdrop.querySelectorAll("[data-event-edit-tx]").forEach(button => {
+    const cell = button.closest("td");
+    if (!cell || cell.querySelector("[data-event-remove-tx]")) return;
+    cell.classList.add("event-row-actions");
+    const remove = document.createElement("button");
+    remove.className = "danger-button compact icon-only-action";
+    remove.type = "button";
+    remove.dataset.eventRemoveTx = button.dataset.eventEditTx || "";
+    remove.title = "Remove from event";
+    remove.setAttribute("aria-label", "Remove from event");
+    remove.textContent = "-";
+    cell.append(remove);
+  });
   backdrop.querySelectorAll("[data-event-edit-tx]").forEach(button => {
     button.addEventListener("click", () => {
       const id = button.dataset.eventEditTx;
       close();
       openTransactionModal(id);
     });
+  });
+  backdrop.querySelectorAll("[data-event-remove-tx]").forEach(button => {
+    button.addEventListener("click", async () => {
+      const id = button.dataset.eventRemoveTx;
+      const tx = rows.find(item => item.id === id);
+      if (!tx) return;
+      const remaining = rows.filter(item => item.id !== id);
+      const ok = await confirmDialog({ title: "Remove transaction", message: `Remove '${tx.description || "transaction"}' from '${name}'?`, confirmLabel: "Remove", danger: true });
+      if (!ok) return;
+      const updates = [{ ...tx, spendingEventId: "", spendingEventName: "", spendingEventNote: "", transactionGroupId: "", transactionGroupName: "" }];
+      if (remaining.length === 1) {
+        updates.push({ ...remaining[0], spendingEventId: "", spendingEventName: "", spendingEventNote: "", transactionGroupId: "", transactionGroupName: "" });
+      }
+      await saveTransactionsBatch(updates);
+      close();
+      toast("Event updated", remaining.length === 1 ? "Only one transaction remained, so the event was dissolved." : "Transaction removed.");
+      requestRender();
+    });
+  });
+  backdrop.querySelector("[data-event-add]")?.addEventListener("click", async () => {
+    const nextName = backdrop.querySelector("#event-name")?.value.trim() || name;
+    const nextNote = backdrop.querySelector("#event-note")?.value.trim() || note;
+    const added = await addTransactionsToEventDialog(eventId, nextName, nextNote);
+    if (!added) return;
+    close();
+    toast("Event updated", `${added} transaction${added === 1 ? "" : "s"} added.`);
+    requestRender();
   });
   backdrop.querySelector("[data-event-ungroup]")?.addEventListener("click", async () => {
     const ok = await confirmDialog({ title: "Remove spending event", message: `Ungroup ${rows.length} transactions from '${name}'? The transactions stay in your ledger.`, confirmLabel: "Remove event", danger: true });
@@ -3636,6 +3697,59 @@ function openSpendingEventDialog(eventId = "") {
     requestRender();
   });
   backdrop.querySelector("#event-name")?.focus();
+}
+
+function addTransactionsToEventDialog(eventId = "", eventName = "Spending event", eventNote = "") {
+  return new Promise(resolve => {
+    const sourceRows = state.transactions
+      .filter(tx => !transactionEventId(tx))
+      .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))
+      .slice(0, 250);
+    if (!sourceRows.length) {
+      toast("No transactions available", "All visible transactions are already inside events.", "error");
+      resolve(0);
+      return;
+    }
+    const renderRows = (query = "") => {
+      const normalized = normalizeText(query);
+      return sourceRows
+        .filter(tx => !normalized || transactionSearchText(tx, accountMap().get(tx.accountId), resolveCategoryForTransaction(tx, categoryMap())).includes(normalized))
+        .slice(0, 80)
+        .map(tx => {
+          const account = accountMap().get(tx.accountId);
+          const cat = resolveCategoryForTransaction(tx, categoryMap());
+          return `<label class="event-add-row"><input type="checkbox" data-event-add-tx="${escapeHtml(tx.id)}"><span><strong>${escapeHtml(tx.description || "Transaction")}</strong><small>${escapeHtml(tx.date || "")} · ${escapeHtml(account?.name || tx.accountId || "")} · ${escapeHtml(cat?.name || "")}</small></span><b class="${Number(tx.amount || 0) >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(tx.amount, tx.currency || selectedCurrency())}</b></label>`;
+        }).join("") || `<p class="muted empty-list-note">No transactions match this search.</p>`;
+    };
+    const { backdrop, close } = modalDialogShell("Add transactions", `
+      <form class="form-stack" data-event-add-form>
+        <label class="field"><span>Search</span><input id="event-add-search" type="search" placeholder="Description, account, category"></label>
+        <div id="event-add-list" class="event-add-list">${renderRows("")}</div>
+        <div class="button-row dialog-actions"><button class="secondary-button" data-dialog-cancel type="button">Cancel</button><button class="primary-button" type="submit">Add selected</button></div>
+      </form>`, { wide: true });
+    const list = backdrop.querySelector("#event-add-list");
+    backdrop.querySelector("#event-add-search")?.addEventListener("input", event => {
+      if (list) list.innerHTML = renderRows(event.currentTarget.value);
+    });
+    const finish = value => { close(); resolve(value); };
+    backdrop.querySelector("[data-dialog-cancel]")?.addEventListener("click", () => finish(0));
+    backdrop.addEventListener("click", event => { if (event.target === backdrop) finish(0); });
+    backdrop.querySelector("[data-event-add-form]")?.addEventListener("submit", async event => {
+      event.preventDefault();
+      const ids = [...backdrop.querySelectorAll("[data-event-add-tx]:checked")].map(input => input.dataset.eventAddTx);
+      if (!ids.length) return toast("No transactions selected", "Choose at least one transaction to add.", "error");
+      const selected = state.transactions.filter(tx => ids.includes(tx.id));
+      await saveTransactionsBatch(selected.map(tx => ({
+        ...tx,
+        spendingEventId: eventId,
+        spendingEventName: eventName,
+        spendingEventNote: eventNote,
+        spendingEventCreatedAtMs: tx.spendingEventCreatedAtMs || Date.now()
+      })));
+      finish(selected.length);
+    });
+    backdrop.querySelector("#event-add-search")?.focus();
+  });
 }
 
 function createSpendingEventDialog(rows = []) {

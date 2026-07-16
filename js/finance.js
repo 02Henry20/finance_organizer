@@ -186,7 +186,7 @@ export function accountIdentifiers(account) {
 }
 
 export function detectInternalTransfer(tx, accounts = []) {
-  const text = normalizeIdentifier([tx.description, tx.counterparty, tx.rawText, tx.note].filter(Boolean).join(" "));
+  const text = normalizeIdentifier([tx.description, tx.counterparty, tx.rawText, noteWithoutAutomationLines(tx.note)].filter(Boolean).join(" "));
   if (!text || !accounts.length) return null;
   const currentAccountId = tx.accountId || "";
   const otherAccounts = accounts.filter(account => account.id !== currentAccountId && !account.hidden);
@@ -411,8 +411,9 @@ function keywordMatchesText(keyword, rawText, { caseSensitive = false } = {}) {
 
 function noteWithoutAutomationLines(note = "") {
   return String(note || "")
+    .replace(/\s*(Rule applied|Needs review):[^\n.]*\.\s*/gi, " ")
     .split(/\n+/)
-    .filter(line => !/^\s*(Rule applied|Needs review):/i.test(line))
+    .filter(line => !/^\s*(Rule applied|Needs review):/i.test(line) && !/(Rule applied|Needs review):/i.test(line))
     .join(" ");
 }
 

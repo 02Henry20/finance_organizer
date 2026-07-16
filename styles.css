@@ -196,10 +196,23 @@ td { font-size: .9rem; }
 .settings-row small { color: var(--muted); line-height: 1.45; }
 .settings-mobile-toggle { display: none; }
 .settings-mobile-body { display: contents; }
-.is-spending-event-row { background: color-mix(in srgb, var(--accent) 8%, transparent); }
-.event-net-summary { display: flex; flex-wrap: wrap; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface-2); font-size: .84rem; font-weight: 820; }
+.is-spending-event-row {
+  background: color-mix(in srgb, var(--accent-2) 10%, transparent);
+  box-shadow: inset 4px 0 0 var(--accent-2);
+}
+.is-spending-event-row td:first-child { border-left: 1px solid color-mix(in srgb, var(--accent-2) 42%, var(--line)); }
+.is-spending-event-row td:last-child { border-right: 1px solid color-mix(in srgb, var(--accent-2) 42%, var(--line)); }
+.event-net-summary { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface-2); font-size: .84rem; font-weight: 820; }
+.event-net-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px 11px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); }
+.event-net-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .event-transactions-wrap { max-height: 48vh; }
 .event-transactions-table { min-width: 680px; }
+.event-row-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.event-add-list { display: grid; gap: 8px; max-height: 46vh; overflow: auto; }
+.event-add-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 11px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); }
+.event-add-row span { min-width: 0; }
+.event-add-row strong, .event-add-row small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.event-add-row small { color: var(--muted); }
 .rule-group { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 20px; background: color-mix(in srgb, var(--surface-2) 70%, transparent); }
 .rule-group-heading { display: flex; justify-content: space-between; gap: 12px; padding: 5px 4px; }
 .rule-group-heading small { color: var(--muted); }
