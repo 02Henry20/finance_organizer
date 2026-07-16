@@ -346,6 +346,7 @@ export async function saveTransaction(input) {
     externalId: input.externalId || "",
     importBatchId: input.importBatchId || "",
     review: Boolean(input.review),
+    rulesLocked: Boolean(input.rulesLocked),
     confidence: Number(input.confidence ?? 1),
     reason: input.reason || "",
     candidates: input.candidates || [],
@@ -368,6 +369,10 @@ export async function saveTransaction(input) {
     fundingOriginalId: input.fundingOriginalId || "",
     excludeFromStats: input.categoryId === "cash" ? false : Boolean(input.excludeFromStats || input.ignoreFromStats || input.statsIgnored),
     duplicateAccepted: Boolean(input.duplicateAccepted),
+    spendingEventId: input.spendingEventId || input.transactionGroupId || "",
+    spendingEventName: input.spendingEventName || input.transactionGroupName || "",
+    spendingEventNote: input.spendingEventNote || "",
+    spendingEventCreatedAtMs: input.spendingEventCreatedAtMs || null,
     reviewClearedAtMs: input.reviewClearedAtMs || null,
     reviewClearedBy: input.reviewClearedBy || "",
     createdAtMs: input.createdAtMs || Date.now()

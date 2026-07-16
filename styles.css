@@ -194,6 +194,12 @@ td { font-size: .9rem; }
 .settings-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; padding: 13px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface-2); }
 .settings-row strong { display: block; }
 .settings-row small { color: var(--muted); line-height: 1.45; }
+.settings-mobile-toggle { display: none; }
+.settings-mobile-body { display: contents; }
+.is-spending-event-row { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.event-net-summary { display: flex; flex-wrap: wrap; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface-2); font-size: .84rem; font-weight: 820; }
+.event-transactions-wrap { max-height: 48vh; }
+.event-transactions-table { min-width: 680px; }
 .rule-group { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 20px; background: color-mix(in srgb, var(--surface-2) 70%, transparent); }
 .rule-group-heading { display: flex; justify-content: space-between; gap: 12px; padding: 5px 4px; }
 .rule-group-heading small { color: var(--muted); }
@@ -231,6 +237,28 @@ td { font-size: .9rem; }
   .mobile-nav button.active { color:#102016; background:var(--accent); }
   .mobile-nav span { font-size:1.35rem; }
   .mobile-nav small { font-size:.64rem; font-weight: 800; }
+  .settings-card.settings-mobile-collapsible { padding: 0; overflow: hidden; }
+  .settings-card.settings-mobile-collapsible .settings-mobile-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    min-height: 58px;
+    padding: 17px;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    font-weight: 860;
+    text-align: left;
+  }
+  .settings-card.settings-mobile-collapsible .settings-mobile-toggle b { color: var(--primary); font-size: 1.2rem; }
+  .settings-card.settings-mobile-collapsible .settings-mobile-body {
+    display: none;
+    padding: 0 17px 17px;
+  }
+  .settings-card.settings-mobile-collapsible.is-open .settings-mobile-body { display: grid; gap: 14px; }
+  .settings-card.settings-mobile-collapsible .settings-mobile-body > .panel-heading { display: none; }
 }
 @media (max-width: 680px) {
   h1 { font-size: 3.15rem; }

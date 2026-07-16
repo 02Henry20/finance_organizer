@@ -547,6 +547,61 @@ function includeInSpendingForFinance(cat, tx = {}, settings = {}) {
   return true;
 }
 
+function transactionEventId(tx = {}) {
+  return String(tx.spendingEventId || tx.transactionGroupId || "").trim();
+}
+
+function spendingRowsForFinance(transactions = [], categories = [], settings = {}) {
+  const categoryMap = new Map(categories.map(cat => [cat.id, cat]));
+  const groups = new Map();
+  const rows = [];
+  for (const tx of transactions) {
+    if (tx.spendingEventSummary) {
+      rows.push(tx);
+      continue;
+    }
+    const eventId = transactionEventId(tx);
+    if (!eventId) {
+      rows.push(tx);
+      continue;
+    }
+    if (!groups.has(eventId)) groups.set(eventId, []);
+    groups.get(eventId).push(tx);
+  }
+
+  for (const [eventId, groupRows] of groups) {
+    const byCategory = new Map();
+    for (const tx of groupRows) {
+      const cat = resolveCategory(categoryMap, categories, tx.categoryId);
+      if (!includeInSpendingForFinance(cat, tx, settings)) continue;
+      const categoryId = cat?.id || tx.categoryId || "misc";
+      const period = monthKey(tx.date);
+      const key = `${categoryId}|${period}`;
+      const amount = convertCurrency(Number(tx.amount || 0), tx.currency, settings);
+      const current = byCategory.get(key) || {
+        amount: 0,
+        categoryId,
+        date: tx.date || "",
+        description: tx.spendingEventName || tx.transactionGroupName || "Spending event"
+      };
+      current.amount += amount;
+      if (String(tx.date || "") > String(current.date || "")) current.date = tx.date || current.date;
+      byCategory.set(key, current);
+    }
+    for (const row of byCategory.values()) {
+      if (Math.abs(Number(row.amount || 0)) <= 0.005) continue;
+      rows.push({
+        ...row,
+        id: `${eventId}_${row.categoryId}`,
+        currency: settings.primaryCurrency || "EUR",
+        spendingEventSummary: true,
+        spendingEventId: eventId
+      });
+    }
+  }
+  return rows;
+}
+
 export function buildMonthlySeries(transactions, categories, settings, monthsBack = 12) {
   const now = new Date(`${TODAY()}T00:00:00`);
   const months = [];
@@ -557,7 +612,7 @@ export function buildMonthlySeries(transactions, categories, settings, monthsBac
   const categoryMap = new Map(categories.map(cat => [cat.id, cat]));
   const rows = months.map(month => ({ month, income: 0, expense: 0, transfer: 0, net: 0 }));
   const rowMap = new Map(rows.map(row => [row.month, row]));
-  for (const tx of transactions) {
+  for (const tx of spendingRowsForFinance(transactions, categories, settings)) {
     const row = rowMap.get(monthKey(tx.date));
     if (!row) continue;
     const cat = resolveCategory(categoryMap, categories, tx.categoryId, { allowMiscFallback: false });
@@ -577,7 +632,7 @@ export function buildMonthlySeries(transactions, categories, settings, monthsBac
 export function buildCategorySpend(transactions, categories, settings, period = monthKey(TODAY())) {
   const categoryMap = new Map(categories.map(cat => [cat.id, cat]));
   const totals = new Map();
-  for (const tx of transactions) {
+  for (const tx of spendingRowsForFinance(transactions, categories, settings)) {
     if (monthKey(tx.date) !== period) continue;
     const cat = resolveCategory(categoryMap, categories, tx.categoryId);
     if (cat?.type === "income") continue;

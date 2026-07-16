@@ -3,6 +3,7 @@ import {
   browserLocalPersistence,
   createUserWithEmailAndPassword,
   getAuth,
+  indexedDBLocalPersistence,
   onAuthStateChanged,
   sendPasswordResetEmail,
   setPersistence,
@@ -37,7 +38,11 @@ export const db = initializeFirestore(firebaseApp, {
 });
 
 export async function initializeAuthPersistence() {
-  await setPersistence(auth, browserLocalPersistence);
+  try {
+    await setPersistence(auth, indexedDBLocalPersistence);
+  } catch {
+    await setPersistence(auth, browserLocalPersistence);
+  }
 }
 
 export {
@@ -49,6 +54,7 @@ export {
   getDocFromServer,
   getDocs,
   getDocsFromServer,
+  indexedDBLocalPersistence,
   onAuthStateChanged,
   onSnapshot,
   query,

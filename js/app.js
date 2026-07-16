@@ -54,7 +54,8 @@ import {
   parseMoney,
   transactionHash,
   ruleMatchesTransaction,
-  shouldIgnoreTransactionInStats
+  shouldIgnoreTransactionInStats,
+  uid
 } from "./finance.js";
 import {
   RECOGNIZED_BANK_FORMATS,
@@ -135,6 +136,7 @@ let reportsCompareYear = String(new Date().getFullYear() - 1);
 let reportsCategoryMode = "outcome";
 let homeNetWorthChartMode = "flow";
 let reportsNetWorthChartMode = "flow";
+const activeAssetRefreshes = new Set();
 
 const PAGE_SIZES = {
   transactions: 10,
@@ -268,7 +270,48 @@ function navigateTo(view) {
   $$(`[data-view]`).forEach(button => button.classList.toggle("active", button.dataset.view === view));
   elements.viewKicker.textContent = VIEW_LABELS[view][0];
   elements.viewTitle.textContent = VIEW_LABELS[view][1];
+  if (view === "settings") {
+    setupMobileSettingsAccordions();
+    closeMobileSettingsAccordions();
+  }
   requestRender();
+}
+
+function setupMobileSettingsAccordions() {
+  const cards = $$('[data-view-section="settings"] .settings-card');
+  cards.forEach((card, index) => {
+    if (card.dataset.mobileAccordionReady === "true") return;
+    const heading = card.querySelector(".panel-heading h3")?.textContent?.trim()
+      || card.querySelector(".panel-heading .eyebrow")?.textContent?.trim()
+      || `Settings ${index + 1}`;
+    const body = document.createElement("div");
+    body.className = "settings-mobile-body";
+    while (card.firstChild) body.append(card.firstChild);
+    const toggle = document.createElement("button");
+    toggle.className = "settings-mobile-toggle";
+    toggle.type = "button";
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.innerHTML = `<span>${escapeHtml(heading)}</span><b>+</b>`;
+    toggle.addEventListener("click", () => {
+      const open = card.classList.toggle("is-open");
+      toggle.setAttribute("aria-expanded", String(open));
+      toggle.querySelector("b").textContent = open ? "-" : "+";
+    });
+    card.classList.add("settings-mobile-collapsible");
+    card.append(toggle, body);
+    card.dataset.mobileAccordionReady = "true";
+  });
+}
+
+function closeMobileSettingsAccordions() {
+  if (!window.matchMedia("(max-width: 920px)").matches) return;
+  $$('[data-view-section="settings"] .settings-mobile-collapsible').forEach(card => {
+    card.classList.remove("is-open");
+    const toggle = card.querySelector(".settings-mobile-toggle");
+    toggle?.setAttribute("aria-expanded", "false");
+    const icon = toggle?.querySelector("b");
+    if (icon) icon.textContent = "+";
+  });
 }
 
 function categoryOptions(selected = "misc") {
@@ -879,9 +922,118 @@ function includeInSpending(cat, tx = {}) {
   return true;
 }
 
+function transactionEventId(tx = {}) {
+  return String(tx.spendingEventId || tx.transactionGroupId || "").trim();
+}
+
+function transactionEventName(tx = {}) {
+  return String(tx.spendingEventName || tx.transactionGroupName || "").trim();
+}
+
+function groupedTransactionsMap(rows = state.transactions) {
+  const groups = new Map();
+  for (const tx of rows) {
+    const eventId = transactionEventId(tx);
+    if (!eventId) continue;
+    if (!groups.has(eventId)) groups.set(eventId, []);
+    groups.get(eventId).push(tx);
+  }
+  return groups;
+}
+
+function latestTransactionDate(rows = []) {
+  return rows.reduce((latest, tx) => String(tx.date || "") > String(latest || "") ? tx.date : latest, "");
+}
+
+function displayRowsWithSpendingEvents(rows = []) {
+  const groups = new Map();
+  const output = [];
+  for (const tx of rows) {
+    const eventId = transactionEventId(tx);
+    if (!eventId) {
+      output.push(tx);
+      continue;
+    }
+    if (!groups.has(eventId)) groups.set(eventId, []);
+    groups.get(eventId).push(tx);
+  }
+
+  for (const [eventId, groupRows] of groups) {
+    const amount = groupRows.reduce((sum, tx) => sum + convertCurrency(Number(tx.amount || 0), tx.currency || selectedCurrency(), state.settings), 0);
+    const categoryIds = [...new Set(groupRows.map(tx => tx.categoryId || "misc"))];
+    const accountIds = [...new Set(groupRows.map(tx => tx.accountId || ""))].filter(Boolean);
+    const first = groupRows[0] || {};
+    output.push({
+      id: eventId,
+      isSpendingEvent: true,
+      childIds: groupRows.map(tx => tx.id).filter(Boolean),
+      date: latestTransactionDate(groupRows),
+      amount,
+      currency: selectedCurrency(),
+      accountId: accountIds.length === 1 ? accountIds[0] : "",
+      categoryId: categoryIds.length === 1 ? categoryIds[0] : "misc",
+      description: transactionEventName(first) || "Spending event",
+      counterparty: `${groupRows.length} transactions`,
+      note: first.spendingEventNote || "",
+      review: groupRows.some(tx => tx.review),
+      rulesLocked: groupRows.every(tx => tx.rulesLocked),
+      spendingEventId: eventId
+    });
+  }
+  return output;
+}
+
+function spendingRowsForStats(rows = []) {
+  const cats = categoryMap();
+  const groups = new Map();
+  const output = [];
+  for (const tx of rows) {
+    if (tx.spendingEventSummary) {
+      output.push(tx);
+      continue;
+    }
+    const eventId = transactionEventId(tx);
+    if (!eventId) {
+      output.push(tx);
+      continue;
+    }
+    if (!groups.has(eventId)) groups.set(eventId, []);
+    groups.get(eventId).push(tx);
+  }
+
+  for (const [eventId, groupRows] of groups) {
+    const byCategory = new Map();
+    for (const tx of groupRows) {
+      const cat = resolveCategoryForTransaction(tx, cats);
+      if (!includeInSpending(cat, tx)) continue;
+      const categoryId = cat?.id || tx.categoryId || "misc";
+      const current = byCategory.get(categoryId) || {
+        amount: 0,
+        categoryId,
+        date: tx.date || "",
+        description: transactionEventName(tx) || "Spending event"
+      };
+      current.amount += convertCurrency(Number(tx.amount || 0), tx.currency || selectedCurrency(), state.settings);
+      if (String(tx.date || "") > String(current.date || "")) current.date = tx.date || current.date;
+      byCategory.set(categoryId, current);
+    }
+    for (const summary of byCategory.values()) {
+      if (Math.abs(Number(summary.amount || 0)) <= 0.005) continue;
+      output.push({
+        ...summary,
+        id: `${eventId}_${summary.categoryId}`,
+        currency: selectedCurrency(),
+        spendingEventSummary: true,
+        spendingEventId: eventId
+      });
+    }
+  }
+  return output;
+}
+
 function summarizeTransactions(rows) {
   const cats = categoryMap();
-  return rows.reduce((totals, tx) => {
+  return spendingRowsForStats(rows).reduce((totals, tx) => {
     const cat = resolveCategoryForTransaction(tx, cats);
     const amount = convertCurrency(Number(tx.amount || 0), tx.currency || selectedCurrency(), state.settings);
     if (!includeInSpending(cat, tx)) {
@@ -898,7 +1050,7 @@ function summarizeTransactions(rows) {
 function categorySpendForRange(start, end) {
   const cats = categoryMap();
   const totals = new Map();
-  for (const tx of transactionsInRange(start, end)) {
+  for (const tx of spendingRowsForStats(transactionsInRange(start, end))) {
     const cat = resolveCategoryForTransaction(tx, cats);
     if (cat?.type === "income") continue;
     if (!includeInSpending(cat, tx)) continue;
@@ -915,7 +1067,7 @@ function categoryFlowForRange(start, end, mode = "combined") {
   const normalizedMode = ["income", "outcome", "combined"].includes(mode) ? mode : "combined";
   const cats = categoryMap();
   const totals = new Map();
-  for (const tx of transactionsInRange(start, end)) {
+  for (const tx of spendingRowsForStats(transactionsInRange(start, end))) {
     const cat = resolveCategoryForTransaction(tx, cats);
     if (!includeInSpending(cat, tx)) continue;
     const amount = convertCurrency(Number(tx.amount || 0), tx.currency || selectedCurrency(), state.settings);
@@ -1128,9 +1280,11 @@ function metricTrendHtml(current, previous, { inverted = false, currency = selec
 function comparisonWindowFlow(compareDate) {
   const cats = categoryMap();
   const today = TODAY();
-  return state.transactions.reduce((totals, tx) => {
+  const rows = state.transactions.filter(tx => {
     const date = String(tx.date || "");
-    if (!date || date < compareDate || date > today) return totals;
+    return date && date >= compareDate && date <= today;
+  });
+  return spendingRowsForStats(rows).reduce((totals, tx) => {
     const cat = resolveCategoryForTransaction(tx, cats);
     if (!includeInSpending(cat, tx)) return totals;
     const amount = convertCurrency(Number(tx.amount || 0), tx.currency || selectedCurrency(), state.settings);
@@ -1455,10 +1609,11 @@ function renderTransactions() {
   if (dateTo) rows = rows.filter(tx => String(tx.date || "") <= dateTo);
   if (reviewFilter === "review") rows = rows.filter(tx => tx.review);
   if (reviewFilter === "clean") rows = rows.filter(tx => !tx.review);
+  rows = displayRowsWithSpendingEvents(rows);
   rows = sortedRows(rows, txSort, {
     date: tx => tx.date || "",
     description: tx => tx.description || "",
-    account: tx => accounts.get(tx.accountId)?.name || tx.accountId || "",
+    account: tx => tx.isSpendingEvent ? "Spending event" : accounts.get(tx.accountId)?.name || tx.accountId || "",
     category: tx => resolveCategoryForTransaction(tx, cats, { allowMiscFallback: false })?.name || tx.categoryId || "",
     amount: tx => Number(tx.amount || 0),
     note: tx => tx.note || "",
@@ -1483,11 +1638,17 @@ function renderTransactions() {
     const cat = resolveCategoryForTransaction(tx, cats);
     const account = accounts.get(tx.accountId);
     const tr = document.createElement("tr");
-    const selected = selectedTransactionIds.has(tx.id);
+    const selectableIds = tx.isSpendingEvent ? (tx.childIds || []) : [tx.id];
+    const selected = selectableIds.length > 0 && selectableIds.every(id => selectedTransactionIds.has(id));
+    const selectionAttr = tx.isSpendingEvent ? `data-select-event="${escapeHtml(tx.id)}"` : `data-select-tx="${escapeHtml(tx.id)}"`;
+    const accountLabel = tx.isSpendingEvent ? "Multiple" : account?.name || tx.accountId || "—";
+    const actionLabel = tx.isSpendingEvent ? "Open spending event" : "Edit transaction";
+    const actionText = tx.isSpendingEvent ? "..." : "✎";
     tr.classList.toggle("is-selected-row", selected);
     tr.classList.toggle("is-ignored-row", shouldIgnoreTransactionInStats(tx));
+    tr.classList.toggle("is-spending-event-row", Boolean(tx.isSpendingEvent));
     tr.innerHTML = `
-      <td class="select-col desktop-only-tools"><input class="tx-select-checkbox" data-select-tx="${escapeHtml(tx.id)}" type="checkbox" ${selected ? "checked" : ""} aria-label="Select transaction"></td>
+      <td class="select-col desktop-only-tools"><input class="tx-select-checkbox" ${selectionAttr} type="checkbox" ${selected ? "checked" : ""} aria-label="Select transaction"></td>
       <td>${escapeHtml(tx.date)}</td>
       <td class="description-cell"><strong>${escapeHtml(tx.description)}</strong><small class="muted table-ellipsis">${escapeHtml(tx.counterparty || tx.reason || "")}</small>${transactionFlagsHtml(tx)}</td>
       <td>${escapeHtml(account?.name || tx.accountId || "—")}</td>
@@ -1496,13 +1657,33 @@ function renderTransactions() {
       <td class="note-cell"><span class="table-ellipsis" title="${escapeHtml(tx.note || "")}">${escapeHtml(tx.note || "")}</span></td>
       ${showIds ? `<td class="tx-id-cell">${transactionIdDebugHtml(tx)}</td>` : ""}
       <td class="action-cell"><button class="ghost-button compact icon-only-action" type="button" data-edit-tx="${escapeHtml(tx.id)}" title="Edit transaction" aria-label="Edit transaction">✎</button></td>`;
+    if (tx.isSpendingEvent) {
+      if (tr.children[3]) tr.children[3].textContent = accountLabel;
+      const action = tr.querySelector("[data-edit-tx]");
+      if (action) {
+        delete action.dataset.editTx;
+        action.dataset.openEvent = tx.id;
+        action.title = actionLabel;
+        action.setAttribute("aria-label", actionLabel);
+        action.textContent = actionText;
+      }
+    }
     tbody.append(tr);
   }
   tbody.querySelectorAll("[data-edit-tx]").forEach(btn => btn.addEventListener("click", () => openTransactionModal(btn.dataset.editTx)));
+  tbody.querySelectorAll("[data-open-event]").forEach(btn => btn.addEventListener("click", () => openSpendingEventDialog(btn.dataset.openEvent)));
   tbody.querySelectorAll("[data-select-tx]").forEach(box => box.addEventListener("change", event => {
     const id = event.currentTarget.dataset.selectTx;
     if (event.currentTarget.checked) selectedTransactionIds.add(id);
     else selectedTransactionIds.delete(id);
+    renderTransactions();
+  }));
+  tbody.querySelectorAll("[data-select-event]").forEach(box => box.addEventListener("change", event => {
+    const groupRows = groupedTransactionsMap().get(event.currentTarget.dataset.selectEvent) || [];
+    groupRows.forEach(tx => {
+      if (event.currentTarget.checked) selectedTransactionIds.add(tx.id);
+      else selectedTransactionIds.delete(tx.id);
+    });
     renderTransactions();
   }));
   updateTransactionSelectionUi();
@@ -2264,6 +2445,8 @@ function renderPositionsModal() {
     warning.onclick = null;
   }
   $("#positions-delta-heading").textContent = positionsPeriod === "today" ? "Today" : "Since buy";
+  const refreshAccountButton = $("#refresh-account-holdings");
+  if (refreshAccountButton) refreshAccountButton.disabled = !holdings.some(asset => !asset.hidden && (asset.provider || state.settings.marketProvider) !== "manual");
   $$('[data-position-period]').forEach(button => {
     const active = button.dataset.positionPeriod === positionsPeriod;
     button.classList.toggle("active", active);
@@ -2314,12 +2497,15 @@ function renderPositionsModal() {
   tbody.querySelectorAll("[data-edit-asset]").forEach(btn => btn.addEventListener("click", () => openAssetModal(btn.dataset.editAsset)));
   tbody.querySelectorAll("[data-refresh-asset]").forEach(btn => btn.addEventListener("click", async () => {
     const id = btn.dataset.refreshAsset;
+    if (activeAssetRefreshes.has(id)) return;
+    activeAssetRefreshes.add(id);
     btn.disabled = true;
     btn.textContent = "…";
     try {
       await refreshAsset(id);
       renderPositionsModal();
     } finally {
+      activeAssetRefreshes.delete(id);
       btn.disabled = false;
       btn.textContent = "↻";
     }
@@ -2525,8 +2711,9 @@ async function refreshAsset(id) {
   }
 }
 
-async function refreshAllAssets({ silent = false } = {}) {
-  const visible = state.assets.filter(asset => !asset.hidden && (asset.provider || state.settings.marketProvider) !== "manual");
+async function refreshAllAssets({ silent = false, accountId = "" } = {}) {
+  const firstBroker = state.accounts.find(account => !account.hidden && account.type === "broker")?.id || "";
+  const visible = state.assets.filter(asset => !asset.hidden && (!accountId || (asset.accountId || firstBroker) === accountId) && (asset.provider || state.settings.marketProvider) !== "manual");
   if (!visible.length) {
     if (!silent) toast("No online holdings", "Add a non-manual holding first.", "error");
     return { ok: 0, failed: 0 };
@@ -2544,6 +2731,7 @@ async function refreshAllAssets({ silent = false } = {}) {
     }
   }
   if (!silent) toast("Quote refresh complete", `${ok} updated${failed ? ` · ${failed} failed` : ""}`, failed ? "error" : "success");
+  requestRender();
   return { ok, failed };
 }
 
@@ -3219,6 +3407,7 @@ function accountNameById(id) {
 
 function transactionFlagsHtml(tx = {}) {
   const flags = [];
+  if (tx.isSpendingEvent || transactionEventId(tx)) flags.push(tx.isSpendingEvent ? "Spending event" : "Event item");
   if (tx.rulesLocked) flags.push("Untouched by rules");
   if (tx.internalTransfer) flags.push("Internal");
   if (tx.referenceFundingRole === "source-split") flags.push("Reference split");
@@ -3309,6 +3498,114 @@ function bulkEditDialog(count, { title = "Group edit", allowAccount = true } = {
       finish(patch);
     });
     backdrop.querySelector("#bulk-edit-category").focus();
+  });
+}
+
+function spendingEventDialogRows(rows = []) {
+  const cats = categoryMap();
+  const accounts = accountMap();
+  return rows.map(tx => {
+    const cat = resolveCategoryForTransaction(tx, cats);
+    const account = accounts.get(tx.accountId);
+    return `
+      <tr>
+        <td>${escapeHtml(tx.date || "")}</td>
+        <td class="description-cell"><strong>${escapeHtml(tx.description || "Transaction")}</strong><small class="muted table-ellipsis">${escapeHtml(account?.name || tx.accountId || "")}</small></td>
+        <td>${categoryPill(cat, { review: tx.review })}</td>
+        <td class="${Number(tx.amount || 0) >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(tx.amount, tx.currency || selectedCurrency())}</td>
+        <td><button class="ghost-button compact icon-only-action" type="button" data-event-edit-tx="${escapeHtml(tx.id)}" title="Edit transaction" aria-label="Edit transaction">✎</button></td>
+      </tr>`;
+  }).join("");
+}
+
+function spendingEventNetRows(rows = []) {
+  const cats = categoryMap();
+  const totals = new Map();
+  for (const tx of rows) {
+    const cat = resolveCategoryForTransaction(tx, cats);
+    if (!includeInSpending(cat, tx)) continue;
+    const id = cat?.id || tx.categoryId || "misc";
+    const current = totals.get(id) || { cat, amount: 0 };
+    current.amount += convertCurrency(Number(tx.amount || 0), tx.currency || selectedCurrency(), state.settings);
+    totals.set(id, current);
+  }
+  return [...totals.values()].filter(row => Math.abs(row.amount) > 0.005);
+}
+
+function openSpendingEventDialog(eventId = "") {
+  const rows = (groupedTransactionsMap().get(eventId) || []).sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+  if (!rows.length) return toast("Event not found", "The grouped transactions are no longer available.", "error");
+  const first = rows[0];
+  const name = transactionEventName(first) || "Spending event";
+  const note = first.spendingEventNote || "";
+  const netRows = spendingEventNetRows(rows);
+  const netHtml = netRows.length
+    ? netRows.map(row => `<span class="${row.amount >= 0 ? "amount-pos" : "amount-neg"}">${escapeHtml(row.cat?.name || "Misc")}: ${formatCurrency(row.amount, selectedCurrency())}</span>`).join("")
+    : `<span class="delta-flat">No spending impact</span>`;
+  const { backdrop, close } = modalDialogShell("Spending event", `
+    <form class="form-stack spending-event-form" data-event-form>
+      <label class="field"><span>Name</span><input id="event-name" value="${escapeHtml(name)}" required></label>
+      <label class="field"><span>Note</span><textarea id="event-note" rows="2">${escapeHtml(note)}</textarea></label>
+      <div class="event-net-summary">${netHtml}</div>
+      <div class="modal-table-wrap event-transactions-wrap">
+        <table class="dialog-table event-transactions-table">
+          <thead><tr><th>Date</th><th>Description</th><th>Category</th><th>Amount</th><th></th></tr></thead>
+          <tbody>${spendingEventDialogRows(rows)}</tbody>
+        </table>
+      </div>
+      <div class="button-row dialog-actions"><button class="secondary-button" data-dialog-cancel type="button">Close</button><button class="danger-button" data-event-ungroup type="button">Remove event</button><button class="primary-button" type="submit">Save event</button></div>
+    </form>`, { wide: true });
+
+  backdrop.querySelector("[data-dialog-cancel]")?.addEventListener("click", () => close());
+  backdrop.addEventListener("click", event => { if (event.target === backdrop) close(); });
+  backdrop.querySelectorAll("[data-event-edit-tx]").forEach(button => {
+    button.addEventListener("click", () => {
+      const id = button.dataset.eventEditTx;
+      close();
+      openTransactionModal(id);
+    });
+  });
+  backdrop.querySelector("[data-event-ungroup]")?.addEventListener("click", async () => {
+    const ok = await confirmDialog({ title: "Remove spending event", message: `Ungroup ${rows.length} transactions from '${name}'? The transactions stay in your ledger.`, confirmLabel: "Remove event", danger: true });
+    if (!ok) return;
+    await saveTransactionsBatch(rows.map(tx => ({ ...tx, spendingEventId: "", spendingEventName: "", spendingEventNote: "", transactionGroupId: "", transactionGroupName: "" })));
+    close();
+    toast("Event removed", `${rows.length} transactions are listed individually again.`);
+    requestRender();
+  });
+  backdrop.querySelector("[data-event-form]")?.addEventListener("submit", async event => {
+    event.preventDefault();
+    const nextName = backdrop.querySelector("#event-name")?.value.trim() || name;
+    const nextNote = backdrop.querySelector("#event-note")?.value.trim() || "";
+    await saveTransactionsBatch(rows.map(tx => ({ ...tx, spendingEventId: eventId, spendingEventName: nextName, spendingEventNote: nextNote })));
+    close();
+    toast("Event saved", nextName);
+    requestRender();
+  });
+  backdrop.querySelector("#event-name")?.focus();
+}
+
+function createSpendingEventDialog(rows = []) {
+  return new Promise(resolve => {
+    const defaultName = rows.length ? `Event ${latestTransactionDate(rows) || TODAY()}` : "Spending event";
+    const { backdrop, close } = modalDialogShell("Create spending event", `
+      <form class="form-stack" data-create-event-form>
+        <p class="muted">${rows.length} selected transactions will be shown as one event in the ledger. Reports use category-level net totals inside the event.</p>
+        <label class="field"><span>Name</span><input id="create-event-name" value="${escapeHtml(defaultName)}" required></label>
+        <label class="field"><span>Note</span><textarea id="create-event-note" rows="2" placeholder="Optional"></textarea></label>
+        <div class="button-row dialog-actions"><button class="secondary-button" data-dialog-cancel type="button">Cancel</button><button class="primary-button" type="submit">Create event</button></div>
+      </form>`, { wide: true });
+    const finish = value => { close(); resolve(value); };
+    backdrop.querySelector("[data-dialog-cancel]")?.addEventListener("click", () => finish(null));
+    backdrop.addEventListener("click", event => { if (event.target === backdrop) finish(null); });
+    backdrop.querySelector("[data-create-event-form]")?.addEventListener("submit", event => {
+      event.preventDefault();
+      finish({
+        name: backdrop.querySelector("#create-event-name")?.value.trim() || defaultName,
+        note: backdrop.querySelector("#create-event-note")?.value.trim() || ""
+      });
+    });
+    backdrop.querySelector("#create-event-name")?.focus();
   });
 }
 
@@ -3492,7 +3789,7 @@ function updateTransactionSelectionUi() {
   if (toolbar) toolbar.hidden = !txSelectionMode;
   if (counter) counter.textContent = `${count} selected`;
   if (toggle) toggle.textContent = txSelectionMode ? "Done" : "Select";
-  const visibleIds = pagedRows(txFilteredRows, txPage, PAGE_SIZES.transactions).map(tx => tx.id);
+  const visibleIds = pagedRows(txFilteredRows, txPage, PAGE_SIZES.transactions).flatMap(tx => tx.isSpendingEvent ? (tx.childIds || []) : [tx.id]);
   if (pageSelect) {
     pageSelect.checked = visibleIds.length > 0 && visibleIds.every(id => selectedTransactionIds.has(id));
     pageSelect.indeterminate = visibleIds.some(id => selectedTransactionIds.has(id)) && !pageSelect.checked;
@@ -3557,6 +3854,26 @@ async function groupEditSelectedTransactions() {
   await saveTransactionsBatch(updates);
   toast("Transactions updated", `${rows.length} changed.`);
   renderTransactions();
+  requestRender();
+}
+
+async function createEventFromSelectedTransactions() {
+  const rows = selectedTransactions();
+  if (rows.length < 2) return toast("Select at least two transactions", "A spending event needs multiple rows.", "error");
+  const details = await createSpendingEventDialog(rows);
+  if (!details) return;
+  const eventId = `event_${uid().slice(0, 12)}`;
+  const createdAt = Date.now();
+  await saveTransactionsBatch(rows.map(tx => ({
+    ...tx,
+    spendingEventId: eventId,
+    spendingEventName: details.name,
+    spendingEventNote: details.note,
+    spendingEventCreatedAtMs: tx.spendingEventCreatedAtMs || createdAt
+  })));
+  selectedTransactionIds.clear();
+  txSelectionMode = false;
+  toast("Spending event created", details.name);
   requestRender();
 }
 
@@ -3857,13 +4174,13 @@ function wireEvents() {
     renderTransactions();
   });
   $("#tx-page-select-all")?.addEventListener("change", event => {
-    const visibleIds = pagedRows(txFilteredRows, txPage, PAGE_SIZES.transactions).map(tx => tx.id);
+    const visibleIds = pagedRows(txFilteredRows, txPage, PAGE_SIZES.transactions).flatMap(tx => tx.isSpendingEvent ? (tx.childIds || []) : [tx.id]);
     if (event.currentTarget.checked) visibleIds.forEach(id => selectedTransactionIds.add(id));
     else visibleIds.forEach(id => selectedTransactionIds.delete(id));
     renderTransactions();
   });
   $("#tx-select-all-filtered")?.addEventListener("click", () => {
-    txFilteredRows.forEach(tx => selectedTransactionIds.add(tx.id));
+    txFilteredRows.flatMap(tx => tx.isSpendingEvent ? (tx.childIds || []) : [tx.id]).forEach(id => selectedTransactionIds.add(id));
     renderTransactions();
   });
   $("#tx-clear-selection")?.addEventListener("click", () => {
@@ -3872,6 +4189,7 @@ function wireEvents() {
   });
   $("#tx-delete-selected")?.addEventListener("click", () => deleteSelectedTransactions().catch(error => toast("Delete failed", error.message, "error")));
   $("#tx-export-selected")?.addEventListener("click", exportSelectedTransactions);
+  $("#tx-create-event")?.addEventListener("click", () => createEventFromSelectedTransactions().catch(error => toast("Event failed", error.message, "error")));
   $("#tx-group-edit")?.addEventListener("click", () => groupEditSelectedTransactions().catch(error => toast("Group edit failed", error.message, "error")));
 
   $("#import-page-select-all")?.addEventListener("change", event => {
@@ -4102,6 +4420,15 @@ function wireEvents() {
   });
 
   $("#asset-isin-lookup")?.addEventListener("click", runAssetIsinLookup);
+  $("#refresh-account-holdings")?.addEventListener("click", event => withButtonBusy(event.currentTarget, "Refreshing...", async () => {
+    await refreshFxRates({ silent: true }).catch(error => console.warn("FX refresh skipped", error));
+    await refreshAllAssets({ accountId: activePositionsAccountId });
+    renderPositionsModal();
+  }).catch(error => toast("Refresh failed", error.message, "error")));
+  $("#refresh-all-assets-button")?.addEventListener("click", event => withButtonBusy(event.currentTarget, "Refreshing...", async () => {
+    await refreshFxRates({ silent: true }).catch(error => console.warn("FX refresh skipped", error));
+    await refreshAllAssets();
+  }).catch(error => toast("Refresh failed", error.message, "error")));
 
   $("#delete-asset-button").addEventListener("click", async () => {
     const id = $("#asset-id").value;
@@ -4353,4 +4680,3 @@ if (document.readyState === "loading") {
 } else {
   attachV72ImportAccountReparse();
 }
-
