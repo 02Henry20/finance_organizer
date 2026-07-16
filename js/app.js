@@ -451,6 +451,39 @@ function appendUniqueNoteLine(note = "", line = "") {
   return [current, clean].filter(Boolean).join("\n");
 }
 
+function stripAutomationNoteLines(note = "", options = {}) {
+  const { ruleOnly = false } = options;
+  const pattern = ruleOnly ? /^\s*Rule applied:/i : /^\s*(Rule applied|Needs review):/i;
+  return String(note || "")
+    .split(/\n+/)
+    .map(line => line.trim())
+    .filter(line => line && !pattern.test(line))
+    .join("\n");
+}
+
+function removeRuleReferencesFromTransaction(tx = {}, knownRuleIds = new Set(), knownRuleLabels = new Set()) {
+  const candidates = Array.isArray(tx.candidates)
+    ? tx.candidates.filter(candidate => {
+      const ruleId = String(candidate?.ruleId || "").trim();
+      const ruleLabel = String(candidate?.ruleLabel || "").trim();
+      return (!ruleId || knownRuleIds.has(ruleId)) && (!ruleLabel || knownRuleLabels.has(ruleLabel));
+    })
+    : [];
+  const reason = String(tx.reason || "").trim();
+  const hasLooseReason = /matched rule|ambiguous:/i.test(reason)
+    && ![...knownRuleLabels].some(label => label && reason.includes(label));
+  const next = {
+    ...tx,
+    note: stripAutomationNoteLines(tx.note, { ruleOnly: true }),
+    candidates,
+    matchedKeywords: [],
+    ruleId: knownRuleIds.has(String(tx.ruleId || "").trim()) ? tx.ruleId : "",
+    ruleLabel: knownRuleLabels.has(String(tx.ruleLabel || "").trim()) ? tx.ruleLabel : ""
+  };
+  if (hasLooseReason) next.reason = "";
+  return next;
+}
+
 function reviewReasonNote(reason = "") {
   const detail = String(reason || "Manual review requested.").trim();
   return `Needs review: ${detail}`;
@@ -464,16 +497,17 @@ function ruleApplicationNote(result = {}, categoryId = "") {
   if (!result || result.review) return "";
   const candidate = (result.candidates || []).find(item => item.categoryId === categoryId) || result.candidates?.[0] || null;
   const ruleLabel = result.ruleLabel || candidate?.ruleLabel || "";
+  const ruleId = result.ruleId || candidate?.ruleId || "";
   const keywords = Array.isArray(result.matchedKeywords) && result.matchedKeywords.length
     ? result.matchedKeywords
     : (candidate?.keywords || []);
-  if (!ruleLabel && !keywords.length) return "";
+  if (!ruleLabel && !ruleId) return "";
   const keywordText = keywords.length ? ` via keyword${keywords.length === 1 ? "" : "s"} '${keywords.join("', '")}'` : "";
   return `Rule applied: '${ruleLabel || "unnamed rule"}'${keywordText} → ${categoryNameForId(categoryId || result.categoryId)}.`;
 }
 
 function enrichTransactionNoteForAutomation(tx = {}, result = null) {
-  let note = String(tx.note || "").trim();
+  let note = stripAutomationNoteLines(tx.note);
   const ruleLine = ruleApplicationNote(result, tx.categoryId || result?.categoryId || "");
   if (ruleLine) note = appendUniqueNoteLine(note, ruleLine);
   if (tx.review) note = appendUniqueNoteLine(note, reviewReasonNote(tx.reason));
@@ -1648,7 +1682,7 @@ function renderTransactions() {
     tr.classList.toggle("is-ignored-row", shouldIgnoreTransactionInStats(tx));
     tr.classList.toggle("is-spending-event-row", Boolean(tx.isSpendingEvent));
     tr.innerHTML = `
-      <td class="select-col desktop-only-tools"><input class="tx-select-checkbox" ${selectionAttr} type="checkbox" ${selected ? "checked" : ""} aria-label="Select transaction"></td>
+      <td class="select-col"><input class="tx-select-checkbox" ${selectionAttr} type="checkbox" ${selected ? "checked" : ""} aria-label="Select transaction"></td>
       <td>${escapeHtml(tx.date)}</td>
       <td class="description-cell"><strong>${escapeHtml(tx.description)}</strong><small class="muted table-ellipsis">${escapeHtml(tx.counterparty || tx.reason || "")}</small>${transactionFlagsHtml(tx)}</td>
       <td>${escapeHtml(account?.name || tx.accountId || "—")}</td>
@@ -3251,6 +3285,8 @@ async function runDataIntegrityRepair() {
     let idReassigned = 0;
     let duplicateGroups = 0;
     let duplicateRows = 0;
+    let staleRuleNotes = 0;
+    let staleRuleMetadata = 0;
     const transactionPatchesByOriginalId = new Map();
     const transactionDeletes = [];
 
@@ -3260,7 +3296,7 @@ async function runDataIntegrityRepair() {
         ...(transactionPatchesByOriginalId.get(originalId) || state.transactions.find(tx => tx.id === originalId) || {}),
         ...patch
       };
-      transactionPatchesByOriginalId.set(originalId, enrichTransactionNoteForAutomation(merged, null));
+      transactionPatchesByOriginalId.set(originalId, merged);
     };
 
     for (const tx of state.transactions) {
@@ -3338,6 +3374,23 @@ async function runDataIntegrityRepair() {
       await saveRule({ ...rule, categoryId: repair.targetId });
     }
 
+    const knownRuleIds = new Set(state.rules.map(rule => String(rule.id || "").trim()).filter(Boolean));
+    const knownRuleLabels = new Set(state.rules.map(rule => String(rule.label || "").trim()).filter(Boolean));
+    for (const tx of state.transactions) {
+      const current = transactionPatchesByOriginalId.get(tx.id) || tx;
+      const cleaned = removeRuleReferencesFromTransaction(current, knownRuleIds, knownRuleLabels);
+      const noteChanged = String(cleaned.note || "") !== String(current.note || "");
+      const metadataChanged = JSON.stringify(cleaned.candidates || []) !== JSON.stringify(current.candidates || [])
+        || String(cleaned.ruleId || "") !== String(current.ruleId || "")
+        || String(cleaned.ruleLabel || "") !== String(current.ruleLabel || "")
+        || JSON.stringify(cleaned.matchedKeywords || []) !== JSON.stringify(current.matchedKeywords || [])
+        || String(cleaned.reason || "") !== String(current.reason || "");
+      if (!noteChanged && !metadataChanged) continue;
+      if (noteChanged) staleRuleNotes += 1;
+      if (metadataChanged) staleRuleMetadata += 1;
+      queuePatch(tx.id, cleaned);
+    }
+
     const transactionPatches = [...transactionPatchesByOriginalId.values()];
     if (transactionPatches.length) {
       setMessage(message, `Repairing ${transactionPatches.length} transactions and ${ruleNormalized + ruleMoved} rules…`);
@@ -3356,8 +3409,8 @@ async function runDataIntegrityRepair() {
       ? ` Exact duplicate signatures exist: ${duplicateGroups} group(s), ${duplicateRows} transaction rows. IDs already differ, so they were left clean and unchanged.`
       : " No exact duplicate signatures found.";
     const summary = changed
-      ? `Fixed/checked ${transactionPatches.length} transactions (${txMoved} moved to Misc, ${txNormalized} normalized, ${txTrimmed} trimmed, ${idReassigned} IDs reassigned). ${ruleNormalized + ruleMoved} rules repaired.${duplicateNote}${missingAccountTransactions || assetMissingAccounts ? ` Also found ${missingAccountTransactions} transactions and ${assetMissingAccounts} holdings with missing account references; those were reported only.` : ""}`
-      : `No invalid category references or ID problems found.${duplicateNote}${missingAccountTransactions || assetMissingAccounts ? ` Found ${missingAccountTransactions} transactions and ${assetMissingAccounts} holdings with missing account references; those were reported only.` : ""}`;
+      ? `Fixed/checked ${transactionPatches.length} transactions (${txMoved} moved to Misc, ${txNormalized} normalized, ${txTrimmed} trimmed, ${idReassigned} IDs reassigned, ${staleRuleNotes} stale rule notes cleaned, ${staleRuleMetadata} stale rule references cleaned). ${ruleNormalized + ruleMoved} rules repaired.${duplicateNote}${missingAccountTransactions || assetMissingAccounts ? ` Also found ${missingAccountTransactions} transactions and ${assetMissingAccounts} holdings with missing account references; those were reported only.` : ""}`
+      : `No invalid category references, stale rule references, or ID problems found.${duplicateNote}${missingAccountTransactions || assetMissingAccounts ? ` Found ${missingAccountTransactions} transactions and ${assetMissingAccounts} holdings with missing account references; those were reported only.` : ""}`;
     setMessage(message, summary, false);
     toast(changed ? "Data integrity checked" : "Data integrity OK", summary, "success");
     requestRender();
@@ -4532,17 +4585,20 @@ function wireEvents() {
   $("#delete-rule-button").addEventListener("click", async () => {
     const id = $("#rule-id").value;
     if (!id) return;
+    const oldRule = state.rules.find(rule => rule.id === id) || null;
     const ok = await confirmDialog({
       title: "Delete rule",
-      message: "Delete this keyword rule? Existing transactions will not be recategorized automatically. Use ↻ Rules if you want to reapply all rules afterwards.",
+      message: "Delete this keyword rule? Affected transactions will be rechecked against the remaining rules, and stale rule notes will be cleaned.",
       confirmLabel: "Delete rule",
       danger: true
     });
     if (!ok) return;
     const button = $("#delete-rule-button");
     await withButtonBusy(button, "Deleting…", async () => {
+      const nextRules = state.rules.filter(rule => rule.id !== id);
       await deleteRule(id);
-      toast("Rule deleted", "Transactions were not recategorized automatically.");
+      const affected = await reapplyRulesAfterRuleChange(oldRule, null, nextRules);
+      toast("Rule deleted", affected ? `${affected} affected transactions updated.` : "No affected transactions changed.");
       requestRender();
       closeModal();
     });

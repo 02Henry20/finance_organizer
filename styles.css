@@ -2108,9 +2108,17 @@ td .category-pill .category-pill-text,
   .desktop-only-tools {
     display: none !important;
   }
-  .transactions-table .select-col,
   .import-preview-table .select-col {
     display: none !important;
+  }
+  .transactions-table:not(.selection-active) .select-col {
+    display: none !important;
+  }
+  .transactions-table.selection-active .select-col {
+    display: table-cell !important;
+  }
+  .transactions-card .bulk-toolbar {
+    display: flex;
   }
 }
 @media (min-width: 921px) {

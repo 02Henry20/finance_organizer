@@ -197,10 +197,11 @@ function ruleApplicationNote(categorization = {}, categoryId = "", categories = 
   if (!categorization || categorization.review) return "";
   const candidate = (categorization.candidates || []).find(item => item.categoryId === categoryId) || categorization.candidates?.[0] || null;
   const ruleLabel = categorization.ruleLabel || candidate?.ruleLabel || "";
+  const ruleId = categorization.ruleId || candidate?.ruleId || "";
   const keywords = Array.isArray(categorization.matchedKeywords) && categorization.matchedKeywords.length
     ? categorization.matchedKeywords
     : (candidate?.keywords || []);
-  if (!ruleLabel && !keywords.length) return "";
+  if (!ruleLabel && !ruleId) return "";
   const categoryName = categories.find(cat => cat.id === categoryId)?.name || candidate?.categoryName || categoryId || "category";
   const keywordText = keywords.length ? ` via keyword${keywords.length === 1 ? "" : "s"} '${keywords.join("', '")}'` : "";
   return `Rule applied: '${ruleLabel || "unnamed rule"}'${keywordText} → ${categoryName}.`;
