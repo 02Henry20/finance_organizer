@@ -1,4 +1,7 @@
 import { accountIdentifiers, categorizeTransaction, normalizeIdentifier, normalizeText, parseDateValue, parseMoney, transactionHash, uid } from "./finance.js";
+import { decryptAgileXlsx, isOleCompoundFile } from "./ooxml-crypto.js";
+
+const KAKAOPAY_DEFAULT_PASSWORD = "020521";
 
 const FIELD_ALIASES = {
   date: ["date", "datum", "buchungstag", "booking date", "transaction date", "umsatzdatum", "valutadatum", "wertstellung", "value date", "created", "completed date", "finished on"],
@@ -20,10 +23,12 @@ const FIELD_ALIASES = {
 };
 
 export const RECOGNIZED_BANK_FORMATS = [
-  "Wise currency CSV: TransferWise ID, Date Time, Amount, Running Balance, Total fees",
+  "Wise currency statement CSV/XLSX: TransferWise ID or ID, Date Time, Amount, Running Balance, Total fees",
   "Wise legacy CSV: ID, Direction, Created/Finished on, Source/Target amount and currency",
-  "Revolut consolidated XLSX: Date, Description, Category, Money in/out, Balance, Fees",
-  "Revolut CSV: Type, Product, Started/Completed Date, Description, Amount, Fee, Currency, State, Balance",
+  "Revolut consolidated XLSX/CSV: Date, Description, Category, Money in/out, Balance, Fees",
+  "Revolut account CSV/XLSX: Type, Product, Started/Completed Date, Description, Amount, Fee, Currency, State, Balance",
+  "PayPal CSV: Datum, Name, Typ, Status, Währung, Brutto/Netto, Transaktionscode, Auswirkung auf Guthaben",
+  "KakaoPay XLSX: 거래일시, 거래구분/내용, 거래금액, 거래 후 잔액 (password-protected exports unlock automatically)",
   "Sparkasse CSV: Buchungstag, Buchungstext, Verwendungszweck, Begünstigter/Zahlungspflichtiger, Betrag, Währung",
   "Trade Republic CSV: datetime/date, type, asset_class, name, symbol, shares, amount, fee, tax, currency, transaction_id",
   "Generic CSV/TSV: date + amount/debit/credit + description/counterparty + currency"
@@ -97,10 +102,12 @@ function cleanText(value) {
 function normalizeHeader(value) {
   return String(value || "")
     .toLowerCase()
+    // NFKD decomposes Hangul syllables into jamo; keep jamo ranges and recompose.
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/ß/g, "ss")
-    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/[^a-z0-9\u1100-\u11FF\u3130-\u318F\uac00-\ud7a3]+/g, " ")
+    .normalize("NFC")
     .trim();
 }
 
@@ -108,10 +115,11 @@ function headerIndex(headers) {
   const normalized = headers.map(normalizeHeader);
   return key => {
     const candidates = Array.isArray(key) ? key : [key];
-    const normalizedCandidates = candidates.map(normalizeHeader);
-    let index = normalized.findIndex(header => normalizedCandidates.includes(header));
+    const normalizedCandidates = candidates.map(normalizeHeader).filter(Boolean);
+    if (!normalizedCandidates.length) return null;
+    let index = normalized.findIndex(header => header && normalizedCandidates.includes(header));
     if (index >= 0) return index;
-    index = normalized.findIndex(header => normalizedCandidates.some(candidate => header.includes(candidate) || candidate.includes(header)));
+    index = normalized.findIndex(header => header && normalizedCandidates.some(candidate => candidate.length >= 2 && (header.includes(candidate) || candidate.includes(header))));
     return index >= 0 ? index : null;
   };
 }
@@ -134,30 +142,50 @@ function guessMapping(headers) {
 
 function findHeaderRow(rows) {
   let best = { index: 0, score: -1 };
-  rows.slice(0, 20).forEach((row, index) => {
+  rows.slice(0, 40).forEach((row, index) => {
     const normalized = row.map(normalizeHeader).join(" ");
-    const score = ["date", "datum", "betrag", "amount", "saldo", "description", "verwendungszweck", "buchung", "direction", "completed date", "money in out", "fees"].reduce(
-      (total, word) => total + (normalized.includes(word) ? 1 : 0), 0
-    );
+    const score = [
+      "date", "datum", "betrag", "amount", "saldo", "description", "verwendungszweck", "buchung",
+      "direction", "completed date", "money in out", "fees", "transaktionscode", "auswirkung auf guthaben",
+      "running balance", "transaction details type", "거래일시", "거래금액", "이용금액", "거래 후 잔액"
+    ].reduce((total, word) => total + (normalized.includes(normalizeHeader(word)) || normalized.includes(word) ? 1 : 0), 0);
     if (score > best.score) best = { index, score };
   });
   return best.index;
 }
 
 function detectBankFormat(headers) {
-  const has = value => headers.map(normalizeHeader).includes(normalizeHeader(value));
-  const normalizedJoined = headers.map(normalizeHeader).join("|");
-  if (has("TransferWise ID") && has("Date Time") && has("Amount") && has("Running Balance") && has("Total fees")) {
-    return { id: "wise_statement", label: "Wise currency statement CSV" };
+  const normalizedHeaders = headers.map(normalizeHeader);
+  const has = value => normalizedHeaders.includes(normalizeHeader(value));
+  const normalizedJoined = normalizedHeaders.join("|");
+  const hasAny = (...values) => values.some(value => has(value));
+  if (
+    has("Date Time") && has("Amount") && has("Running Balance") && hasAny("Total fees", "Total Fees") &&
+    (has("TransferWise ID") || (has("ID") && hasAny("Transaction Details Type", "Transaction Type")))
+  ) {
+    return { id: "wise_statement", label: "Wise currency statement" };
   }
   if (has("ID") && has("Direction") && normalizedJoined.includes("source amount after fees") && normalizedJoined.includes("target amount after fees")) {
     return { id: "wise", label: "Wise legacy CSV" };
   }
   if (has("Type") && has("Product") && has("Completed Date") && has("Amount") && has("Fee") && has("Currency")) {
-    return { id: "revolut", label: "Revolut CSV" };
+    return { id: "revolut", label: "Revolut account statement" };
   }
   if (has("Date") && has("Description") && has("Category") && normalizedJoined.includes("money in out") && has("Balance")) {
     return { id: "revolut_consolidated", label: "Revolut consolidated statement" };
+  }
+  if (
+    has("Datum") && hasAny("Transaktionscode", "Transaction ID") && hasAny("Währung", "Currency") &&
+    hasAny("Netto", "Brutto", "Net", "Gross") && hasAny("Auswirkung auf Guthaben", "Balance Impact", "Status")
+  ) {
+    return { id: "paypal", label: "PayPal CSV" };
+  }
+  if (
+    hasAny("거래일시", "이용일시", "거래 일시", "날짜") &&
+    hasAny("거래금액", "이용금액", "거래 금액", "금액") &&
+    hasAny("거래구분", "이용구분", "구분", "내용", "가맹점", "가맹점명", "적요", "사용처")
+  ) {
+    return { id: "kakaopay", label: "KakaoPay statement" };
   }
   if (has("Auftragskonto") && has("Buchungstag") && has("Verwendungszweck") && has("Betrag") && (has("Waehrung") || has("Währung"))) {
     return { id: "sparkasse", label: "Sparkasse CSV" };
@@ -263,7 +291,7 @@ function parseWiseDate(value) {
     const year = match[3].length === 2 ? `20${match[3]}` : match[3];
     return `${year}-${month}-${day}`;
   }
-  return parseDateValue(value);
+  return parseExcelSerialDate(value);
 }
 
 function parseExcelSerialDate(value) {
@@ -277,12 +305,92 @@ function parseNativeNumber(value, currency = "") {
   const raw = String(value ?? "").replace(/\u00A0/g, " ").replace(/−/g, "-").trim();
   if (!raw) return 0;
   if (["KRW", "JPY"].includes(preferred)) {
-    const sign = raw.includes("-") ? -1 : 1;
+    const sign = /^-|−/.test(raw) || raw.includes("-") ? -1 : 1;
     const digits = raw.replace(/[^0-9]/g, "");
     if (!digits) return 0;
     return sign * Number(digits);
   }
   return money(raw);
+}
+
+function kakaoPaySignedAmount(amount, kind = "", description = "", rawAmount = "") {
+  const value = Number(amount || 0);
+  if (!Number.isFinite(value) || value === 0) return value;
+  const raw = String(rawAmount ?? "").replace(/\u00A0/g, " ").replace(/−/g, "-").trim();
+  // Prefer the spreadsheet's own sign when present (+15,000원 / -9,000원).
+  if (/^[+-]/.test(raw) || raw.includes("-") || raw.includes("+")) return value < 0 ? -Math.abs(value) : Math.abs(value);
+  if (value < 0) return value;
+  const text = normalizeText([kind, description].join(" "));
+  if (["입금", "충전", "환불", "취소", "적립", "받"].some(token => text.includes(normalizeText(token)))) return Math.abs(value);
+  if (["결제", "송금", "출금", "사용", "승인", "보냄"].some(token => text.includes(normalizeText(token)))) return -Math.abs(value);
+  return -Math.abs(value);
+}
+
+function isKakaoPayIgnoredMovement(kind = "", description = "") {
+  const text = normalizeText([kind, description].join(" "));
+  if (!text) return { ignore: false, reason: "" };
+  // Match top-up/transfer kinds, not merchant names that merely contain 충전 (e.g. 충전돼지).
+  const exactTokens = ["충전", "자동충전", "머니 충전", "출금", "입금", "이체", "송금"];
+  const kindText = normalizeText(kind);
+  if (exactTokens.some(token => {
+    const needle = normalizeText(token);
+    return Boolean(needle) && (kindText === needle || kindText.includes(needle));
+  })) {
+    return { ignore: true, reason: "KakaoPay top-up/withdrawal/transfer; excluded from spending statistics." };
+  }
+  if (/(^|\s)(자동\s*)?머니\s*충전(\s|$)/.test(text) || /(^|\s)카카오페이\s*충전(\s|$)/.test(text)) {
+    return { ignore: true, reason: "KakaoPay top-up/withdrawal/transfer; excluded from spending statistics." };
+  }
+  return { ignore: false, reason: "" };
+}
+
+function normalizeKakaoPay(headers, rows, filename = "") {
+  const idx = headerIndex(headers);
+  const i = {
+    date: idx(["거래일시", "이용일시", "거래 일시", "일시", "날짜", "Date"]),
+    kind: idx(["거래구분", "이용구분", "구분", "유형", "Type"]),
+    description: idx(["사용처", "내용", "적요", "가맹점", "가맹점명", "이용처", "상품명", "Description"]),
+    amount: idx(["거래금액", "이용금액", "거래 금액", "금액", "Amount"]),
+    balance: idx(["거래 후 잔액", "거래후잔액", "잔액", "Balance"]),
+    method: idx(["결제수단", "수단", "카드", "Method"]),
+    status: idx(["상태", "Status"]),
+    memo: idx(["메모", "비고", "Note"])
+  };
+  const outHeaders = ["Date", "Amount", "Currency", "Counterparty", "Description", "Balance", "External ID", "Exclude From Stats", "Note", "Account Key", "Category Override"];
+  const outRows = [];
+  const source = filename || "KakaoPay statement";
+  for (const row of rows) {
+    const date = parseExcelSerialDate(row[i.date]);
+    if (!date) continue;
+    const currency = "KRW";
+    const kind = cleanText(row[i.kind]);
+    const descriptionText = cleanText(row[i.description]);
+    const rawAmount = row[i.amount];
+    const amount = kakaoPaySignedAmount(parseNativeNumber(rawAmount, currency), kind, descriptionText, rawAmount);
+    if (!Number.isFinite(Number(amount)) || amount === 0) continue;
+    const method = cleanText(row[i.method]);
+    const status = cleanText(row[i.status]);
+    const ignored = isKakaoPayIgnoredMovement(kind, descriptionText);
+    const counterparty = descriptionText || kind || "KakaoPay";
+    const note = [kind, method, status, cleanText(row[i.memo]), ignored.reason, `Source ${source}`].filter(Boolean).join(" · ");
+    const description = [kind, descriptionText, method].filter(Boolean).join(" · ");
+    const balance = i.balance == null ? "" : parseNativeNumber(row[i.balance], currency);
+    outRows.push(...amountWithFeeSplitRows({
+      date,
+      movement: amount,
+      fee: 0,
+      currency,
+      counterparty,
+      description,
+      balance: Number.isFinite(Number(balance)) ? balance : "",
+      externalId: ["kakaopay", date, amount, kind, descriptionText, method].join("|"),
+      excludeFromStats: ignored.ignore,
+      note,
+      accountKey: "kakaopay:KRW",
+      categoryId: ignored.ignore ? "transfer" : ""
+    }));
+  }
+  return { headers: outHeaders, rows: outRows };
 }
 
 function firstNativeMoney(value, currency = "") {
@@ -326,9 +434,9 @@ function isWiseIgnoredMovement(row, i) {
 function normalizeWiseStatement(headers, rows) {
   const idx = headerIndex(headers);
   const i = {
-    id: idx("TransferWise ID"), date: idx("Date"), dateTime: idx("Date Time"), amount: idx("Amount"), currency: idx("Currency"), description: idx("Description"), reference: idx("Payment Reference"),
+    id: idx(["TransferWise ID", "ID"]), date: idx("Date"), dateTime: idx("Date Time"), amount: idx("Amount"), currency: idx("Currency"), description: idx("Description"), reference: idx("Payment Reference"),
     balance: idx("Running Balance"), exchangeFrom: idx("Exchange From"), exchangeTo: idx("Exchange To"), rate: idx("Exchange Rate"), payer: idx("Payer Name"), payee: idx("Payee Name"), merchant: idx("Merchant"),
-    note: idx("Note"), fees: idx("Total fees"), exchangeToAmount: idx("Exchange To Amount"), transactionType: idx("Transaction Type"), detailsType: idx("Transaction Details Type")
+    note: idx("Note"), fees: idx(["Total fees", "Total Fees"]), exchangeToAmount: idx("Exchange To Amount"), transactionType: idx("Transaction Type"), detailsType: idx("Transaction Details Type")
   };
   const outHeaders = ["Date", "Amount", "Currency", "Counterparty", "Description", "Balance", "External ID", "Exclude From Stats", "Note", "Account Key", "Category Override"];
   const outRows = [];
@@ -431,15 +539,18 @@ function isRevolutNeutral(category = "", description = "") {
   const cat = normalizeText(category);
   const desc = normalizeText(description);
   const compact = normalizeIdentifier([category, description].join(" "));
+  // Interest paid into savings is real income, not an internal transfer.
+  if (cat.includes("interest") || desc.includes("net interest")) return false;
   const transferLike = [
     "top up", "top-up", "topup", "exchange", "exchanged", "currency exchange", "transfer",
-    "instant access savings", "savings transfer", "deposit", "current account transfer",
+    "savings transfer", "deposit", "current account transfer",
     "payment from anh", "payment to anh", "open banking top-up", "apple pay top-up"
   ].some(token => desc.includes(token) || cat.includes(token));
+  const savingsMovement = desc.includes("from instant access savings") || desc.includes("to instant access savings") ||
+    ((desc.includes("instant access savings") || cat.includes("instant access savings")) && !desc.includes("interest"));
   const own = isOwnName(desc) || compact.includes("anhaohenryluu") || compact.includes("anhhaohenryluu");
-  return transferLike ||
-    (cat.includes("others") && (desc.includes("instant access savings") || desc.includes("savings") || desc.includes("exchanged") || own)) ||
-    desc.includes("from instant access savings") || desc.includes("to instant access savings") ||
+  return transferLike || savingsMovement ||
+    (cat.includes("others") && (savingsMovement || desc.includes("savings") || desc.includes("exchanged") || own)) ||
     desc.includes("exchanged to") || desc.includes("exchanged from") || own;
 }
 
@@ -464,16 +575,17 @@ function normalizeRevolut(headers, rows) {
   const outRows = allowedRows.flatMap(row => {
     const baseAmount = money(row[i.amount]);
     const fee = money(row[i.fee]);
-    const movement = baseAmount - fee;
+    const movement = roundMoney(baseAmount - fee);
     const currency = String(row[i.currency] || "EUR").toUpperCase();
     const product = String(row[i.product] || "Current");
     const state = String(row[i.state] || "").toUpperCase();
+    const date = parseExcelSerialDate(row[i.started] || row[i.completed]);
     const neutral = isRevolutNeutral(row[i.type], row[i.description]);
     const note = [product, row[i.type], state, fee ? `Fee ${fee} ${currency}` : "", neutral ? "Revolut internal/top-up/exchange; excluded from spending statistics." : ""].filter(Boolean).join(" · ");
     const description = [product, row[i.type], row[i.description], state === "PENDING" ? "Pending" : "", fee ? `Fee ${fee} ${currency}` : ""].filter(Boolean).join(" · ");
-    const id = [product, row[i.completed] || row[i.started], row[i.description], row[i.amount], row[i.fee], currency, state].join("|");
+    const id = [product, date || row[i.completed] || row[i.started], row[i.description], row[i.amount], row[i.fee], currency, state].join("|");
     return amountWithFeeSplitRows({
-      date: row[i.started] || row[i.completed],
+      date,
       movement,
       fee,
       currency,
@@ -629,6 +741,103 @@ function normalizeRevolutConsolidatedRows(rows, filename = "") {
 }
 
 
+function isPayPalIgnoredMovement(type = "", status = "", impact = "", description = "") {
+  const typ = normalizeText(type);
+  const st = normalizeText(status);
+  const imp = normalizeText(impact);
+  const desc = normalizeText(description);
+  if (imp.includes("memo") || typ.includes("autorisierung") || typ.includes("authorization") || typ.includes("general authorization")) {
+    return { skip: true, ignore: false, reason: "" };
+  }
+  if (
+    typ.includes("bankgutschrift") ||
+    typ.includes("bank deposit to paypal") ||
+    typ.includes("auflosung einer bankgutschrift") ||
+    typ.includes("reserve for payment cover") ||
+    desc.includes("bankgutschrift auf paypal")
+  ) {
+    return { skip: false, ignore: true, reason: "PayPal bank funding/cover; excluded from spending statistics." };
+  }
+  if (st.includes("ausstehend") || st.includes("pending") || st.includes("platzhalter")) {
+    return { skip: true, ignore: false, reason: "" };
+  }
+  if (!(st.includes("abgeschlossen") || st.includes("completed") || st.includes("erledigt") || st === "")) {
+    return { skip: true, ignore: false, reason: "" };
+  }
+  return { skip: false, ignore: false, reason: "" };
+}
+
+function normalizePayPal(headers, rows) {
+  const idx = headerIndex(headers);
+  const i = {
+    date: idx("Datum"),
+    time: idx("Uhrzeit"),
+    name: idx("Name"),
+    type: idx("Typ"),
+    status: idx("Status"),
+    currency: idx(["Währung", "Waehrung", "Currency"]),
+    gross: idx(["Brutto", "Gross"]),
+    fee: idx(["Gebühr", "Gebuehr", "Fee"]),
+    net: idx(["Netto", "Net"]),
+    sender: idx(["Absender E-Mail-Adresse", "From Email Address"]),
+    recipient: idx(["Empfänger E-Mail-Adresse", "Empfaenger E-Mail-Adresse", "To Email Address"]),
+    txId: idx(["Transaktionscode", "Transaction ID"]),
+    subject: idx(["Betreff", "Subject"]),
+    note: idx(["Hinweis", "Note"]),
+    balance: idx(["Guthaben", "Balance"]),
+    impact: idx(["Auswirkung auf Guthaben", "Balance Impact"]),
+    item: idx(["Artikelbezeichnung", "Item Title"]),
+    relatedId: idx(["Zugehöriger Transaktionscode", "Zugehoeriger Transaktionscode", "Reference Txn ID"])
+  };
+  const outHeaders = ["Date", "Amount", "Currency", "Counterparty", "Description", "Balance", "External ID", "Exclude From Stats", "Note", "Account Key", "Category Override"];
+  const outRows = [];
+  for (const row of rows) {
+    const type = cleanText(row[i.type]);
+    const status = cleanText(row[i.status]);
+    const impact = cleanText(row[i.impact]);
+    const name = cleanText(row[i.name]);
+    const subject = cleanText(row[i.subject]);
+    const item = cleanText(row[i.item]);
+    const ignored = isPayPalIgnoredMovement(type, status, impact, [name, subject, item].join(" "));
+    if (ignored.skip) continue;
+    const currency = String(row[i.currency] || "EUR").toUpperCase().slice(0, 3) || "EUR";
+    const net = money(row[i.net]);
+    const gross = money(row[i.gross]);
+    const movement = Number.isFinite(Number(net)) && net !== 0 ? net : gross;
+    if (!Number.isFinite(Number(movement)) || movement === 0) continue;
+    const date = parseDateValue(row[i.date]);
+    if (!date) continue;
+    const fee = money(row[i.fee]);
+    const counterparty = name || cleanText(row[i.recipient]) || cleanText(row[i.sender]) || "PayPal";
+    const note = [
+      type,
+      status,
+      impact,
+      subject,
+      cleanText(row[i.note]),
+      fee ? `Fee ${fee} ${currency}` : "",
+      cleanText(row[i.relatedId]) ? `Related ${cleanText(row[i.relatedId])}` : "",
+      ignored.reason
+    ].filter(Boolean).join(" · ");
+    const description = [type, name, item, subject].filter(Boolean).join(" · ");
+    outRows.push(...amountWithFeeSplitRows({
+      date,
+      movement,
+      fee,
+      currency,
+      counterparty,
+      description,
+      balance: row[i.balance],
+      externalId: cleanText(row[i.txId]) || [date, movement, currency, description].join("|"),
+      excludeFromStats: ignored.ignore,
+      note,
+      accountKey: `paypal:${currency}`,
+      categoryId: ignored.ignore ? "transfer" : ""
+    }));
+  }
+  return { headers: outHeaders, rows: outRows };
+}
+
 function normalizeSparkasse(headers, rows) {
   const idx = headerIndex(headers);
   const i = { account: idx("Auftragskonto"), booking: idx("Buchungstag"), valueDate: idx("Valutadatum"), bookingText: idx("Buchungstext"), purpose: idx("Verwendungszweck"), counterparty: idx(["Beguenstigter/Zahlungspflichtiger", "Begünstigter/Zahlungspflichtiger"]), iban: idx("Kontonummer/IBAN"), bic: idx("BIC SWIFT Code"), amount: idx("Betrag"), currency: idx(["Waehrung", "Währung"]), info: idx("Info") };
@@ -667,84 +876,150 @@ function normalizeTradeRepublic(headers, rows) {
   return { headers: outHeaders, rows: outRows };
 }
 
-function normalizeBankRows(headers, rows, format) {
+function normalizeBankRows(headers, rows, format, filename = "") {
   if (format.id === "wise_statement") return normalizeWiseStatement(headers, rows);
   if (format.id === "wise") return normalizeWise(headers, rows);
   if (format.id === "revolut") return normalizeRevolut(headers, rows);
-  if (format.id === "revolut_consolidated") return normalizeRevolutConsolidatedRows([headers, ...rows]);
+  if (format.id === "revolut_consolidated") return normalizeRevolutConsolidatedRows([headers, ...rows], filename);
+  if (format.id === "paypal") return normalizePayPal(headers, rows);
+  if (format.id === "kakaopay") return normalizeKakaoPay(headers, rows, filename);
   if (format.id === "sparkasse") return normalizeSparkasse(headers, rows);
   if (format.id === "trade_republic") return normalizeTradeRepublic(headers, rows);
   return { headers, rows };
 }
 
-export async function parseBankFile(file) {
-  const isSpreadsheet = /\.(xlsx|xls)$/i.test(file.name || "");
-  let allRows;
-  let delimiter = "";
-  if (isSpreadsheet) {
-    allRows = (await rowsFromXlsx(file)).filter(row => row.length > 1 || row.some(cell => String(cell || "").trim()));
-    const revolut = normalizeRevolutConsolidatedRows(allRows, file.name || "Revolut XLSX");
-    if (revolut.rows.length) {
-      return {
-        filename: file.name,
-        delimiter: "xlsx",
-        format: "revolut_consolidated",
-        formatLabel: "Revolut consolidated XLSX",
-        headers: revolut.headers,
-        rows: revolut.rows,
-        openingBalanceHint: finiteNumberOrNull(revolut.openingBalanceHint),
-        openingBalanceDetails: revolut.openingBalanceDetails || [],
-        rawHeaders: revolut.headers,
-        rawRows: revolut.rows,
-        mapping: guessMapping(revolut.headers)
-      };
+function looksLikeKakaoPayFilename(name = "") {
+  return /카카오|kakao\s*pay|kakaopay|다운로드내역/i.test(String(name || ""));
+}
+
+function bytesContainAsciiOrUtf16le(bytes, asciiText) {
+  const ascii = new TextDecoder("latin1").decode(bytes);
+  if (ascii.includes(asciiText)) return true;
+  // OLE compound-file stream names are often UTF-16LE, so "EncryptionInfo"
+  // appears as E\0n\0c\0r\0y\0p\0t\0i\0o\0n\0I\0n\0f\0o\0 rather than ASCII.
+  const utf16 = new TextDecoder("utf-16le").decode(bytes);
+  return utf16.includes(asciiText);
+}
+
+async function inspectProtectedSpreadsheet(file) {
+  if (file.size === 0) {
+    return { error: "The selected spreadsheet is empty (0 bytes). Re-download the statement and try again." };
+  }
+  const header = new Uint8Array(await file.slice(0, 8).arrayBuffer());
+  if (!isOleCompoundFile(header)) return { encrypted: false };
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const ascii = new TextDecoder("latin1").decode(bytes);
+  const encrypted = bytesContainAsciiOrUtf16le(bytes, "EncryptedPackage")
+    || bytesContainAsciiOrUtf16le(bytes, "EncryptionInfo")
+    || ascii.includes("cipherAlgorithm")
+    || ascii.includes("encryptedKeyValue")
+    || looksLikeKakaoPayFilename(file.name);
+  if (!encrypted) {
+    return { error: "This .xls spreadsheet format is not supported. Re-export or save the file as .xlsx or CSV and try again." };
+  }
+  if (looksLikeKakaoPayFilename(file.name)) {
+    return { encrypted: true, bytes, password: KAKAOPAY_DEFAULT_PASSWORD, label: "KakaoPay" };
+  }
+  return {
+    error: "This spreadsheet is password-protected. Save an unprotected copy in Excel, then import that file."
+  };
+}
+
+async function maybeDecryptProtectedSpreadsheet(file) {
+  const info = await inspectProtectedSpreadsheet(file);
+  if (info.error) throw new Error(info.error);
+  if (!info.encrypted) return file;
+  try {
+    const decrypted = await decryptAgileXlsx(info.bytes, info.password);
+    const name = String(file.name || "statement.xlsx").replace(/\.xls$/i, ".xlsx");
+    return new File([decrypted], name, { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  } catch (error) {
+    const detail = String(error?.message || error || "decryption failed");
+    if (info.label === "KakaoPay") {
+      throw new Error(`Could not unlock this KakaoPay spreadsheet with the built-in password. ${detail}`);
     }
-    throw new Error("The spreadsheet does not look like a supported Revolut consolidated statement.");
+    throw new Error(`Could not unlock this spreadsheet. ${detail}`);
   }
+}
 
-  const text = await file.text();
-  delimiter = detectDelimiter(text);
-  allRows = parseCsvRows(text, delimiter).filter(row => row.length > 1);
-  if (!allRows.length) throw new Error("The file does not look like a CSV/TSV bank export.");
-
-  // Revolut consolidated exports can arrive as XLSX or CSV. In CSV form the
-  // transaction table may appear far below account summaries, so scan all rows
-  // before generic header detection.
-  const consolidated = normalizeRevolutConsolidatedRows(allRows, file.name || "Revolut CSV");
-  if (consolidated.rows.length) {
-    return {
-      filename: file.name,
-      delimiter,
-      format: "revolut_consolidated",
-      formatLabel: "Revolut consolidated statement",
-      headers: consolidated.headers,
-      rows: consolidated.rows,
-      openingBalanceHint: finiteNumberOrNull(consolidated.openingBalanceHint),
-      openingBalanceDetails: consolidated.openingBalanceDetails || [],
-      rawHeaders: consolidated.headers,
-      rawRows: consolidated.rows,
-      mapping: guessMapping(consolidated.headers)
-    };
-  }
-
-  const headerRowIndex = findHeaderRow(allRows);
-  const rawHeaders = allRows[headerRowIndex].map((header, index) => header || `Column ${index + 1}`);
-  const rawRows = allRows.slice(headerRowIndex + 1);
-  const format = detectBankFormat(rawHeaders);
-  const normalized = normalizeBankRows(rawHeaders, rawRows, format);
+function buildParsedBankResult(file, delimiter, format, normalized, rawHeaders, rawRows) {
   return {
     filename: file.name,
     delimiter,
-    format: format.id,
-    formatLabel: format.label,
+    format: format.id || format,
+    formatLabel: format.label || format,
     headers: normalized.headers,
     rows: normalized.rows,
     openingBalanceHint: finiteNumberOrNull(normalized.openingBalanceHint),
     openingBalanceDetails: normalized.openingBalanceDetails || [],
-    rawHeaders,
-    rawRows,
+    rawHeaders: rawHeaders || normalized.headers,
+    rawRows: rawRows || normalized.rows,
     mapping: guessMapping(normalized.headers)
   };
+}
+
+function parseBankRows(allRows, filename = "", delimiter = "") {
+  if (!allRows.length) throw new Error("The file does not contain readable rows.");
+
+  const consolidated = normalizeRevolutConsolidatedRows(allRows, filename || "Revolut statement");
+  if (consolidated.rows.length) {
+    return buildParsedBankResult(
+      { name: filename },
+      delimiter || "xlsx",
+      { id: "revolut_consolidated", label: delimiter === "xlsx" ? "Revolut consolidated XLSX" : "Revolut consolidated statement" },
+      consolidated,
+      consolidated.headers,
+      consolidated.rows
+    );
+  }
+
+  const headerRowIndex = findHeaderRow(allRows);
+  const rawHeaders = allRows[headerRowIndex].map((header, index) => header || `Column ${index + 1}`);
+  const rawRows = allRows.slice(headerRowIndex + 1).filter(row => row.some(cell => String(cell ?? "").trim() !== ""));
+  let format = detectBankFormat(rawHeaders);
+  if (format.id === "generic" && looksLikeKakaoPayFilename(filename)) {
+    format = { id: "kakaopay", label: "KakaoPay statement" };
+  }
+  const normalized = normalizeBankRows(rawHeaders, rawRows, format, filename);
+  if (!normalized.rows?.length && format.id !== "generic") {
+    throw new Error(`Recognized ${format.label}, but no importable transactions were found.`);
+  }
+  if (!normalized.rows?.length) {
+    throw new Error("No supported bank statement pattern produced transactions from this file.");
+  }
+  return buildParsedBankResult(
+    { name: filename },
+    delimiter || "csv",
+    {
+      id: format.id,
+      label: delimiter === "xlsx" && format.id === "revolut"
+        ? "Revolut account statement XLSX"
+        : delimiter === "xlsx" && format.id === "wise_statement"
+          ? "Wise currency statement XLSX"
+          : delimiter === "xlsx" && format.id === "kakaopay"
+            ? "KakaoPay XLSX"
+            : format.label
+    },
+    normalized,
+    rawHeaders,
+    rawRows
+  );
+}
+
+export async function parseBankFile(file) {
+  const isSpreadsheet = /\.(xlsx|xls)$/i.test(file.name || "");
+  if (isSpreadsheet) {
+    const unlocked = await maybeDecryptProtectedSpreadsheet(file);
+    const allRows = (await rowsFromXlsx(unlocked)).filter(row => row.length > 1 || row.some(cell => String(cell || "").trim()));
+    return parseBankRows(allRows, file.name || unlocked.name || "statement.xlsx", "xlsx");
+  }
+
+  const text = await file.text();
+  const delimiter = detectDelimiter(text);
+  // Keep single-cell title/account rows (e.g. Revolut consolidated "Personal Account (EUR)").
+  const allRows = parseCsvRows(text, delimiter).filter(row => row.length > 1 || row.some(cell => String(cell || "").trim()));
+  if (!allRows.length) throw new Error("The file does not look like a CSV/TSV bank export.");
+  return parseBankRows(allRows, file.name || "statement.csv", delimiter);
 }
 
 function transactionSignature(tx) {
@@ -1013,6 +1288,8 @@ function resolveImportAccountId(accountKey = "", currency = "", context = {}) {
     if (wantedCurrency && String(account.currency || "").toUpperCase() === wantedCurrency) score += 15;
     if (key.includes("wise") && normalizeIdentifier([account.name, account.institution].join(" ")).includes("wise")) score += 30;
     if (key.includes("revolut") && normalizeIdentifier([account.name, account.institution].join(" ")).includes("revolut")) score += 30;
+    if (key.includes("paypal") && normalizeIdentifier([account.name, account.institution].join(" ")).includes("paypal")) score += 30;
+    if ((key.includes("kakaopay") || key.includes("kakao")) && normalizeIdentifier([account.name, account.institution].join(" ")).match(/kakao|kakaopay/)) score += 30;
     if (key.includes("deposit") && normalizeIdentifier([account.name, account.type].join(" ")).match(/deposit|savings|saving/)) score += 20;
     if (key.includes("current") && normalizeIdentifier([account.name, account.type].join(" ")).match(/current|checking|giro/)) score += 12;
     return { account, score };

@@ -124,10 +124,12 @@ export function uid() {
 export function normalizeText(value) {
   return String(value ?? "")
     .toLowerCase()
+    // NFKD decomposes Hangul syllables into jamo; keep jamo ranges and recompose.
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/ß/g, "ss")
-    .replace(/[^a-z0-9äöüÄÖÜ€$%+\-\.\s]/gi, " ")
+    .replace(/[^a-z0-9äöüÄÖÜ€$%+\-\.\s\u1100-\u11FF\u3130-\u318F\uac00-\ud7a3]/gi, " ")
+    .normalize("NFC")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -153,7 +155,7 @@ function isWeakInternalTransferIdentifier(raw, normalized) {
   // from that provider as an internal transfer.
   const weakExact = new Set([
     "bank", "broker", "manual", "account", "current", "deposit", "savings",
-    "revolut", "wise", "sparkasse", "smartbroker", "traderepublic",
+    "revolut", "wise", "sparkasse", "smartbroker", "traderepublic", "paypal", "kakaopay",
     "personalaccount", "personalaccounteur", "personalaccountkrw",
     "currenteur", "currentkrw", "depositeur", "savingseur",
     "mainchecking", "cashwallet"
@@ -174,8 +176,6 @@ export function accountIdentifiers(account) {
     { raw: account.iban, source: "iban" },
     { raw: account.accountNumber, source: "accountNumber" },
     { raw: account.bic, source: "bic" },
-    { raw: account.name, source: "name" },
-    { raw: account.institution, source: "institution" },
     ...aliases.map(raw => ({ raw, source: "alias" }))
   ];
 
@@ -251,6 +251,15 @@ export function parseDateValue(value) {
   const raw = String(value ?? "").trim();
   if (!raw) return "";
   if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
+  // Excel serials often arrive as plain numeric strings from XLSX cells.
+  if (/^\d{5}(?:\.\d+)?$/.test(raw)) {
+    const serial = Number(raw);
+    if (serial > 20000 && serial < 70000) {
+      const epoch = new Date(Date.UTC(1899, 11, 30));
+      epoch.setUTCDate(epoch.getUTCDate() + Math.floor(serial));
+      return epoch.toISOString().slice(0, 10);
+    }
+  }
   const german = raw.match(/^(\d{1,2})[.\/\-](\d{1,2})[.\/\-](\d{2,4})$/);
   if (german) {
     const day = german[1].padStart(2, "0");
@@ -411,9 +420,9 @@ function keywordMatchesText(keyword, rawText, { caseSensitive = false } = {}) {
 
 function noteWithoutAutomationLines(note = "") {
   return String(note || "")
-    .replace(/\s*(Rule applied|Needs review):[^\n.]*\.\s*/gi, " ")
+    .replace(/\s*(Rule applied|Needs review|Auto transfer):[^\n.]*\.\s*/gi, " ")
     .split(/\n+/)
-    .filter(line => !/^\s*(Rule applied|Needs review):/i.test(line) && !/(Rule applied|Needs review):/i.test(line))
+    .filter(line => !/^\s*(Rule applied|Needs review|Auto transfer):/i.test(line) && !/(Rule applied|Needs review|Auto transfer):/i.test(line))
     .join(" ");
 }
 

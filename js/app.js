@@ -467,15 +467,15 @@ function appendUniqueNoteLine(note = "", line = "") {
 
 function stripAutomationNoteLines(note = "", options = {}) {
   const { ruleOnly = false } = options;
-  const pattern = ruleOnly ? /^\s*Rule applied:/i : /^\s*(Rule applied|Needs review):/i;
+  const pattern = ruleOnly ? /^\s*Rule applied:/i : /^\s*(Rule applied|Needs review|Auto transfer):/i;
   const inlinePattern = ruleOnly
     ? /\s*Rule applied:[^\n.]*\.\s*/gi
-    : /\s*(Rule applied|Needs review):[^\n.]*\.\s*/gi;
+    : /\s*(Rule applied|Needs review|Auto transfer):[^\n.]*\.\s*/gi;
   return String(note || "")
     .replace(inlinePattern, " ")
     .split(/\n+/)
     .map(line => line.trim())
-    .filter(line => line && !pattern.test(line) && !(ruleOnly ? /Rule applied:/i : /(Rule applied|Needs review):/i).test(line))
+    .filter(line => line && !pattern.test(line) && !(ruleOnly ? /Rule applied:/i : /(Rule applied|Needs review|Auto transfer):/i).test(line))
     .join("\n");
 }
 
@@ -507,6 +507,11 @@ function reviewReasonNote(reason = "") {
   return `Needs review: ${detail}`;
 }
 
+function autoTransferNote(result = {}) {
+  if (!result?.internalTransfer || !result.reason) return "";
+  return `Auto transfer: ${result.reason}`;
+}
+
 function categoryNameForId(categoryId = "") {
   return state.categories.find(cat => cat.id === categoryId)?.name || categoryId || "category";
 }
@@ -528,6 +533,7 @@ function enrichTransactionNoteForAutomation(tx = {}, result = null) {
   let note = stripAutomationNoteLines(tx.note);
   const ruleLine = ruleApplicationNote(result, tx.categoryId || result?.categoryId || "");
   if (ruleLine) note = appendUniqueNoteLine(note, ruleLine);
+  else if (result?.internalTransfer) note = appendUniqueNoteLine(note, autoTransferNote(result));
   if (tx.review) note = appendUniqueNoteLine(note, reviewReasonNote(tx.reason));
   return { ...tx, note };
 }
@@ -3617,6 +3623,7 @@ function openSpendingEventDialog(eventId = "") {
       .map(row => `<div class="event-net-row"><span class="category-color-dot" style="--cat-color:${safeColor(row.cat?.color)}"></span><strong>${escapeHtml(row.cat?.icon || "?")} ${escapeHtml(row.cat?.name || "Misc")}</strong><span class="${row.amount >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(row.amount, selectedCurrency())}</span></div>`).join("")
     : `<div class="event-net-row"><strong>${escapeHtml(EVENT_CATEGORY.icon)} ${escapeHtml(EVENT_CATEGORY.name)}</strong><span class="delta-flat">No spending impact</span></div>`;
   const { backdrop, close } = modalDialogShell("Spending event", `
+    <button class="icon-button dialog-corner-close" data-event-close type="button" aria-label="Close dialog">&times;</button>
     <form class="form-stack spending-event-form" data-event-form>
       <label class="field"><span>Name</span><input id="event-name" value="${escapeHtml(name)}" required></label>
       <label class="field"><span>Note</span><textarea id="event-note" rows="2">${escapeHtml(note)}</textarea></label>
@@ -3627,10 +3634,10 @@ function openSpendingEventDialog(eventId = "") {
           <tbody>${spendingEventDialogRows(rows)}</tbody>
         </table>
       </div>
-      <div class="button-row dialog-actions"><button class="secondary-button" data-dialog-cancel type="button">Close</button><button class="secondary-button" data-event-add type="button">Add transactions</button><button class="danger-button" data-event-ungroup type="button">Remove event</button><button class="primary-button" type="submit">Save event</button></div>
+      <div class="button-row dialog-actions"><button class="secondary-button" data-event-add type="button">Add transactions</button><button class="danger-button" data-event-ungroup type="button">Remove event</button><button class="primary-button" type="submit">Save event</button></div>
     </form>`, { wide: true });
 
-  backdrop.querySelector("[data-dialog-cancel]")?.addEventListener("click", () => close());
+  backdrop.querySelector("[data-event-close]")?.addEventListener("click", () => close());
   backdrop.addEventListener("click", event => { if (event.target === backdrop) close(); });
   backdrop.querySelectorAll("[data-event-edit-tx]").forEach(button => {
     const cell = button.closest("td");
@@ -3658,16 +3665,23 @@ function openSpendingEventDialog(eventId = "") {
       const tx = rows.find(item => item.id === id);
       if (!tx) return;
       const remaining = rows.filter(item => item.id !== id);
-      const ok = await confirmDialog({ title: "Remove transaction", message: `Remove '${tx.description || "transaction"}' from '${name}'?`, confirmLabel: "Remove", danger: true });
+      const isLast = remaining.length === 0;
+      const ok = await confirmDialog({
+        title: isLast ? "Remove last transaction" : "Remove transaction",
+        message: isLast
+          ? `Remove '${tx.description || "transaction"}' from '${name}'? This is the last transaction in the event, so the spending event will be deleted. The transaction itself stays in your ledger.`
+          : `Remove '${tx.description || "transaction"}' from '${name}'?`,
+        confirmLabel: isLast ? "Remove and delete event" : "Remove",
+        danger: true
+      });
       if (!ok) return;
-      const updates = [{ ...tx, spendingEventId: "", spendingEventName: "", spendingEventNote: "", transactionGroupId: "", transactionGroupName: "" }];
-      if (remaining.length === 1) {
-        updates.push({ ...remaining[0], spendingEventId: "", spendingEventName: "", spendingEventNote: "", transactionGroupId: "", transactionGroupName: "" });
-      }
-      await saveTransactionsBatch(updates);
+      const cleared = { spendingEventId: "", spendingEventName: "", spendingEventNote: "", spendingEventCreatedAtMs: null, transactionGroupId: "", transactionGroupName: "" };
+      await saveTransactionsBatch([{ ...tx, ...cleared }]);
       close();
-      toast("Event updated", remaining.length === 1 ? "Only one transaction remained, so the event was dissolved." : "Transaction removed.");
+      if (isLast) toast("Event deleted", "The spending event was removed. The transaction remains in your ledger.");
+      else toast("Event updated", "Transaction removed.");
       requestRender();
+      if (!isLast) openSpendingEventDialog(eventId);
     });
   });
   backdrop.querySelector("[data-event-add]")?.addEventListener("click", async () => {
@@ -3701,42 +3715,64 @@ function openSpendingEventDialog(eventId = "") {
 
 function addTransactionsToEventDialog(eventId = "", eventName = "Spending event", eventNote = "") {
   return new Promise(resolve => {
+    const accounts = accountMap();
+    const categories = categoryMap();
     const sourceRows = state.transactions
-      .filter(tx => !transactionEventId(tx))
-      .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))
-      .slice(0, 250);
+      .filter(tx => tx.id && transactionEventId(tx) !== eventId)
+      .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
     if (!sourceRows.length) {
-      toast("No transactions available", "All visible transactions are already inside events.", "error");
+      toast("No transactions available", "There are no other transactions to add to this event.", "error");
       resolve(0);
       return;
     }
+    const selectedIds = new Set();
     const renderRows = (query = "") => {
       const normalized = normalizeText(query);
-      return sourceRows
-        .filter(tx => !normalized || transactionSearchText(tx, accountMap().get(tx.accountId), resolveCategoryForTransaction(tx, categoryMap())).includes(normalized))
-        .slice(0, 80)
+      const matches = sourceRows
+        .filter(tx => !normalized || transactionSearchText(tx, accounts.get(tx.accountId), resolveCategoryForTransaction(tx, categories)).includes(normalized));
+      const rowsHtml = matches
+        .slice(0, 160)
         .map(tx => {
-          const account = accountMap().get(tx.accountId);
-          const cat = resolveCategoryForTransaction(tx, categoryMap());
-          return `<label class="event-add-row"><input type="checkbox" data-event-add-tx="${escapeHtml(tx.id)}"><span><strong>${escapeHtml(tx.description || "Transaction")}</strong><small>${escapeHtml(tx.date || "")} · ${escapeHtml(account?.name || tx.accountId || "")} · ${escapeHtml(cat?.name || "")}</small></span><b class="${Number(tx.amount || 0) >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(tx.amount, tx.currency || selectedCurrency())}</b></label>`;
-        }).join("") || `<p class="muted empty-list-note">No transactions match this search.</p>`;
+          const account = accounts.get(tx.accountId);
+          const cat = resolveCategoryForTransaction(tx, categories);
+          const currentEvent = transactionEventName(tx);
+          return `<label class="event-add-row"><input type="checkbox" data-event-add-tx="${escapeHtml(tx.id)}" ${selectedIds.has(tx.id) ? "checked" : ""}><span><strong>${escapeHtml(tx.description || tx.counterparty || "Transaction")}</strong><small>${escapeHtml(tx.date || "")} | ${escapeHtml(account?.name || tx.accountId || "")} | ${escapeHtml(cat?.name || "")}${currentEvent ? ` | from ${escapeHtml(currentEvent)}` : ""}</small>${tx.note ? `<small>${escapeHtml(tx.note)}</small>` : ""}</span><b class="${Number(tx.amount || 0) >= 0 ? "amount-pos" : "amount-neg"}">${formatCurrency(tx.amount, tx.currency || selectedCurrency())}</b></label>`;
+        }).join("");
+      const countHtml = `<div class="event-add-count">${matches.length ? `Showing ${Math.min(matches.length, 160)} of ${matches.length}` : "No matches"}${selectedIds.size ? ` | ${selectedIds.size} selected` : ""}</div>`;
+      return `${countHtml}${rowsHtml || `<p class="muted empty-list-note">No transactions match this search.</p>`}`;
     };
     const { backdrop, close } = modalDialogShell("Add transactions", `
       <form class="form-stack" data-event-add-form>
-        <label class="field"><span>Search</span><input id="event-add-search" type="search" placeholder="Description, account, category"></label>
+        <label class="field"><span>Search</span><input id="event-add-search" type="search" placeholder="Description, counterparty, account, category, note, amount"></label>
         <div id="event-add-list" class="event-add-list">${renderRows("")}</div>
         <div class="button-row dialog-actions"><button class="secondary-button" data-dialog-cancel type="button">Cancel</button><button class="primary-button" type="submit">Add selected</button></div>
       </form>`, { wide: true });
     const list = backdrop.querySelector("#event-add-list");
+    const syncSelections = () => {
+      backdrop.querySelectorAll("[data-event-add-tx]").forEach(input => {
+        if (input.checked) selectedIds.add(input.dataset.eventAddTx);
+        else selectedIds.delete(input.dataset.eventAddTx);
+      });
+    };
     backdrop.querySelector("#event-add-search")?.addEventListener("input", event => {
+      syncSelections();
       if (list) list.innerHTML = renderRows(event.currentTarget.value);
+    });
+    list?.addEventListener("change", event => {
+      const input = event.target.closest?.("[data-event-add-tx]");
+      if (!input) return;
+      if (input.checked) selectedIds.add(input.dataset.eventAddTx);
+      else selectedIds.delete(input.dataset.eventAddTx);
+      const search = backdrop.querySelector("#event-add-search")?.value || "";
+      if (list) list.innerHTML = renderRows(search);
     });
     const finish = value => { close(); resolve(value); };
     backdrop.querySelector("[data-dialog-cancel]")?.addEventListener("click", () => finish(0));
     backdrop.addEventListener("click", event => { if (event.target === backdrop) finish(0); });
     backdrop.querySelector("[data-event-add-form]")?.addEventListener("submit", async event => {
       event.preventDefault();
-      const ids = [...backdrop.querySelectorAll("[data-event-add-tx]:checked")].map(input => input.dataset.eventAddTx);
+      syncSelections();
+      const ids = [...selectedIds];
       if (!ids.length) return toast("No transactions selected", "Choose at least one transaction to add.", "error");
       const selected = state.transactions.filter(tx => ids.includes(tx.id));
       await saveTransactionsBatch(selected.map(tx => ({
@@ -4437,6 +4473,9 @@ function wireEvents() {
         toast("Duplicate transaction ID", "Another transaction already uses this ID.", "error");
         return;
       }
+      const originalTransaction = originalTransactionId
+        ? state.transactions.find(tx => tx.id === originalTransactionId)
+        : null;
       const input = {
         id: requestedTransactionId || undefined,
         accountId: $("#transaction-account").value,
@@ -4450,7 +4489,38 @@ function wireEvents() {
         review: $("#transaction-review").checked,
         excludeFromStats: selectedCategoryId === "cash" ? false : Boolean($("#transaction-ignore-stats")?.checked),
         rulesLocked: Boolean($("#transaction-rules-locked")?.checked),
-        source: originalTransactionId ? "manual-edit" : "manual"
+        source: originalTransactionId ? "manual-edit" : "manual",
+        // Keep spending-event membership when editing a transaction in place.
+        spendingEventId: originalTransaction?.spendingEventId || originalTransaction?.transactionGroupId || "",
+        spendingEventName: originalTransaction?.spendingEventName || originalTransaction?.transactionGroupName || "",
+        spendingEventNote: originalTransaction?.spendingEventNote || "",
+        spendingEventCreatedAtMs: originalTransaction?.spendingEventCreatedAtMs || null,
+        externalId: originalTransaction?.externalId || "",
+        importBatchId: originalTransaction?.importBatchId || "",
+        createdAtMs: originalTransaction?.createdAtMs || undefined,
+        confidence: originalTransaction?.confidence,
+        reason: originalTransaction?.reason || "",
+        candidates: originalTransaction?.candidates || [],
+        rawText: originalTransaction?.rawText || "",
+        raw: originalTransaction?.raw || null,
+        internalTransfer: Boolean(originalTransaction?.internalTransfer),
+        internalTransferRole: originalTransaction?.internalTransferRole || "",
+        internalTransferGroupId: originalTransaction?.internalTransferGroupId || "",
+        transferSourceAccountId: originalTransaction?.transferSourceAccountId || "",
+        transferTargetAccountId: originalTransaction?.transferTargetAccountId || "",
+        transferMatchedAccountId: originalTransaction?.transferMatchedAccountId || "",
+        matchedAccountId: originalTransaction?.matchedAccountId || "",
+        referenceFunding: Boolean(originalTransaction?.referenceFunding),
+        referenceFundingRole: originalTransaction?.referenceFundingRole || "",
+        referenceSourceAccountId: originalTransaction?.referenceSourceAccountId || "",
+        referenceAccountId: originalTransaction?.referenceAccountId || "",
+        referenceOriginalAmount: originalTransaction?.referenceOriginalAmount ?? null,
+        referenceCoveredAmount: originalTransaction?.referenceCoveredAmount ?? null,
+        referenceFundingGroupId: originalTransaction?.referenceFundingGroupId || "",
+        fundingOriginalId: originalTransaction?.fundingOriginalId || "",
+        duplicateAccepted: Boolean(originalTransaction?.duplicateAccepted),
+        reviewClearedAtMs: originalTransaction?.reviewClearedAtMs || null,
+        reviewClearedBy: originalTransaction?.reviewClearedBy || ""
       };
       if (!input.accountId || !input.date || input.amount == null) {
         toast("Invalid transaction", "Account, date and amount are required.", "error");

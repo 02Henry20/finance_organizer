@@ -26,8 +26,11 @@ The import flow is designed for real exported bank files, not perfect demo data.
 
 Supported transaction imports:
 
-- Wise currency statements and legacy Wise CSV exports.
-- Revolut CSV and consolidated XLSX/CSV statements.
+- Wise currency statements (CSV/XLSX) and legacy Wise CSV exports.
+- Revolut account statements (CSV/XLSX) and consolidated XLSX/CSV statements.
+- PayPal CSV exports (German or English column titles).
+- KakaoPay XLSX history exports (password-protected downloads unlock
+  automatically with the built-in KakaoPay password).
 - Sparkasse CSV exports.
 - Trade Republic CSV activity exports.
 - Generic CSV/TSV files with date, amount, description, counterparty, and

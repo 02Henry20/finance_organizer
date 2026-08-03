@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v83-events-offline";
+const CACHE_NAME = "capito-v85-kakaopay-events";
 const CORE = [
   "./",
   "./index.html",
@@ -11,6 +11,7 @@ const CORE = [
   "./js/firebase.js",
   "./js/importer.js",
   "./js/market.js",
+  "./js/ooxml-crypto.js",
   "./js/store.js",
   "./icons/favicon.ico",
   "./icons/favicon-16x16.png",

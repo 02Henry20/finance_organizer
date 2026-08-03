@@ -209,6 +209,7 @@ td { font-size: .9rem; }
 .event-transactions-table { min-width: 680px; }
 .event-row-actions { display: flex; gap: 6px; justify-content: flex-end; }
 .event-add-list { display: grid; gap: 8px; max-height: 46vh; overflow: auto; }
+.event-add-count { position: sticky; top: 0; z-index: 1; padding: 8px 2px; color: var(--muted); background: var(--surface); font-size: .78rem; font-weight: 820; }
 .event-add-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 11px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); }
 .event-add-row span { min-width: 0; }
 .event-add-row strong, .event-add-row small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -223,6 +224,8 @@ td { font-size: .9rem; }
 .mini-item small { color: var(--muted); }
 .modal-backdrop { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 18px; background: rgba(0,0,0,.52); backdrop-filter: blur(14px); animation: fade-in .16s ease both; }
 .modal-card { width: min(100%, 610px); max-height: calc(100vh - 36px); overflow:auto; border-radius: 28px; padding: 24px; animation: modal-in .22s cubic-bezier(.2,.85,.2,1) both; }
+.app-dialog-card { position: relative; }
+.dialog-corner-close { position: absolute; top: 14px; right: 14px; z-index: 2; }
 .modal-heading { align-items: center; margin-bottom: 18px; }
 .toast-container { position: fixed; right: 18px; bottom: 18px; z-index: 120; display: grid; gap: 10px; width: min(390px, calc(100vw - 36px)); }
 .toast { display: flex; gap: 11px; padding: 14px 16px; border: 1px solid var(--line-strong); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow); animation: toast-in .22s ease both; }
