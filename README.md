@@ -28,7 +28,9 @@ Supported transaction imports:
 
 - Wise currency statements (CSV/XLSX) and legacy Wise CSV exports.
 - Revolut account statements (CSV/XLSX) and consolidated XLSX/CSV statements.
-- PayPal CSV exports (German or English column titles).
+- PayPal CSV exports (German or English). Bank funding rows stay on PayPal as
+  transfers for Guthaben balance only; the bank debit comes from the bank
+  import. Capito never writes counterpart rows onto other accounts.
 - KakaoPay XLSX history exports (password-protected downloads unlock
   automatically with the built-in KakaoPay password).
 - Sparkasse CSV exports.
@@ -41,9 +43,10 @@ Supported broker imports:
 - Smartbroker XLSX/CSV position exports.
 - Trade Republic CSV holdings/activity exports.
 
-Capito previews imports before committing them. Exact duplicate transactions are
-skipped automatically, suspicious rows are marked for review, and filtered rows
-can be added back manually when you intentionally want to keep them.
+Capito previews imports before committing them. Exact duplicate and 0.00
+transactions are skipped automatically, suspicious rows are marked for review,
+and filtered rows can be added back manually when you intentionally want to keep
+them.
 
 ## Rules, Categories, And Review
 

@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v85-kakaopay-events";
+const CACHE_NAME = "capito-v86-import-paypal-netfirst";
 const CORE = [
   "./",
   "./index.html",
@@ -59,16 +59,13 @@ self.addEventListener("fetch", event => {
 
   if (isAppShell) {
     event.respondWith(
-      caches.match(event.request).then(cached => {
-        const fresh = fetch(event.request, { cache: "no-store" })
-          .then(response => {
-            const copy = response.clone();
-            caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy)).catch(() => undefined);
-            return response;
-          })
-          .catch(() => cached || caches.match("./index.html"));
-        return cached || fresh;
-      })
+      fetch(event.request, { cache: "no-store" })
+        .then(response => {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy)).catch(() => undefined);
+          return response;
+        })
+        .catch(() => caches.match(event.request).then(cached => cached || caches.match("./index.html")))
     );
     return;
   }

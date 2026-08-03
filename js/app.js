@@ -1837,7 +1837,6 @@ function buildAccountCard(account, row, previousRow, { hidden = false } = {}) {
         <h3 title="${escapeHtml(account.name)}">${escapeHtml(account.name)}</h3>
         <small class="account-meta-line">${escapeHtml(typeLabel)} · ${escapeHtml(compactIdentifier)}</small>
         <small class="account-identifier">${escapeHtml(account.institution || "Manual")} · Native ${escapeHtml(account.currency || selectedCurrency())}${currency !== (account.currency || selectedCurrency()).toUpperCase() ? ` · shown in ${escapeHtml(currency)}` : ""}</small>
-        ${account.referenceAccountId ? `<small class="account-reference-preview">Ref: ${escapeHtml(accountNameById(account.referenceAccountId))}</small>` : ""}
         ${account.note ? `<small class="account-note-preview">${escapeHtml(account.note)}</small>` : ""}
       </div>
       <div class="account-card-controls">
@@ -2274,14 +2273,6 @@ function openAccountModal(id = "") {
   $("#account-number").value = account?.accountNumber || "";
   $("#account-bic").value = account?.bic || "";
   $("#account-aliases").value = Array.isArray(account?.transferAliases) ? account.transferAliases.join(", ") : account?.transferAliases || "";
-  const referenceSelect = $("#account-reference-account");
-  if (referenceSelect) {
-    const currentId = account?.id || "";
-    const selectedReference = account?.referenceAccountId || "";
-    const choices = state.accounts.filter(item => item.id !== currentId && !item.hidden);
-    referenceSelect.innerHTML = `<option value="">No reference account</option>${choices.map(item => `<option value="${escapeHtml(item.id)}" ${item.id === selectedReference ? "selected" : ""}>${escapeHtml(item.name)} · ${escapeHtml(item.currency || selectedCurrency())}</option>`).join("")}`;
-    referenceSelect.value = selectedReference;
-  }
   $("#account-hidden").checked = Boolean(account?.hidden);
   $("#delete-account-button").hidden = !account;
   openModal("account");
@@ -3488,9 +3479,6 @@ function transactionFlagsHtml(tx = {}) {
   if (tx.isSpendingEvent || transactionEventId(tx)) flags.push(tx.isSpendingEvent ? "Spending event" : "Event item");
   if (tx.rulesLocked) flags.push("Untouched by rules");
   if (tx.internalTransfer) flags.push("Internal");
-  if (tx.referenceFundingRole === "source-split") flags.push("Reference split");
-  else if (tx.referenceFundingRole === "deduction") flags.push("Reference deduction");
-  else if (tx.referenceFunding) flags.push("Reference");
   if (shouldIgnoreTransactionInStats(tx)) flags.push("Ignored stats");
   if (!flags.length) return "";
   return `<span class="tx-flags">${flags.map(flag => `<span>${escapeHtml(flag)}</span>`).join("")}</span>`;
@@ -3864,73 +3852,6 @@ function importBalanceSummaryHtml() {
   return `${balanceRows ? `<strong>Balance impact from accepted rows</strong><div class="import-balance-list">${balanceRows}</div>` : ""}${hint}`;
 }
 
-
-function roundManualMoney(value) {
-  return Math.round(Number(value || 0) * 100) / 100;
-}
-
-function accountBalanceBeforeManualSave(accountId, excludingTransactionId = "") {
-  const account = state.accounts.find(item => item.id === accountId);
-  if (!account) return 0;
-  return Number(account.openingBalance || 0) + state.transactions
-    .filter(tx => tx.accountId === accountId && tx.id !== excludingTransactionId)
-    .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
-}
-
-async function saveTransactionWithReferenceSplit(input) {
-  const account = state.accounts.find(item => item.id === input.accountId);
-  const referenceAccount = account?.referenceAccountId ? state.accounts.find(item => item.id === account.referenceAccountId) : null;
-  const amount = Number(input.amount || 0);
-  if (!account || !referenceAccount || amount >= 0 || input.internalTransfer) {
-    await saveTransaction(input);
-    return 1;
-  }
-
-  const balanceBefore = accountBalanceBeforeManualSave(account.id, input.id || "");
-  const requested = Math.abs(amount);
-  const available = Math.max(0, Number(balanceBefore || 0));
-  const shortage = roundManualMoney(Math.max(0, requested - available));
-  if (!Number.isFinite(shortage) || shortage <= 0.004) {
-    await saveTransaction(input);
-    return 1;
-  }
-
-  const localDeduction = roundManualMoney(Math.max(0, requested - shortage));
-  const groupId = `rf_${input.id || Date.now()}`;
-  const sourceTx = {
-    ...input,
-    amount: -localDeduction,
-    referenceFunding: true,
-    referenceFundingRole: "source-split",
-    referenceSourceAccountId: account.id,
-    referenceAccountId: referenceAccount.id,
-    referenceOriginalAmount: amount,
-    referenceCoveredAmount: shortage,
-    referenceFundingGroupId: groupId,
-    reason: `${input.reason || ""}${input.reason ? " " : ""}Split with reference account ${referenceAccount.name}: ${account.name} covers ${localDeduction.toFixed(2)}, reference covers ${shortage.toFixed(2)}.`
-  };
-  const sourceId = await saveTransaction(sourceTx);
-  await saveTransaction({
-    ...input,
-    id: input.id ? `${input.id}_ref_deduction` : undefined,
-    accountId: referenceAccount.id,
-    amount: -shortage,
-    description: `${account.name} reference remainder: ${input.description || "Transaction"}`,
-    counterparty: input.counterparty || account.name,
-    source: "auto:reference-account",
-    referenceFunding: true,
-    referenceFundingRole: "deduction",
-    referenceSourceAccountId: account.id,
-    referenceAccountId: referenceAccount.id,
-    referenceOriginalAmount: amount,
-    referenceCoveredAmount: shortage,
-    referenceFundingGroupId: groupId,
-    fundingOriginalId: sourceId,
-    note: input.note || "Auto-created reference-account remainder. Later matching reference-account imports are filtered.",
-    reason: `Auto deduction from ${referenceAccount.name} for the part of ${account.name} that would go below zero.`
-  });
-  return 2;
-}
 
 function reviewResolutionPatch(basePatch = {}, source = "manual") {
   if (basePatch.review !== false) return basePatch;
@@ -4510,14 +4431,14 @@ function wireEvents() {
         transferTargetAccountId: originalTransaction?.transferTargetAccountId || "",
         transferMatchedAccountId: originalTransaction?.transferMatchedAccountId || "",
         matchedAccountId: originalTransaction?.matchedAccountId || "",
-        referenceFunding: Boolean(originalTransaction?.referenceFunding),
-        referenceFundingRole: originalTransaction?.referenceFundingRole || "",
-        referenceSourceAccountId: originalTransaction?.referenceSourceAccountId || "",
-        referenceAccountId: originalTransaction?.referenceAccountId || "",
-        referenceOriginalAmount: originalTransaction?.referenceOriginalAmount ?? null,
-        referenceCoveredAmount: originalTransaction?.referenceCoveredAmount ?? null,
-        referenceFundingGroupId: originalTransaction?.referenceFundingGroupId || "",
-        fundingOriginalId: originalTransaction?.fundingOriginalId || "",
+        referenceFunding: false,
+        referenceFundingRole: "",
+        referenceSourceAccountId: "",
+        referenceAccountId: "",
+        referenceOriginalAmount: null,
+        referenceCoveredAmount: null,
+        referenceFundingGroupId: "",
+        fundingOriginalId: "",
         duplicateAccepted: Boolean(originalTransaction?.duplicateAccepted),
         reviewClearedAtMs: originalTransaction?.reviewClearedAtMs || null,
         reviewClearedBy: originalTransaction?.reviewClearedBy || ""
@@ -4545,11 +4466,11 @@ function wireEvents() {
         $("#transaction-category")?.focus();
         return;
       }
-      const savedCount = await saveTransactionWithReferenceSplit(input);
+      const savedCount = await saveTransaction(input);
       if (originalTransactionId && input.id && input.id !== originalTransactionId) {
         await deleteTransaction(originalTransactionId);
       }
-      toast("Transaction saved", savedCount > 1 ? "Split with reference account." : (originalTransactionId && input.id && input.id !== originalTransactionId ? "ID changed." : ""));
+      toast("Transaction saved", originalTransactionId && input.id && input.id !== originalTransactionId ? "ID changed." : "");
       closeModal();
     } catch (error) {
       toast("Save failed", error.message, "error");
@@ -4588,7 +4509,7 @@ function wireEvents() {
         accountNumber: $("#account-number").value,
         bic: $("#account-bic").value,
         transferAliases: $("#account-aliases").value,
-        referenceAccountId: $("#account-reference-account")?.value || "",
+        referenceAccountId: "",
         hidden: $("#account-hidden").checked
       });
       toast("Account saved");

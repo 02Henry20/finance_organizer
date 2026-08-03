@@ -746,23 +746,31 @@ function isPayPalIgnoredMovement(type = "", status = "", impact = "", descriptio
   const st = normalizeText(status);
   const imp = normalizeText(impact);
   const desc = normalizeText(description);
-  if (imp.includes("memo") || typ.includes("autorisierung") || typ.includes("authorization") || typ.includes("general authorization")) {
-    return { skip: true, ignore: false, reason: "" };
+  const haystack = `${typ} ${desc}`;
+  if (imp.includes("memo") || typ.includes("autorisierung") || typ.includes("authorization") || typ.includes("general authorization") || typ.includes("allgemeine autorisierung")) {
+    return { skip: true, ignore: false, reason: "PayPal authorization/memo; skipped." };
   }
+  // Bank funding must stay on the PayPal ledger as a transfer so Guthaben
+  // reconstructs. Sparkasse already has the bank debit — never create a
+  // counterpart on another account. Keep these even when Status is Ausstehend.
   if (
-    typ.includes("bankgutschrift") ||
-    typ.includes("bank deposit to paypal") ||
-    typ.includes("auflosung einer bankgutschrift") ||
-    typ.includes("reserve for payment cover") ||
-    desc.includes("bankgutschrift auf paypal")
+    haystack.includes("bankgutschrift") ||
+    haystack.includes("bank deposit to paypal") ||
+    haystack.includes("auflosung einer bankgutschrift") ||
+    haystack.includes("auflösung einer bankgutschrift") ||
+    typ.includes("reserve for payment cover")
   ) {
-    return { skip: false, ignore: true, reason: "PayPal bank funding/cover; excluded from spending statistics." };
+    return {
+      skip: false,
+      ignore: true,
+      reason: "PayPal bank funding/cover. Kept as transfer for PayPal balance only; bank side comes from the bank import."
+    };
   }
   if (st.includes("ausstehend") || st.includes("pending") || st.includes("platzhalter")) {
-    return { skip: true, ignore: false, reason: "" };
+    return { skip: true, ignore: false, reason: "PayPal pending row; skipped." };
   }
   if (!(st.includes("abgeschlossen") || st.includes("completed") || st.includes("erledigt") || st === "")) {
-    return { skip: true, ignore: false, reason: "" };
+    return { skip: true, ignore: false, reason: `PayPal status '${status || "unknown"}'; skipped.` };
   }
   return { skip: false, ignore: false, reason: "" };
 }
@@ -804,7 +812,7 @@ function normalizePayPal(headers, rows) {
     const net = money(row[i.net]);
     const gross = money(row[i.gross]);
     const movement = Number.isFinite(Number(net)) && net !== 0 ? net : gross;
-    if (!Number.isFinite(Number(movement)) || movement === 0) continue;
+    if (!Number.isFinite(Number(movement))) continue;
     const date = parseDateValue(row[i.date]);
     if (!date) continue;
     const fee = money(row[i.fee]);
@@ -1156,31 +1164,6 @@ function matchesInternalTransferDuplicate(tx, existing = []) {
   });
 }
 
-function referenceAccountTextMatches(tx = {}, sourceAccount = {}) {
-  const text = transferText(tx);
-  if (!text || !sourceAccount) return false;
-  return accountIdentifiers(sourceAccount).some(identifier => text.includes(identifier.normalized));
-}
-
-function matchesReferenceFundingDuplicate(tx, existing = [], accounts = []) {
-  const currency = String(tx.currency || "").toUpperCase();
-  const amount = amountKey(tx.amount);
-  return existing.some(item => {
-    if (!item.referenceFunding || item.referenceFundingRole !== "deduction") return false;
-    if (item.accountId !== tx.accountId) return false;
-    if (String(item.currency || "").toUpperCase() !== currency) return false;
-    if (amountKey(item.amount) !== amount) return false;
-    const sourceAccount = accounts.find(account => account.id === item.referenceSourceAccountId);
-    return referenceAccountTextMatches(tx, sourceAccount) || transferReferenceCompatible(tx, item);
-  });
-}
-
-function currentBalanceForAccount(account, rows = []) {
-  return Number(account?.openingBalance || 0) + rows
-    .filter(tx => tx.accountId === account?.id)
-    .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
-}
-
 function baseGeneratedFields(tx, groupId) {
   return {
     date: tx.date,
@@ -1219,57 +1202,6 @@ function withInternalTransferFields(tx, categorization, groupId) {
 
 function roundMoney(value) {
   return Math.round(Number(value || 0) * 100) / 100;
-}
-
-function buildReferenceFundingRows(tx, account, referenceAccount, acceptedRows, existingRows) {
-  if (!account?.referenceAccountId || !referenceAccount || Number(tx.amount || 0) >= 0 || tx.internalTransfer) return [];
-  const balanceBefore = currentBalanceForAccount(account, [...existingRows, ...acceptedRows]);
-  const requested = Math.abs(Number(tx.amount || 0));
-  const available = Math.max(0, Number(balanceBefore || 0));
-  const shortage = roundMoney(Math.max(0, requested - available));
-  if (!Number.isFinite(shortage) || shortage <= 0.004) return [];
-
-  const localDeduction = roundMoney(Math.max(0, requested - shortage));
-  const originalAmount = Number(tx.amount || 0);
-  tx.amount = -localDeduction;
-  tx.referenceFunding = true;
-  tx.referenceFundingRole = "source-split";
-  tx.referenceSourceAccountId = account.id;
-  tx.referenceAccountId = referenceAccount.id;
-  tx.referenceOriginalAmount = originalAmount;
-  tx.referenceCoveredAmount = shortage;
-  tx.reason = `${tx.reason || ""}${tx.reason ? " " : ""}Split with reference account ${referenceAccount.name}: ${account.name} covers ${localDeduction.toFixed(2)}, reference covers ${shortage.toFixed(2)}.`;
-
-  const groupId = `rf_${tx.id}`;
-  const deduction = {
-    ...tx,
-    id: `${tx.id}_ref_deduction`,
-    externalId: `${tx.externalId || tx.id}_ref_deduction`,
-    accountId: referenceAccount.id,
-    amount: -shortage,
-    description: `${account.name} reference remainder: ${tx.description}`,
-    counterparty: tx.counterparty || account.name,
-    source: "auto:reference-account",
-    internalTransfer: false,
-    internalTransferRole: "",
-    internalTransferGroupId: "",
-    transferSourceAccountId: "",
-    transferTargetAccountId: "",
-    transferMatchedAccountId: "",
-    matchedAccountId: "",
-    referenceFunding: true,
-    referenceFundingRole: "deduction",
-    referenceSourceAccountId: account.id,
-    referenceAccountId: referenceAccount.id,
-    referenceOriginalAmount: originalAmount,
-    referenceCoveredAmount: shortage,
-    fundingOriginalId: tx.id,
-    excludeFromStats: Boolean(tx.excludeFromStats),
-    note: tx.note || "Auto-created reference-account remainder. Later matching reference-account imports are filtered.",
-    reason: `Auto deduction from ${referenceAccount.name} for the part of ${account.name} that would go below zero.`,
-    referenceFundingGroupId: groupId
-  };
-  return [deduction];
 }
 
 function resolveImportAccountId(accountKey = "", currency = "", context = {}) {
@@ -1376,6 +1308,10 @@ export function buildImportPreview(parsed, mapping, context, existingTransaction
       skipped.push({ row, reason: "Missing date or amount" });
       continue;
     }
+    if (Math.abs(Number(tx.amount || 0)) < 0.005) {
+      skipped.push({ row, tx, reason: "Zero-amount transaction" });
+      continue;
+    }
     const signature = transactionSignature(tx);
     const exactIdDuplicate = [tx.id, tx.externalId].filter(Boolean).some(key => hasExactSignature(existingKeySignatures, key, signature) || hasExactSignature(previewKeySignatures, key, signature));
     if (existingSignatures.has(signature) || previewSignatures.has(signature) || exactIdDuplicate) {
@@ -1397,27 +1333,10 @@ export function buildImportPreview(parsed, mapping, context, existingTransaction
       skipped.push({ row, tx, reason: "Internal transfer counterpart already represented" });
       continue;
     }
-    if (matchesReferenceFundingDuplicate(tx, allKnownRows(), context.accounts || [])) {
-      skipped.push({ row, tx, reason: "Reference-account deduction already represented" });
-      continue;
-    }
-
-    const account = (context.accounts || []).find(item => item.id === tx.accountId);
-    const referenceAccount = account?.referenceAccountId ? (context.accounts || []).find(item => item.id === account.referenceAccountId) : null;
-    const referenceRows = buildReferenceFundingRows(tx, account, referenceAccount, transactions, existingTransactions);
 
     transactions.push(tx);
     previewSignatures.add(signature);
     reserveTransactionKeys(previewKeySignatures, tx, signature);
-    for (const generated of referenceRows) {
-      const generatedSignature = transactionSignature(generated);
-      if (!matchesReferenceFundingDuplicate(generated, allKnownRows(), context.accounts || []) && !previewSignatures.has(generatedSignature) && !existingSignatures.has(generatedSignature)) {
-        makeCollisionSafeId(generated, generatedSignature, existingKeySignatures, previewKeySignatures);
-        transactions.push(generated);
-        previewSignatures.add(generatedSignature);
-        reserveTransactionKeys(previewKeySignatures, generated, generatedSignature);
-      }
-    }
   }
   return { transactions, skipped, importBatchId };
 }

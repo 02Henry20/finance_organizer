@@ -244,7 +244,7 @@ export async function saveAccount(input) {
     transferAliases: Array.isArray(input.transferAliases)
       ? input.transferAliases.map(String).map(item => item.trim()).filter(Boolean)
       : String(input.transferAliases || "").split(",").map(item => item.trim()).filter(Boolean),
-    referenceAccountId: String(input.referenceAccountId || ""),
+    referenceAccountId: "",
     sort: Number(input.sort || Date.now())
   });
   return id;

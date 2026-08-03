@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#111827">
   <meta name="description" content="Capito is a private finance organizer for accounts, transactions, holdings, rules and analytics.">
   <title>Capito</title>
-  <meta name="capito-build" content="capito-v85-kakaopay-events">
+  <meta name="capito-build" content="capito-v86-import-paypal-netfirst">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16x16.png">
@@ -371,7 +371,6 @@
         <label class="field"><span>Account note</span><textarea id="account-note" rows="3" placeholder="Optional account note"></textarea></label>
         <div class="form-grid two"><label class="field"><span>IBAN</span><input id="account-iban" placeholder="Optional IBAN"></label><label class="field"><span>Account | depot number</span><input id="account-number" placeholder="Optional identifier"></label></div>
         <div class="form-grid two"><label class="field"><span>BIC</span><input id="account-bic" placeholder="Optional BIC"></label><label class="field"><span>Transfer aliases</span><input id="account-aliases" placeholder="broker, depot, own account"></label></div>
-        <label class="field"><span>Reference account</span><select id="account-reference-account"></select><small class="field-help">Used for accounts like PayPal. If a payment exceeds this account balance, Capito splits the payment: this account goes to zero and the remainder is deducted from the reference account.</small></label>
         <label class="check-row"><input id="account-hidden" type="checkbox"> Hide from app</label>
         <div class="button-row"><button class="primary-button" type="submit">Save account</button><button id="delete-account-button" class="danger-button" type="button" hidden>Delete account</button></div>
       </form>
