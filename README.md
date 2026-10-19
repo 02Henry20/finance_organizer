@@ -41,12 +41,18 @@ Supported transaction imports:
 Supported broker imports:
 
 - Smartbroker XLSX/CSV position exports.
-- Trade Republic CSV holdings/activity exports.
+- Trade Republic holdings snapshots. Activity exports import as transactions;
+  individual trades cannot replace a complete holdings snapshot.
 
 Capito previews imports before committing them. Exact duplicate and 0.00
 transactions are skipped automatically, suspicious rows are marked for review,
 and filtered rows can be added back manually when you intentionally want to keep
 them.
+
+Revolut imports keep each currency in its native ledger. Rows without a matching
+currency account stay filtered; create the currency account and preview again to
+include them. Manual spending-statistics choices persist through saves and rule
+reapplication.
 
 ## Rules, Categories, And Review
 
@@ -148,6 +154,20 @@ Then open:
 ```text
 http://127.0.0.1:8080/index.html
 ```
+
+Run the regression checks with Node.js 24 or later (no dependencies required):
+
+```powershell
+node --test tests/*.test.mjs
+```
+
+To include the private statement reconciliation check, set `REVOLUT_CSV` to the
+local CSV path before running the tests. The statement is not included in the repo.
+
+The suite exercises parsing, balances, calendar dates, holding valuations, mocked
+Firestore persistence and sync, hosting configuration, and offline caching.
+Live Firebase permissions and external quote providers still require deployment
+or integration checks against those services.
 
 ## Firebase Setup
 

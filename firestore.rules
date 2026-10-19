@@ -6,7 +6,7 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == userId;
     }
 
-    match /apps/food-tracker/users/{userId}/{document=**} {
+    match /apps/finance-organizer/users/{userId}/{document=**} {
       allow read, write: if isOwner(userId);
     }
   }

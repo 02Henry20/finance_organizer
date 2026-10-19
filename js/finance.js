@@ -1,5 +1,15 @@
 export const APP_NAME = "Capito";
-export const TODAY = () => new Date().toISOString().slice(0, 10);
+export const TODAY = () => localDateString(new Date());
+
+function localDateString(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function calendarDate(year, month, day) {
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  if (date.getUTCFullYear() !== Number(year) || date.getUTCMonth() !== Number(month) - 1 || date.getUTCDate() !== Number(day)) return "";
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
 
 export const VALID_CURRENCIES = Object.freeze(["EUR", "USD", "GBP", "CHF", "JPY", "KRW", "CNY", "CAD", "AUD", "NZD", "SEK", "NOK", "DKK", "PLN", "CZK", "HUF", "SGD", "HKD", "INR", "VND", "THB", "MXN", "BRL", "ZAR"]);
 export const CATEGORY_COLORS = Object.freeze(["#19C37D", "#3B82F6", "#8B5CF6", "#F59E0B", "#EF4444", "#06B6D4", "#EC4899", "#84CC16", "#F97316", "#14B8A6", "#6366F1", "#A855F7", "#EAB308", "#22C55E", "#64748B", "#0EA5E9"]);
@@ -218,7 +228,8 @@ export function parseMoney(value) {
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
   let s = String(value ?? "").trim();
   if (!s) return null;
-  s = s.replace(/\s/g, "").replace(/[€$£₩¥]/g, "");
+  s = s.replace(/[−–]/g, "-").replace(/\s/g, "").replace(/[€$£₩¥]/g, "");
+  if (!/\d/.test(s)) return null;
   let sign = 1;
   if (/^\(.*\)$/.test(s)) {
     sign = -1;
@@ -242,7 +253,7 @@ export function parseMoney(value) {
 }
 
 export function parseDateValue(value) {
-  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? "" : localDateString(value);
   if (typeof value === "number" && Number.isFinite(value)) {
     const epoch = new Date(Date.UTC(1899, 11, 30));
     epoch.setUTCDate(epoch.getUTCDate() + Math.floor(value));
@@ -250,7 +261,8 @@ export function parseDateValue(value) {
   }
   const raw = String(value ?? "").trim();
   if (!raw) return "";
-  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|[T\s])/);
+  if (iso) return calendarDate(iso[1], iso[2], iso[3]);
   // Excel serials often arrive as plain numeric strings from XLSX cells.
   if (/^\d{5}(?:\.\d+)?$/.test(raw)) {
     const serial = Number(raw);
@@ -260,15 +272,23 @@ export function parseDateValue(value) {
       return epoch.toISOString().slice(0, 10);
     }
   }
-  const german = raw.match(/^(\d{1,2})[.\/\-](\d{1,2})[.\/\-](\d{2,4})$/);
+  const german = raw.match(/^(\d{1,2})[.\/\-](\d{1,2})[.\/\-](\d{2}|\d{4})(?:$|\s+\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?)/);
   if (german) {
     const day = german[1].padStart(2, "0");
     const month = german[2].padStart(2, "0");
     const year = german[3].length === 2 ? `20${german[3]}` : german[3];
-    return `${year}-${month}-${day}`;
+    return calendarDate(year, month, day);
+  }
+  // Statement dates are calendar days, not instants in the browser's timezone.
+  const english = raw.match(/^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})(?:\s|$)/);
+  if (english) {
+    const month = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"].indexOf(english[1].slice(0, 3).toLowerCase()) + 1;
+    const day = Number(english[2]);
+    const year = Number(english[3]);
+    return calendarDate(year, month, day);
   }
   const parsed = new Date(raw);
-  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
+  return Number.isNaN(parsed.getTime()) ? "" : localDateString(parsed);
 }
 
 export function formatCurrency(value, currency = "EUR", locale = undefined) {
@@ -508,7 +528,7 @@ export function monthKey(dateString) {
 }
 
 export function shouldIgnoreTransactionInStats(tx = {}) {
-  return Boolean(tx.excludeFromStats || tx.ignoreFromStats || tx.statsIgnored);
+  return Boolean(tx.statsExclusionOverride ?? tx.excludeFromStats ?? tx.ignoreFromStats ?? tx.statsIgnored);
 }
 
 
@@ -616,7 +636,7 @@ export function buildMonthlySeries(transactions, categories, settings, monthsBac
   const now = new Date(`${TODAY()}T00:00:00`);
   const months = [];
   for (let i = monthsBack - 1; i >= 0; i -= 1) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const d = new Date(Date.UTC(now.getFullYear(), now.getMonth() - i, 1));
     months.push(d.toISOString().slice(0, 7));
   }
   const categoryMap = new Map(categories.map(cat => [cat.id, cat]));
@@ -659,7 +679,7 @@ export function buildCategorySpend(transactions, categories, settings, period = 
 export function calculateAccountBalance(account, transactions, settings, untilDate = "") {
   const openingBalanceDate = String(account.openingBalanceDate || "").slice(0, 10);
   const includeOpeningBalance = !untilDate || !openingBalanceDate || openingBalanceDate <= String(untilDate).slice(0, 10);
-  const startDate = openingBalanceDate && includeOpeningBalance ? openingBalanceDate : "";
+  const startDate = openingBalanceDate;
   const own = transactions.filter(tx => {
     if (tx.accountId !== account.id || tx.deleted) return false;
     const txDate = String(tx.date || "").slice(0, 10);
@@ -667,7 +687,8 @@ export function calculateAccountBalance(account, transactions, settings, untilDa
     if (startDate && txDate < startDate) return false;
     return true;
   });
-  const current = (includeOpeningBalance ? Number(account.openingBalance || 0) : 0) + own.reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+  const nativeSettings = { ...settings, primaryCurrency: account.currency || settings.primaryCurrency || "EUR" };
+  const current = (includeOpeningBalance ? Number(account.openingBalance || 0) : 0) + own.reduce((sum, tx) => sum + convertCurrency(tx.amount, tx.currency || account.currency, nativeSettings), 0);
   const signed = current * accountSign(account.type);
   return {
     raw: current,
@@ -676,8 +697,12 @@ export function calculateAccountBalance(account, transactions, settings, untilDa
   };
 }
 
+export function assetPrice(asset) {
+  return Number(asset.provider === "manual" ? (asset.manualPrice ?? asset.lastPrice ?? 0) : (asset.lastPrice ?? asset.manualPrice ?? 0));
+}
+
 function assetMarketValueConverted(asset, settings) {
-  const price = Number(asset.lastPrice ?? asset.manualPrice ?? 0);
+  const price = assetPrice(asset);
   const quantity = Number(asset.quantity || 0);
   return convertCurrency(price * quantity, asset.currency, settings);
 }
@@ -758,7 +783,7 @@ function isoDateFromMs(ms) {
 
 function assetBaselineValue(asset) {
   const quantity = Number(asset.quantity || 0);
-  const currentPrice = Number(asset.lastPrice ?? asset.manualPrice ?? 0);
+  const currentPrice = assetPrice(asset);
   const currentValue = currentPrice * quantity;
   const explicit = Number(asset.startingValue || 0);
   const costBasis = Number(asset.costBasis || 0);
@@ -770,7 +795,7 @@ function assetBaselineValue(asset) {
 }
 
 function assetSnapshotValue(asset, settings, asOfDate = "") {
-  const price = Number(asset.lastPrice ?? asset.manualPrice ?? 0);
+  const price = assetPrice(asset);
   const quantity = Number(asset.quantity || 0);
   const currentValue = price * quantity;
   if (!asOfDate) return convertCurrency(currentValue, asset.currency, settings);

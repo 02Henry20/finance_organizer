@@ -5,6 +5,11 @@
       "firebase.json",
       "firestore.rules",
       "README.md",
+      "AGENTS.md",
+      "BUGFIX_REVIEW.md",
+      "test-data/**",
+      "tests/**",
+      "graphify-out/**",
       "**/.*",
       "**/node_modules/**"
     ],

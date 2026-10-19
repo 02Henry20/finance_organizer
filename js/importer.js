@@ -175,7 +175,7 @@ function detectBankFormat(headers) {
     return { id: "revolut_consolidated", label: "Revolut consolidated statement" };
   }
   if (
-    has("Datum") && hasAny("Transaktionscode", "Transaction ID") && hasAny("Währung", "Currency") &&
+    hasAny("Datum", "Date") && hasAny("Transaktionscode", "Transaction ID") && hasAny("Währung", "Currency") &&
     hasAny("Netto", "Brutto", "Net", "Gross") && hasAny("Auswirkung auf Guthaben", "Balance Impact", "Status")
   ) {
     return { id: "paypal", label: "PayPal CSV" };
@@ -407,6 +407,13 @@ function firstNativeMoney(value, currency = "") {
     const match = text.match(/([+-]?\s*(?:€|EUR|â‚¬)\s*\d[\d,.]*|[+-]?\s*\d[\d,.]*\s*(?:€|EUR|â‚¬))/i);
     if (match) return money(match[1]);
   }
+  // Keep the sign before a currency symbol (e.g. -£6.67), not just the digits.
+  const symbol = { GBP: "£", USD: "$", CHF: "CHF", JPY: "¥", KRW: "₩" }[preferred];
+  if (symbol) {
+    const escapedSymbol = symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const match = text.match(new RegExp(`[+-]?\\s*${escapedSymbol}\\s*[+-]?\\s*\\d[\\d,.]*`));
+    if (match) return parseNativeNumber(match[0], preferred);
+  }
   const generic = text.match(/[+-]?\s*\d[\d,.]*/);
   return generic ? parseNativeNumber(generic[0], preferred) : money(text);
 }
@@ -561,7 +568,9 @@ function normalizeRevolut(headers, rows) {
   const allowedRows = rows.filter(row => ["COMPLETED", "PENDING"].includes(String(row[i.state] || "").toUpperCase()));
 
   const openingByProduct = new Map();
-  for (const row of allowedRows.filter(row => String(row[i.state] || "").toUpperCase() === "COMPLETED")) {
+  const completedRows = allowedRows.filter(row => String(row[i.state] || "").toUpperCase() === "COMPLETED")
+    .sort((a, b) => dateSortKey(a[i.started] || a[i.completed]) - dateSortKey(b[i.started] || b[i.completed]));
+  for (const row of completedRows) {
     const product = String(row[i.product] || "Current");
     const currency = String(row[i.currency] || "EUR").toUpperCase();
     const key = `revolut:${product}:${currency}`;
@@ -570,7 +579,8 @@ function normalizeRevolut(headers, rows) {
     const netAmount = money(row[i.amount]) - money(row[i.fee]);
     openingByProduct.set(key, balance - netAmount);
   }
-  const openingBalanceHint = [...openingByProduct.values()].reduce((sum, value) => sum + (Number.isFinite(Number(value)) ? Number(value) : 0), 0);
+  // A scalar hint cannot represent several native-currency ledgers.
+  const openingBalanceHint = openingByProduct.size === 1 ? [...openingByProduct.values()][0] : null;
 
   const outRows = allowedRows.flatMap(row => {
     const baseAmount = money(row[i.amount]);
@@ -654,6 +664,10 @@ function normalizeRevolutConsolidatedRows(rows, filename = "") {
     const currency = currencyFromAccountLine(accountLine, "EUR");
     const product = productFromAccountLine(accountLine);
     const accountKey = `revolut:${product}:${currency}`;
+    // Foreign currency sections repeat each money column in EUR. Use the first
+    // (native) column for each field, rather than fixed EUR-section positions.
+    const balanceIndex = header.findIndex(value => value === "Balance");
+    const feeIndex = header.findIndex(value => value === "Fees");
 
     for (let r = h + 1; r < rows.length; r += 1) {
       const row = rows[r];
@@ -671,8 +685,8 @@ function normalizeRevolutConsolidatedRows(rows, filename = "") {
         const rawMovement = row[3];
         const movement = firstNativeMoney(rawMovement, currency);
         if (!Number.isFinite(Number(movement))) continue;
-        const balance = firstNativeMoney(row[4], currency);
-        const feeInfo = Math.abs(firstNativeMoney(row[7], currency));
+        const balance = firstNativeMoney(row[balanceIndex], currency);
+        const feeInfo = Math.abs(firstNativeMoney(row[feeIndex], currency));
         const neutral = isRevolutNeutral(category, descriptionText);
         const note = [
           accountKey,
@@ -689,7 +703,7 @@ function normalizeRevolutConsolidatedRows(rows, filename = "") {
           counterparty: descriptionText || "Revolut",
           description: [accountLine, category, descriptionText, feeInfo ? `Fee ${feeInfo} ${currency} informational` : ""].filter(Boolean).join(" · "),
           balance: Number.isFinite(Number(balance)) ? balance : "",
-          externalId: [`revolut-consolidated-current`, accountKey, date, descriptionText, rawMovement, row[4]].join("|"),
+          externalId: [`revolut-consolidated-current`, accountKey, date, descriptionText, rawMovement, row[balanceIndex]].join("|"),
           excludeFromStats: neutral,
           note,
           accountKey,
@@ -778,10 +792,10 @@ function isPayPalIgnoredMovement(type = "", status = "", impact = "", descriptio
 function normalizePayPal(headers, rows) {
   const idx = headerIndex(headers);
   const i = {
-    date: idx("Datum"),
-    time: idx("Uhrzeit"),
+    date: idx(["Datum", "Date"]),
+    time: idx(["Uhrzeit", "Time"]),
     name: idx("Name"),
-    type: idx("Typ"),
+    type: idx(["Typ", "Type"]),
     status: idx("Status"),
     currency: idx(["Währung", "Waehrung", "Currency"]),
     gross: idx(["Brutto", "Gross"]),
@@ -809,13 +823,13 @@ function normalizePayPal(headers, rows) {
     const ignored = isPayPalIgnoredMovement(type, status, impact, [name, subject, item].join(" "));
     if (ignored.skip) continue;
     const currency = String(row[i.currency] || "EUR").toUpperCase().slice(0, 3) || "EUR";
-    const net = money(row[i.net]);
-    const gross = money(row[i.gross]);
-    const movement = Number.isFinite(Number(net)) && net !== 0 ? net : gross;
-    if (!Number.isFinite(Number(movement))) continue;
+    const net = parseMoney(row[i.net]);
+    const gross = parseMoney(row[i.gross]);
+    const fee = money(row[i.fee]);
+    const movement = net ?? (gross == null ? null : gross + fee);
+    if (movement == null) continue;
     const date = parseDateValue(row[i.date]);
     if (!date) continue;
-    const fee = money(row[i.fee]);
     const counterparty = name || cleanText(row[i.recipient]) || cleanText(row[i.sender]) || "PayPal";
     const note = [
       type,
@@ -1038,7 +1052,10 @@ function transactionSignature(tx) {
     Number(tx.amount || 0).toFixed(2),
     String(tx.currency || "").toUpperCase(),
     normalizeText(tx.description).slice(0, 160),
-    normalizeText(tx.counterparty).slice(0, 120)
+    normalizeText(tx.counterparty).slice(0, 120),
+    // Distinct statement entries can share day, merchant and amount. Revolut's
+    // native row identity includes the running balance; retain it for deduping.
+    /^revolut-consolidated-/.test(tx.externalId || "") ? tx.externalId : ""
   ].join("|");
 }
 
@@ -1205,11 +1222,16 @@ function roundMoney(value) {
 }
 
 function resolveImportAccountId(accountKey = "", currency = "", context = {}) {
-  const fallback = context.accountId;
+  const wantedCurrency = String(currency || "").toUpperCase();
+  const allAccounts = context.accounts || [];
+  const sameCurrency = account => String(account.currency || "").toUpperCase() === wantedCurrency;
+  const accounts = allAccounts.filter(sameCurrency);
+  const selected = allAccounts.find(account => account.id === context.accountId);
+  const fallback = selected
+    ? (sameCurrency(selected) ? selected.id : "")
+    : (!context.currency || String(context.currency).toUpperCase() === wantedCurrency ? context.accountId : "");
   const key = normalizeIdentifier(accountKey);
   if (!key) return fallback;
-  const wantedCurrency = String(currency || "").toUpperCase();
-  const accounts = context.accounts || [];
   const exact = accounts.find(account => normalizeIdentifier(account.id) === key || normalizeIdentifier(account.name) === key);
   if (exact) return exact.id;
   const scored = accounts.map(account => {
@@ -1306,6 +1328,10 @@ export function buildImportPreview(parsed, mapping, context, existingTransaction
     const tx = rowToTransaction(row, mapping, { ...context, importBatchId, formatLabel: parsed.formatLabel });
     if (!tx) {
       skipped.push({ row, reason: "Missing date or amount" });
+      continue;
+    }
+    if (!tx.accountId) {
+      skipped.push({ row, reason: `No matching ${tx.currency} account. Create or select an account in ${tx.currency} and preview again.` });
       continue;
     }
     if (Math.abs(Number(tx.amount || 0)) < 0.005) {
@@ -1517,7 +1543,7 @@ function excelSerialToIso(value) {
 
 function smartbrokerScaledDecimal(value, { allowScale = true } = {}) {
   const parsed = parseMoney(value);
-  if (!Number.isFinite(Number(parsed))) return null;
+  if (parsed == null) return null;
   const number = Number(parsed);
   const raw = String(value ?? "").trim();
   const looksIntegerLike = /^-?\d+$/.test(raw) || (typeof value === "number" && Number.isInteger(value));
@@ -1527,7 +1553,7 @@ function smartbrokerScaledDecimal(value, { allowScale = true } = {}) {
 
 function smartbrokerScaledQuantity(value, price, marketValue) {
   const parsed = parseMoney(value);
-  if (!Number.isFinite(Number(parsed))) return null;
+  if (parsed == null) return null;
   const quantity = Number(parsed);
   const raw = String(value ?? "").trim();
   const looksIntegerLike = /^\d+$/.test(raw) || (typeof value === "number" && Number.isInteger(value));
@@ -1549,10 +1575,7 @@ function detectBrokerFormat(headers) {
   if (normalized.includes("isin") && normalized.includes("wkn") && normalized.includes("stucke") && normalized.includes("marktkurs pro stuck")) {
     return { id: "smartbroker", label: "Smartbroker positions" };
   }
-  if (normalized.includes("asset class") || normalized.includes("asset_class") || (normalized.includes("asset class") && normalized.includes("shares"))) {
-    return { id: "trade_republic", label: "Trade Republic positions" };
-  }
-  if (normalized.includes("asset_class") && normalized.includes("shares") && normalized.includes("symbol")) {
+  if (normalized.includes("asset class") && normalized.includes("shares") && normalized.includes("symbol")) {
     return { id: "trade_republic", label: "Trade Republic positions" };
   }
   return { id: "generic", label: "Generic positions" };
@@ -1570,10 +1593,13 @@ export async function parseBrokerPositionsFile(file) {
   const rows = allRows.slice(headerRowIndex + 1);
   const format = detectBrokerFormat(headers);
   const idx = headerIndex(headers);
+  if (idx("transaction_id") != null && idx("amount") != null && idx("type") != null) {
+    throw new Error("Activity rows contain changes in shares, not complete holdings. Import this file as transactions and use a holdings snapshot for positions.");
+  }
   const i = {
-    date: idx("DATUM"), isin: idx("ISIN"), wkn: idx("WKN"), symbol: idx(["KÜRZEL", "KUERZEL", "Kürzel"]), name1: idx("NAME 1"), name2: idx("NAME 2"),
-    assetClass: idx("ASSETKLASSE"), quantity: idx(["STÜCKE", "STUECKE", "Stücke"]), buyPrice: idx(["EINSTANDSKURS PRO STÜCK", "EINSTANDSKURS PRO STUECK"]),
-    price: idx(["MARKTKURS PRO STÜCK", "MARKTKURS PRO STUECK"]), costBasis: idx("EINSTANDSWERT"), marketValue: idx("MARKTWERT"), currency: idx(["WÄHRUNG", "WAEHRUNG"]), exchange: idx("BÖRSE")
+    date: idx(["DATUM", "Date"]), isin: idx("ISIN"), wkn: idx("WKN"), symbol: idx(["KÜRZEL", "KUERZEL", "Symbol", "Ticker"]), name1: idx(["NAME 1", "Name"]), name2: idx("NAME 2"),
+    assetClass: idx(["ASSETKLASSE", "Asset Class"]), quantity: idx(["STÜCKE", "STUECKE", "Quantity", "Shares"]), buyPrice: idx(["EINSTANDSKURS PRO STÜCK", "EINSTANDSKURS PRO STUECK", "Buy Price"]),
+    price: idx(["MARKTKURS PRO STÜCK", "MARKTKURS PRO STUECK", "Price"]), costBasis: idx(["EINSTANDSWERT", "Cost Basis"]), marketValue: idx(["MARKTWERT", "Market Value"]), currency: idx(["WÄHRUNG", "WAEHRUNG", "Currency"]), exchange: idx(["BÖRSE", "Exchange"])
   };
   if (format.id === "trade_republic") {
     const ti = {
@@ -1636,16 +1662,16 @@ export async function parseBrokerPositionsFile(file) {
       skipped.push({ row, reason: "Missing symbol, ISIN and WKN" });
       continue;
     }
-    if (!Number.isFinite(Number(quantity))) {
+    if (quantity == null || quantity === 0) {
       skipped.push({ row, reason: "Missing quantity" });
       continue;
     }
     const name = [row[i.name1], row[i.name2]].filter(Boolean).join(" · ").trim() || symbol || isin || wkn;
-    const marketPrice = smartbrokerScaledDecimal(row[i.price]);
-    const buyPrice = smartbrokerScaledDecimal(row[i.buyPrice]);
+    const marketPrice = smartbrokerScaledDecimal(row[i.price], { allowScale: format.id === "smartbroker" });
+    const buyPrice = smartbrokerScaledDecimal(row[i.buyPrice], { allowScale: format.id === "smartbroker" });
     const costBasis = parseMoney(row[i.costBasis]) || 0;
     const marketValue = parseMoney(row[i.marketValue]) || 0;
-    const scaledQuantity = smartbrokerScaledQuantity(row[i.quantity], marketPrice, marketValue);
+    const scaledQuantity = format.id === "smartbroker" ? smartbrokerScaledQuantity(row[i.quantity], marketPrice, marketValue) : quantity;
     positions.push({
       symbol,
       name,

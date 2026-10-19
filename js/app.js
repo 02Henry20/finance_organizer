@@ -41,7 +41,9 @@ import {
   DEFAULT_CATEGORY_COLOR,
   TODAY,
   VALID_CURRENCIES,
+  assetPrice,
   buildCategorySpend,
+  calculateAccountBalance,
   calculateMonthlySnapshot,
   calculatePortfolio,
   calculatePortfolioSnapshot,
@@ -226,6 +228,8 @@ async function bootAuth() {
 
   onAuthStateChanged(auth, async user => {
     if (!user) {
+      if (quoteRefreshTimer) clearInterval(quoteRefreshTimer);
+      quoteRefreshTimer = null;
       disconnectUser();
       elements.authShell.hidden = false;
       elements.appShell.hidden = true;
@@ -237,9 +241,10 @@ async function bootAuth() {
     elements.userChip.textContent = user.email || user.uid;
     try {
       await connectUser(user);
+      if (state.user?.uid !== user.uid) return;
       navigateTo("overview");
-      setTimeout(() => maybeRefreshFxRates(), 1200);
-      setTimeout(() => maybeRefreshQuotes().catch(error => console.warn("Initial quote refresh skipped", error)), 1800);
+      setTimeout(() => { if (state.user?.uid === user.uid) maybeRefreshFxRates(); }, 1200);
+      setTimeout(() => { if (state.user?.uid === user.uid) maybeRefreshQuotes().catch(error => console.warn("Initial quote refresh skipped", error)); }, 1800);
       setupAutoRefreshTimers();
     } catch (error) {
       toast("Firebase synchronization failed", firebaseErrorMessage(error), "error");
@@ -702,7 +707,7 @@ function holdingsForAccount(accountId) {
 }
 
 function assetMarketValue(asset) {
-  const price = Number(asset.lastPrice ?? asset.manualPrice ?? 0);
+  const price = assetPrice(asset);
   return price * Number(asset.quantity || 0);
 }
 
@@ -1287,9 +1292,7 @@ function comparisonDateFromSettings() {
   const mode = state.settings.portfolioComparisonMode || "rolling";
   if (mode === "date" && state.settings.portfolioComparisonDate) return state.settings.portfolioComparisonDate;
   const days = Math.max(1, Number(state.settings.portfolioComparisonDays || 30));
-  const d = new Date(`${TODAY()}T00:00:00`);
-  d.setDate(d.getDate() - days);
-  return d.toISOString().slice(0, 10);
+  return addDaysIso(TODAY(), -days);
 }
 
 function comparisonLabel(compareDate) {
@@ -2185,7 +2188,6 @@ function syncTransactionReviewControl() {
   const ignore = $("#transaction-ignore-stats");
   const cat = state.categories.find(item => item.id === category);
   if (ignore && cat?.id === "cash") ignore.checked = false;
-  else if (ignore && cat?.type === "transfer") ignore.checked = true;
 }
 
 function transactionDraftForCategorization() {
@@ -2471,8 +2473,9 @@ async function runAssetIsinLookup() {
 function positionDelta(asset) {
   const currentValue = assetMarketValue(asset);
   if (positionsPeriod === "today") {
+    if (asset.lastChangePercent == null) return { amount: null, percent: null };
     const pct = Number(asset.lastChangePercent);
-    if (!Number.isFinite(pct)) return { amount: null, percent: null };
+    if (!Number.isFinite(pct) || pct <= -100) return { amount: null, percent: null };
     const previousValue = currentValue / (1 + pct / 100);
     return { amount: currentValue - previousValue, percent: pct };
   }
@@ -2517,7 +2520,7 @@ function renderPositionsModal() {
     return;
   }
   for (const asset of pagedRows(holdings, positionsPage, PAGE_SIZES.positions)) {
-    const price = Number(asset.lastPrice ?? asset.manualPrice ?? 0);
+    const price = assetPrice(asset);
     const value = assetMarketValue(asset);
     const currency = asset.currency || account?.currency || selectedCurrency();
     const delta = positionDelta(asset);
@@ -2660,7 +2663,8 @@ function buildCategorizedTransaction(tx, rulesOverride = state.rules, { reapplyM
     transferSourceAccountId: result.transferSourceAccountId || "",
     transferTargetAccountId: result.transferTargetAccountId || "",
     internalTransfer: Boolean(result.internalTransfer),
-    excludeFromStats: nextIsCash ? false : Boolean(result.excludeFromStats && nextIsTransfer)
+    statsExclusionOverride: nextIsCash ? false : (tx.statsExclusionOverride ?? null),
+    excludeFromStats: nextIsCash ? false : (tx.statsExclusionOverride ?? Boolean(result.excludeFromStats && nextIsTransfer))
   }, lostPreviousCategory ? null : result);
 }
 
@@ -2745,10 +2749,12 @@ function openRuleModal(id = "") {
 }
 
 async function refreshAsset(id) {
+  const userId = state.user?.uid;
   const asset = state.assets.find(item => item.id === id);
   if (!asset) return;
   try {
     const quote = await fetchQuote(asset, state.settings);
+    if (state.user?.uid !== userId) return;
     await updateAssetQuote(id, quote);
     toast("Price updated", `${quote.symbol || asset.symbol || asset.name}: ${formatCurrency(quote.price, quote.currency || asset.currency)} · pulled ${formatDateTime(quote.pulledAt || quote.time)}`);
   } catch (error) {
@@ -2762,6 +2768,7 @@ async function refreshAsset(id) {
 }
 
 async function refreshAllAssets({ silent = false, accountId = "" } = {}) {
+  const userId = state.user?.uid;
   const firstBroker = state.accounts.find(account => !account.hidden && account.type === "broker")?.id || "";
   const visible = state.assets.filter(asset => !asset.hidden && (!accountId || (asset.accountId || firstBroker) === accountId) && (asset.provider || state.settings.marketProvider) !== "manual");
   if (!visible.length) {
@@ -2773,6 +2780,7 @@ async function refreshAllAssets({ silent = false, accountId = "" } = {}) {
   for (const asset of visible) {
     try {
       const quote = await fetchQuote(asset, state.settings);
+      if (state.user?.uid !== userId) return { ok, failed };
       await updateAssetQuote(asset.id, quote);
       ok += 1;
     } catch (error) {
@@ -2786,7 +2794,7 @@ async function refreshAllAssets({ silent = false, accountId = "" } = {}) {
 }
 
 async function maybeRefreshQuotes() {
-  if (!navigator.onLine) return;
+  if (!state.user || !navigator.onLine || state.settings.autoRefreshQuotes === "off") return;
   const intervalMinutes = Number(state.settings.quoteRefreshIntervalMinutes ?? 720);
   if (!Number.isFinite(intervalMinutes) || intervalMinutes <= 0) return;
   const visible = state.assets.filter(asset => !asset.hidden && (asset.provider || state.settings.marketProvider) !== "manual");
@@ -2813,7 +2821,7 @@ function setupAutoRefreshTimers() {
 }
 
 async function maybeRefreshFxRates() {
-  if (!navigator.onLine || state.settings.autoRefreshFx === "off") return;
+  if (!state.user || !navigator.onLine || state.settings.autoRefreshFx === "off") return;
   const intervalMinutes = Number(state.settings.quoteRefreshIntervalMinutes ?? 720);
   const maxAgeMs = Math.max(15, intervalMinutes) * 60 * 1000;
   const last = state.settings.fxLastUpdatedAt ? new Date(state.settings.fxLastUpdatedAt).getTime() : 0;
@@ -3024,6 +3032,7 @@ function renderImportPreview() {
     const tx = activePreview?.transactions?.find(item => (item.id || item.externalId) === id);
     if (!tx) return;
     tx.excludeFromStats = event.currentTarget.value === "true";
+    tx.statsExclusionOverride = tx.excludeFromStats;
     if (tx.excludeFromStats) {
       tx.reason = `${tx.reason || ""}${tx.reason ? " " : ""}Manually ignored for spending statistics.`.trim();
     }
@@ -3559,7 +3568,10 @@ function bulkEditDialog(count, { title = "Group edit", allowAccount = true } = {
       if (counterparty) patch.counterparty = counterparty === "__CLEAR__" ? "" : counterparty;
       if (note) patch.note = note === "__CLEAR__" ? "" : note;
       if (review !== "") patch.review = review === "true";
-      if (ignore !== "") patch.excludeFromStats = ignore === "true";
+      if (ignore !== "") {
+        patch.excludeFromStats = ignore === "true";
+        patch.statsExclusionOverride = patch.excludeFromStats;
+      }
       if (rulesLocked !== "") patch.rulesLocked = rulesLocked === "true";
       finish(patch);
     });
@@ -3801,15 +3813,11 @@ function createSpendingEventDialog(rows = []) {
 }
 
 function accountBalanceFromStoredTransactions(account) {
-  return Number(account?.openingBalance || 0) + state.transactions
-    .filter(tx => tx.accountId === account?.id)
-    .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+  return calculateAccountBalance(account, state.transactions, state.settings).raw;
 }
 
 function accountImportDelta(account, rows = []) {
-  return rows
-    .filter(tx => tx.accountId === account?.id)
-    .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+  return calculateAccountBalance(account, [...state.transactions, ...rows], state.settings).raw - accountBalanceFromStoredTransactions(account);
 }
 
 function currencyFromLedgerHint(product = "") {
@@ -4409,6 +4417,7 @@ function wireEvents() {
         note: $("#transaction-note").value,
         review: $("#transaction-review").checked,
         excludeFromStats: selectedCategoryId === "cash" ? false : Boolean($("#transaction-ignore-stats")?.checked),
+        statsExclusionOverride: selectedCategoryId === "cash" ? false : Boolean($("#transaction-ignore-stats")?.checked),
         rulesLocked: Boolean($("#transaction-rules-locked")?.checked),
         source: originalTransactionId ? "manual-edit" : "manual",
         // Keep spending-event membership when editing a transaction in place.
@@ -4457,6 +4466,7 @@ function wireEvents() {
         Object.assign(input, enrichTransactionNoteForAutomation(input, null));
       }
       if (!input.categoryId) input.categoryId = "misc";
+      input.excludeFromStats = input.statsExclusionOverride;
       if (input.review && !input.reason) {
         input.reason = originalTransactionId ? "Marked under review manually during edit." : "Marked under review manually.";
         Object.assign(input, enrichTransactionNoteForAutomation(input, null));

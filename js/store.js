@@ -20,6 +20,8 @@ import {
   DEFAULT_CATEGORIES,
   DEFAULT_RULES,
   DEFAULT_SETTINGS,
+  parseDateValue,
+  shouldIgnoreTransactionInStats,
   sortByDateDesc,
   uid
 } from "./finance.js";
@@ -42,6 +44,13 @@ const listeners = new Set();
 let unsubscribers = [];
 let hasSeeded = false;
 let snapshotsReady = new Set();
+const snapshotStates = new Map();
+const snapshotErrors = new Map();
+let connectionGeneration = 0;
+
+function assertConnection(generation) {
+  if (generation !== connectionGeneration) throw new Error("The signed-in workspace changed. Please retry the operation.");
+}
 
 export function subscribe(listener) {
   listeners.add(listener);
@@ -64,15 +73,23 @@ function browserOnline() {
 
 function updateSyncFromSnapshot(name, snapshot) {
   snapshotsReady.add(name);
-  const pending = snapshot.metadata?.hasPendingWrites || false;
-  const fromCache = snapshot.metadata?.fromCache || false;
+  snapshotErrors.delete(name);
+  snapshotStates.set(name, { pending: Boolean(snapshot.metadata?.hasPendingWrites), fromCache: Boolean(snapshot.metadata?.fromCache) });
+  const pending = [...snapshotStates.values()].some(item => item.pending);
+  const fromCache = [...snapshotStates.values()].some(item => item.fromCache);
   state.sync.pending = pending;
   if (!browserOnline()) {
     state.sync.status = "offline";
     state.sync.detail = "Offline cache";
+  } else if (snapshotErrors.size) {
+    state.sync.status = "error";
+    state.sync.detail = [...snapshotErrors.values()].join(" | ");
   } else if (pending) {
     state.sync.status = "loading";
     state.sync.detail = "Saving local changes";
+  } else if (snapshotsReady.size < 6 || fromCache) {
+    state.sync.status = "loading";
+    state.sync.detail = fromCache ? "Checking cached data with Firebase" : "Loading your workspace";
   } else {
     state.sync.status = "synced";
     state.sync.detail = "";
@@ -98,7 +115,7 @@ function userDoc(collectionName, id) {
 
 function normalizeDoc(snapshot) {
   const data = snapshot.data() || {};
-  return { id: snapshot.id, ...data, pending: snapshot.metadata?.hasPendingWrites || false };
+  return { ...data, id: snapshot.id, pending: snapshot.metadata?.hasPendingWrites || false };
 }
 
 function normalizeArray(name, docs) {
@@ -150,10 +167,20 @@ function mergeSettings(cloud = {}) {
 async function ensureDefaults() {
   if (!state.user?.uid || hasSeeded) return;
   hasSeeded = true;
-
-  const settingsSnap = await getDoc(userDoc("settings", "preferences"));
+  if (!browserOnline()) return;
+  const generation = connectionGeneration;
+  const preferences = userDoc("settings", "preferences");
+  let settingsSnap;
+  try {
+    settingsSnap = await getDocFromServer(preferences);
+  } catch (error) {
+    // A missing cache entry is not proof that cloud preferences do not exist.
+    if (error.code === "unavailable" || !browserOnline()) return;
+    throw error;
+  }
+  if (generation !== connectionGeneration) return;
   if (!settingsSnap.exists()) {
-    await setDoc(userDoc("settings", "preferences"), {
+    await setDoc(preferences, {
       ...DEFAULT_SETTINGS,
       marketApiKeyLocalOnly: "",
       fxRates: { ...DEFAULT_SETTINGS.fxRates },
@@ -165,6 +192,7 @@ async function ensureDefaults() {
 
 export async function connectUser(user) {
   disconnectUser();
+  const generation = connectionGeneration;
   state.user = user;
   state.accounts = [];
   state.categories = [];
@@ -177,11 +205,15 @@ export async function connectUser(user) {
   setSync("loading", "Preparing your workspace");
 
   await ensureDefaults();
+  if (generation !== connectionGeneration) return;
   const attachCollection = (name, setter) => {
     const unsubscribe = onSnapshot(query(userCollection(name)), { includeMetadataChanges: true }, snapshot => {
+      if (generation !== connectionGeneration) return;
       setter(normalizeArray(name, snapshot.docs));
       updateSyncFromSnapshot(name, snapshot);
     }, error => {
+      if (generation !== connectionGeneration) return;
+      snapshotErrors.set(name, error.message || "Firebase listener failed");
       setSync("error", error.message || "Firebase listener failed");
     });
     unsubscribers.push(unsubscribe);
@@ -194,17 +226,25 @@ export async function connectUser(user) {
   attachCollection("assets", value => { state.assets = value; });
 
   const settingsUnsub = onSnapshot(userDoc("settings", "preferences"), { includeMetadataChanges: true }, snapshot => {
+    if (generation !== connectionGeneration) return;
     state.settings = mergeSettings(snapshot.exists() ? snapshot.data() : {});
     updateSyncFromSnapshot("settings", snapshot);
-  }, error => setSync("error", error.message || "Settings listener failed"));
+  }, error => {
+    if (generation !== connectionGeneration) return;
+    snapshotErrors.set("settings", error.message || "Settings listener failed");
+    setSync("error", error.message || "Settings listener failed");
+  });
   unsubscribers.push(settingsUnsub);
 }
 
 export function disconnectUser() {
+  connectionGeneration += 1;
   unsubscribers.forEach(unsubscribe => unsubscribe());
   unsubscribers = [];
   hasSeeded = false;
   snapshotsReady = new Set();
+  snapshotStates.clear();
+  snapshotErrors.clear();
   state.user = null;
   state.accounts = [];
   state.categories = [];
@@ -270,6 +310,7 @@ export async function saveCategory(input) {
 }
 
 export async function deleteCategory(id, { replacementCategoryId = "misc" } = {}) {
+  const generation = connectionGeneration;
   const categoryId = String(id || "").trim();
   if (!categoryId) return;
   if (categoryId === replacementCategoryId) throw new Error("The replacement category cannot be deleted.");
@@ -282,6 +323,7 @@ export async function deleteCategory(id, { replacementCategoryId = "misc" } = {}
   ];
 
   for (let index = 0; index < operations.length; index += 399) {
+    assertConnection(generation);
     const batch = writeBatch(db);
     for (const op of operations.slice(index, index + 399)) {
       batch.set(userDoc(op.collection, op.id), op.data, { merge: true });
@@ -367,7 +409,10 @@ export async function saveTransaction(input) {
     referenceCoveredAmount: input.referenceCoveredAmount == null ? null : Number(input.referenceCoveredAmount),
     referenceFundingGroupId: input.referenceFundingGroupId || "",
     fundingOriginalId: input.fundingOriginalId || "",
-    excludeFromStats: input.categoryId === "cash" ? false : Boolean(input.excludeFromStats || input.ignoreFromStats || input.statsIgnored),
+    excludeFromStats: input.categoryId === "cash" ? false : shouldIgnoreTransactionInStats(input),
+    statsExclusionOverride: input.categoryId === "cash" ? false : (input.statsExclusionOverride ?? null),
+    ignoreFromStats: false,
+    statsIgnored: false,
     duplicateAccepted: Boolean(input.duplicateAccepted),
     spendingEventId: input.spendingEventId || input.transactionGroupId || "",
     spendingEventName: input.spendingEventName || input.transactionGroupName || "",
@@ -382,6 +427,7 @@ export async function saveTransaction(input) {
 
 export async function saveTransactionsBatch(transactions) {
   if (!transactions.length) return { imported: 0 };
+  const generation = connectionGeneration;
   let imported = 0;
   const existingById = new Map(state.transactions.map(tx => [tx.id, tx]).filter(([id]) => Boolean(id)));
   const reservedIds = new Set();
@@ -389,8 +435,8 @@ export async function saveTransactionsBatch(transactions) {
     const requested = String(tx.id || uid()).trim();
     const existing = existingById.get(requested);
     const isExistingUpdate = Boolean(existing && (
-      tx.createdAtMs === existing.createdAtMs ||
-      tx.clientUpdatedAtMs === existing.clientUpdatedAtMs ||
+      (tx.createdAtMs != null && tx.createdAtMs === existing.createdAtMs) ||
+      (tx.clientUpdatedAtMs != null && tx.clientUpdatedAtMs === existing.clientUpdatedAtMs) ||
       tx.source === "bulk-edit" ||
       tx.source === "manual-edit" ||
       tx.source === "rule-reapply" ||
@@ -417,6 +463,7 @@ export async function saveTransactionsBatch(transactions) {
     return candidate;
   };
   for (let index = 0; index < transactions.length; index += 400) {
+    assertConnection(generation);
     const batch = writeBatch(db);
     for (const tx of transactions.slice(index, index + 400)) {
       const id = nextUniqueId(tx);
@@ -429,7 +476,10 @@ export async function saveTransactionsBatch(transactions) {
         currency: (tx.currency || state.settings.primaryCurrency || "EUR").toUpperCase(),
         note: noteWithReviewReason(tx),
         review: Boolean(tx.review),
-        excludeFromStats: tx.categoryId === "cash" ? false : Boolean(tx.excludeFromStats || tx.ignoreFromStats || tx.statsIgnored),
+        excludeFromStats: tx.categoryId === "cash" ? false : shouldIgnoreTransactionInStats(tx),
+        statsExclusionOverride: tx.categoryId === "cash" ? false : (tx.statsExclusionOverride ?? null),
+        ignoreFromStats: false,
+        statsIgnored: false,
         internalTransfer: tx.categoryId === "cash" ? false : Boolean(tx.internalTransfer),
         clientUpdatedAtMs: Date.now(),
         updatedAt: serverTimestamp()
@@ -447,6 +497,7 @@ export async function deleteTransaction(id) {
 export async function saveAsset(input) {
   const id = input.id || uid();
   const existing = state.assets.find(asset => asset.id === id);
+  const sameCurrency = !input.currency || String(input.currency).toUpperCase() === existing?.currency;
   await saveDoc("assets", id, {
     id,
     symbol: String(input.symbol || "").trim().toUpperCase(),
@@ -467,9 +518,9 @@ export async function saveAsset(input) {
     accountId: input.accountId || "",
     hidden: Boolean(input.hidden),
     createdAtMs: existing?.createdAtMs || input.createdAtMs || Date.now(),
-    lastPrice: input.lastPrice == null ? null : Number(input.lastPrice),
-    lastPriceAt: input.lastPriceAt || "",
-    lastChangePercent: input.lastChangePercent == null ? null : Number(input.lastChangePercent)
+    lastPrice: input.lastPrice === undefined ? (sameCurrency ? existing?.lastPrice ?? null : null) : (input.lastPrice == null ? null : Number(input.lastPrice)),
+    lastPriceAt: input.lastPriceAt === undefined ? (sameCurrency ? existing?.lastPriceAt || "" : "") : input.lastPriceAt,
+    lastChangePercent: input.lastChangePercent === undefined ? (sameCurrency ? existing?.lastChangePercent ?? null : null) : (input.lastChangePercent == null ? null : Number(input.lastChangePercent))
   });
   return id;
 }
@@ -502,7 +553,7 @@ export async function updateAssetQuote(id, quote) {
     lastPrice: convertedPrice,
     lastPriceAt: quote.pulledAt || quote.time || new Date().toISOString(),
     lastQuotePriceAt: quote.priceTime || quote.datetime || quote.time || "",
-    lastChangePercent: Number.isFinite(Number(quote.changePercent)) ? Number(quote.changePercent) : null,
+    lastChangePercent: quote.changePercent != null && Number.isFinite(Number(quote.changePercent)) ? Number(quote.changePercent) : null,
     lastProviderSymbol: quote.symbol || "",
     lastProviderPrice: Number.isFinite(providerPrice) ? providerPrice : null,
     lastProviderCurrency: providerCurrency,
@@ -527,11 +578,13 @@ export async function saveSettings(patch) {
 
 
 export async function refreshFxRates({ silent = false } = {}) {
+  const userId = state.user?.uid;
   const currencies = new Set([state.settings.primaryCurrency || "EUR"]);
   state.accounts.forEach(account => currencies.add(account.currency || "EUR"));
   state.assets.forEach(asset => currencies.add(asset.currency || "EUR"));
   if (!silent) setSync("loading", "Refreshing exchange rates");
   const result = await fetchLatestFxRates([...currencies]);
+  if (state.user?.uid !== userId) return result;
   await saveSettings({
     fxRates: { ...(state.settings.fxRates || {}), ...result.rates },
     fxLastUpdatedAt: result.time,
@@ -543,7 +596,7 @@ export async function refreshFxRates({ silent = false } = {}) {
 
 
 function sanitizeForFirestore(value) {
-  if (Array.isArray(value)) return value.map(sanitizeForFirestore);
+  if (Array.isArray(value)) return Array.from(value, item => item === undefined ? null : sanitizeForFirestore(item));
   if (value && typeof value === "object") {
     const out = {};
     for (const [key, item] of Object.entries(value)) {
@@ -557,8 +610,10 @@ function sanitizeForFirestore(value) {
 }
 
 async function deleteCollectionDocs(name) {
+  const generation = connectionGeneration;
   const snapshot = await getDocs(query(userCollection(name)));
   for (let index = 0; index < snapshot.docs.length; index += 400) {
+    assertConnection(generation);
     const batch = writeBatch(db);
     snapshot.docs.slice(index, index + 400).forEach(item => batch.delete(userDoc(name, item.id)));
     await batch.commit();
@@ -566,9 +621,11 @@ async function deleteCollectionDocs(name) {
 }
 
 async function writeCollectionDocs(name, rows = []) {
+  const generation = connectionGeneration;
   let count = 0;
   const cleanRows = Array.isArray(rows) ? rows : [];
   for (let index = 0; index < cleanRows.length; index += 400) {
+    assertConnection(generation);
     const batch = writeBatch(db);
     for (const row of cleanRows.slice(index, index + 400)) {
       const id = String(row.id || uid());
@@ -585,20 +642,50 @@ async function writeCollectionDocs(name, rows = []) {
   return count;
 }
 
-export async function importStateBackup(backup, { replace = false } = {}) {
-  if (!backup || typeof backup !== "object") throw new Error("The selected file is not a Capito JSON backup.");
+function validateBackup(backup, { replace = false } = {}) {
+  if (!backup || typeof backup !== "object" || Array.isArray(backup)) throw new Error("The selected file is not a Capito JSON backup.");
   const collections = ["accounts", "categories", "rules", "transactions", "assets"];
   const hasAny = collections.some(name => Array.isArray(backup[name]));
   if (!hasAny) throw new Error("JSON backup is missing accounts, transactions, categories, rules and assets arrays.");
+  for (const name of collections) {
+    if (replace && !Array.isArray(backup[name])) throw new Error(`Replacement backup is missing the ${name} array. Export a complete backup first.`);
+    if (backup[name] !== undefined && !Array.isArray(backup[name])) throw new Error(`Backup ${name} must be an array.`);
+    const ids = new Set();
+    for (const row of backup[name] || []) {
+      if (!row || typeof row !== "object" || Array.isArray(row)) throw new Error(`Invalid row in backup ${name}.`);
+      if (typeof row.id !== "string" || !row.id.trim() || row.id.includes("/") || [".", ".."].includes(row.id)) throw new Error(`Invalid document ID in backup ${name}.`);
+      if (ids.has(row.id)) throw new Error(`Duplicate document ID '${row.id}' in backup ${name}.`);
+      ids.add(row.id);
+      for (const field of ["amount", "quantity", "openingBalance", "costBasis", "buyPrice", "manualPrice", "lastPrice"]) {
+        if (row[field] !== undefined && row[field] !== null && (row[field] === "" || !Number.isFinite(Number(row[field])))) throw new Error(`Invalid ${field} in backup ${name}.`);
+      }
+      if (name === "transactions" && (row.amount == null || !parseDateValue(row.date))) throw new Error("Backup transaction is missing a valid date or amount.");
+    }
+  }
+  if (backup.settings !== undefined && (!backup.settings || typeof backup.settings !== "object" || Array.isArray(backup.settings))) throw new Error("Backup settings must be an object.");
+  return Object.fromEntries(collections.map(name => [name, backup[name] || []]));
+}
+
+export async function importStateBackup(backup, { replace = false } = {}) {
+  // Validate every collection before the first deletion or write.
+  const rowsByCollection = validateBackup(backup, { replace });
+  const collections = Object.keys(rowsByCollection);
+  const generation = connectionGeneration;
 
   setSync("loading", replace ? "Replacing data from JSON" : "Importing JSON backup", true);
   if (replace) {
-    for (const name of collections) await deleteCollectionDocs(name);
+    for (const name of collections) {
+      assertConnection(generation);
+      await deleteCollectionDocs(name);
+    }
   }
 
   const counts = {};
-  const rowsByCollection = Object.fromEntries(collections.map(name => [name, Array.isArray(backup[name]) ? [...backup[name]] : []]));
-  for (const name of collections) counts[name] = await writeCollectionDocs(name, rowsByCollection[name]);
+  for (const name of collections) {
+    assertConnection(generation);
+    counts[name] = await writeCollectionDocs(name, rowsByCollection[name]);
+  }
+  assertConnection(generation);
 
   if (backup.settings && typeof backup.settings === "object") {
     const settings = sanitizeForFirestore({ ...backup.settings, marketApiKeyLocalOnly: "" });
@@ -670,9 +757,17 @@ function localBackupSnapshot() {
 }
 
 async function overwriteFirebaseFromSnapshot(snapshot) {
+  const generation = connectionGeneration;
   const collections = ["accounts", "categories", "rules", "transactions", "assets"];
-  for (const name of collections) await deleteCollectionDocs(name);
-  for (const name of collections) await writeCollectionDocs(name, snapshot[name] || []);
+  for (const name of collections) {
+    assertConnection(generation);
+    await deleteCollectionDocs(name);
+  }
+  for (const name of collections) {
+    assertConnection(generation);
+    await writeCollectionDocs(name, snapshot[name] || []);
+  }
+  assertConnection(generation);
   await saveDoc("settings", "preferences", {
     ...DEFAULT_SETTINGS,
     ...(snapshot.settings || {}),
@@ -705,6 +800,7 @@ async function readFirebaseSnapshotStrict() {
 }
 
 export async function resolveSyncConflict(mode) {
+  const generation = connectionGeneration;
   if (!state.user?.uid) throw new Error("Sign in first before resolving sync.");
   const normalizedMode = String(mode || "").trim();
   if (!["local", "merge", "firebase"].includes(normalizedMode)) throw new Error("Choose keep local, merge both, or take Firebase.");
@@ -730,6 +826,7 @@ export async function resolveSyncConflict(mode) {
   }
 
   const remote = await readFirebaseSnapshotStrict();
+  assertConnection(generation);
 
   if (normalizedMode === "firebase") {
     applySnapshot(remote, "Firebase data loaded locally");
@@ -772,6 +869,7 @@ export async function resolveSyncConflict(mode) {
 
 
 export async function repairSync() {
+  const generation = connectionGeneration;
   if (!state.user?.uid) throw new Error("Sign in first before checking sync.");
   setSync("loading", "Checking Firebase and local cache", true);
   try {
@@ -783,6 +881,7 @@ export async function repairSync() {
       readCollectionForRepair("assets"),
       readSettingsForRepair()
     ]);
+    assertConnection(generation);
     state.accounts = accounts.items;
     state.categories = categories.items;
     state.rules = rules.items;
@@ -808,11 +907,18 @@ export async function repairSync() {
 }
 
 export async function deleteAllData() {
+  const generation = connectionGeneration;
   const collections = ["transactions", "assets", "rules", "categories", "accounts"];
   setSync("loading", "Deleting all data", true);
-  for (const name of collections) await deleteCollectionDocs(name);
-  await deleteDoc(userDoc("settings", "preferences")).catch(() => undefined);
-  await deleteDoc(userDoc("meta", "seed")).catch(() => undefined);
+  for (const name of collections) {
+    assertConnection(generation);
+    await deleteCollectionDocs(name);
+  }
+  assertConnection(generation);
+  await deleteDoc(userDoc("settings", "preferences"));
+  assertConnection(generation);
+  await deleteDoc(userDoc("meta", "seed"));
+  assertConnection(generation);
   state.accounts = [];
   state.categories = [];
   state.rules = [];

@@ -138,7 +138,7 @@ async function fetchTextWithTimeout(url, timeoutMs = 16000) {
 
 async function fetchJson(url, options = {}) {
   const errors = [];
-  const timeoutMs = Math.max(5000, Number(options.timeoutMs || 16000));
+  const timeoutMs = Math.max(1, Number(options.timeoutMs || 16000));
   const deadline = Date.now() + timeoutMs;
   for (const endpoint of yahooProxyUrls(url, options)) {
     const remaining = deadline - Date.now();
@@ -147,7 +147,7 @@ async function fetchJson(url, options = {}) {
       break;
     }
     try {
-      const text = await fetchTextWithTimeout(endpoint.url, Math.max(1200, remaining));
+      const text = await fetchTextWithTimeout(endpoint.url, remaining);
       const data = JSON.parse(text);
       if (data?.chart?.error) throw new Error(data.chart.error.description || data.chart.error.code || "Yahoo error");
       return data;
@@ -190,6 +190,8 @@ function parseYahooChartQuote(data, candidate, url) {
 
   const pulledAt = new Date().toISOString();
   const symbol = cleanTicker(meta.symbol || candidate.symbol);
+  const rawCurrency = String(meta.currency || candidate.currency || yahooCurrencyHint(symbol) || "");
+  const quotedInPence = rawCurrency === "GBp" || rawCurrency.toUpperCase() === "GBX";
   return {
     provider: "yahoo",
     source: "Yahoo Finance",
@@ -198,8 +200,8 @@ function parseYahooChartQuote(data, candidate, url) {
     micCode: meta.exchange || "",
     name: meta.shortName || meta.longName || "",
     quoteType: meta.instrumentType || meta.quoteType || candidate.quoteType || "",
-    price,
-    currency: String(meta.currency || candidate.currency || yahooCurrencyHint(symbol) || "").toUpperCase(),
+    price: quotedInPence ? price / 100 : price,
+    currency: quotedInPence ? "GBP" : rawCurrency.toUpperCase(),
     changePercent: null,
     time: pulledAt,
     pulledAt,
@@ -211,15 +213,18 @@ function parseYahooChartQuote(data, candidate, url) {
 
 async function fetchYahooQuoteCandidate(candidate, options = {}) {
   const errors = [];
+  const deadline = Date.now() + Number(options.timeoutMs || 30000);
   for (const [range, interval] of [["5d", "1d"], ["1mo", "1d"]]) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
     const url = yahooChartUrl(candidate.symbol, range, interval);
     try {
-      return parseYahooChartQuote(await fetchJson(url, { timeoutMs: options.timeoutMs }), candidate, url);
+      return parseYahooChartQuote(await fetchJson(url, { timeoutMs: remaining }), candidate, url);
     } catch (error) {
       errors.push(`${range}/${interval}: ${error.message}`);
     }
   }
-  throw new Error(errors.join(" | "));
+  throw new Error(errors.join(" | ") || "Yahoo quote request timed out.");
 }
 
 function scoreYahooSearchResult(result = {}, asset = {}) {
@@ -342,6 +347,7 @@ export async function searchYahooAssetMatches(asset = {}, { limit = 5, searchLim
   const targetCurrency = String(asset.currency || "EUR").toUpperCase();
   const searchQuery = String(query || isin || asset.name || asset.symbol || "").trim();
   const apiRows = [];
+  let lookupError = null;
   const seenSymbols = new Set();
   const addMatch = match => {
     const symbol = cleanTicker(match?.symbol || "");
@@ -363,7 +369,7 @@ export async function searchYahooAssetMatches(asset = {}, { limit = 5, searchLim
         .forEach(addMatch);
     } catch (error) {
       console.warn("Yahoo asset lookup failed", searchQuery, error);
-      throw error;
+      lookupError = error;
     }
   }
 
@@ -404,6 +410,8 @@ export async function searchYahooAssetMatches(asset = {}, { limit = 5, searchLim
     .sort((a, b) => Number(b.exactIdentifierMatch) - Number(a.exactIdentifierMatch) || b.score - a.score)
     .slice(0, maxResults);
 
+  if (!ordered.length && lookupError) throw lookupError;
+
   if (!validateQuotes) return ordered;
 
   const matches = [];
@@ -437,10 +445,13 @@ export async function searchYahooAssetMatches(asset = {}, { limit = 5, searchLim
 
 async function searchYahooCandidates(asset, options = {}) {
   const found = [];
+  const deadline = options.deadline || Date.now() + Number(options.timeoutMs || 30000);
   for (const query of searchQueriesForAsset(asset).slice(0, 5)) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
     try {
       const url = `https://query1.finance.yahoo.com/v1/finance/search?${new URLSearchParams({ q: query, quotesCount: "12", newsCount: "0", listsCount: "0", enableFuzzyQuery: "true" }).toString()}`;
-      const data = await fetchJson(url, { timeoutMs: options.timeoutMs });
+      const data = await fetchJson(url, { timeoutMs: remaining });
       const rows = Array.isArray(data?.quotes) ? data.quotes : [];
       rows
         .filter(row => row?.symbol)
@@ -459,13 +470,16 @@ export async function fetchYahooQuote(asset, { maxAgeDays = 7, targetCurrency = 
   const tried = new Set();
   let bestFallback = null;
   const target = String(targetCurrency || asset.currency || "EUR").toUpperCase();
+  const deadline = Date.now() + timeoutMs;
 
   const tryCandidate = async candidate => {
     const symbol = cleanTicker(candidate.symbol);
     if (!symbol || tried.has(symbol)) return null;
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return null;
     tried.add(symbol);
     try {
-      const quote = await fetchYahooQuoteCandidate({ ...candidate, symbol }, { timeoutMs });
+      const quote = await fetchYahooQuoteCandidate({ ...candidate, symbol }, { timeoutMs: remaining });
       const age = quoteAgeDays(quote.priceTime);
       const fresh = age == null || age <= maxAgeDays;
       const targetMatch = String(quote.currency || "").toUpperCase() === target;
@@ -486,7 +500,7 @@ export async function fetchYahooQuote(asset, { maxAgeDays = 7, targetCurrency = 
     const quote = await tryCandidate(candidate);
     if (quote) return quote;
   }
-  for (const candidate of await searchYahooCandidates(asset, { timeoutMs })) {
+  for (const candidate of await searchYahooCandidates(asset, { timeoutMs, deadline })) {
     const quote = await tryCandidate(candidate);
     if (quote) return quote;
   }
@@ -500,7 +514,7 @@ export async function fetchQuote(asset, settings) {
   const rawProvider = asset.provider || settings.marketProvider || "manual";
   const provider = ["stooq", "twelvedata"].includes(rawProvider) ? "yahoo" : rawProvider;
   if (provider === "manual") {
-    const price = Number(asset.manualPrice || asset.lastPrice || 0);
+    const price = Number(asset.manualPrice ?? asset.lastPrice ?? 0);
     if (!Number.isFinite(price) || price <= 0) throw new Error("Manual asset needs a manual price first.");
     const pulledAt = new Date().toISOString();
     return {

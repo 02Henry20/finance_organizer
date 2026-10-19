@@ -1,4 +1,4 @@
-const CACHE_NAME = "capito-v86-import-paypal-netfirst";
+const CACHE_NAME = "capito-v88-data-integrity";
 const CORE = [
   "./",
   "./index.html",
@@ -32,16 +32,15 @@ self.addEventListener("install", event => {
       const remoteCore = CORE.filter(item => !String(item).startsWith("./"));
       await cache.addAll(localCore);
       await Promise.allSettled(remoteCore.map(item => cache.add(item)));
-    }).catch(() => undefined)
+    }).then(() => self.skipWaiting())
   );
-  self.skipWaiting();
 });
 
 self.addEventListener("activate", event => {
   event.waitUntil(
-    caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))))
+    caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith("capito-") && key !== CACHE_NAME).map(key => caches.delete(key))))
+      .then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
 self.addEventListener("fetch", event => {
@@ -49,6 +48,7 @@ self.addEventListener("fetch", event => {
 
   const url = new URL(event.request.url);
   const isFirebaseModule = url.origin === "https://www.gstatic.com" && url.pathname.startsWith("/firebasejs/12.15.0/");
+  if (url.origin !== self.location.origin && !isFirebaseModule) return;
   const isAppShell =
     event.request.mode === "navigate" ||
     isFirebaseModule ||
@@ -61,19 +61,23 @@ self.addEventListener("fetch", event => {
     event.respondWith(
       fetch(event.request, { cache: "no-store" })
         .then(response => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy)).catch(() => undefined);
+          if (response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy)).catch(() => undefined);
+          }
           return response;
         })
-        .catch(() => caches.match(event.request).then(cached => cached || caches.match("./index.html")))
+        .catch(async () => (await caches.match(event.request)) || (event.request.mode === "navigate" ? await caches.match("./index.html") : null) || Response.error())
     );
     return;
   }
 
   event.respondWith(
     caches.match(event.request).then(cached => cached || fetch(event.request).then(response => {
-      const copy = response.clone();
-      caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy)).catch(() => undefined);
+      if (response.ok) {
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy)).catch(() => undefined);
+      }
       return response;
     }))
   );
